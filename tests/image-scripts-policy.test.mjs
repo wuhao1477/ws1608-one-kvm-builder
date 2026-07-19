@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { spawnSync } from 'node:child_process';
 import fs from 'node:fs';
 import test from 'node:test';
 
@@ -58,4 +59,19 @@ test('the independent verifier checks exact identity and installed files', () =>
   assert.match(verifyScript, /mktemp -d "\$VERIFY_ROOT\/ws1608-verify\.XXXXXX"/);
   assert.match(verifyScript, /cleanup\(\) \(/);
   assert.doesNotMatch(verifyScript, /rm -rf "\$VERIFY_DIR"/);
+});
+
+test('the verifier parses GNU readelf interpreter output', () => {
+  const readelfOutput = '      [Requesting program interpreter: /lib/ld-linux-armhf.so.3]\n';
+  const sedExpression = verifyScript.match(
+    /^interpreter=.*?sed -n '([^']+)'/m,
+  )?.[1];
+  assert.ok(sedExpression, 'interpreter parser is missing');
+
+  const result = spawnSync('sed', ['-n', sedExpression], {
+    input: readelfOutput,
+    encoding: 'utf8',
+  });
+  assert.equal(result.status, 0, result.stderr);
+  assert.equal(result.stdout.trim(), '/lib/ld-linux-armhf.so.3');
 });

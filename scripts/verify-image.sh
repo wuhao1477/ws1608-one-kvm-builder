@@ -146,7 +146,7 @@ fi
 libasound_state=$(dpkg-query --admindir="$dpkg_admin" -W -f='${Status}' "$libasound_package")
 binary_info=$(file "$binary")
 service_link=$(readlink "$MOUNT_DIR/etc/systemd/system/multi-user.target.wants/one-kvm.service" || true)
-interpreter=$(readelf -l "$binary" | sed -n 's/.*Requesting program interpreter: \[\([^]]*\)\].*/\1/p')
+interpreter=$(readelf -l "$binary" | sed -n 's/.*\[Requesting program interpreter: \([^]]*\)\].*/\1/p')
 needed_libraries=$(readelf -d "$binary" | sed -n 's/.*Shared library: \[\([^]]*\)\].*/\1/p')
 verify 'one-kvm package' test "$package_state" = "install ok installed $ONE_KVM_VERSION armhf"
 verify "$libasound_package package" test "$libasound_state" = 'install ok installed'
