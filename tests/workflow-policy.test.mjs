@@ -11,11 +11,19 @@ test('checks upstream once every seven days and validates pull requests', () => 
   assert.match(workflow, /github\.event_name == 'pull_request'/);
 });
 
+test('preserves every forced rebuild without racing its build identity', () => {
+  assert.match(
+    workflow,
+    /github\.event_name == 'workflow_dispatch' && inputs\.force && format\('force-\{0\}', github\.run_id\)/,
+  );
+});
+
 test('uses read-only permission until the isolated release job', () => {
   assert.match(workflow, /^permissions:\n  contents: read$/m);
   assert.match(workflow, /^  release:\n(?:.|\n)*?    permissions:\n      contents: write/m);
   assert.match(workflow, /needs: \[discover, build\]/);
   assert.match(workflow, /github\.event_name != 'pull_request'/);
+  assert.match(workflow, /github\.ref == format\('refs\/heads\/\{0\}', github\.event\.repository\.default_branch\)/);
   assert.match(workflow, /inputs\.publish/);
 });
 
@@ -32,7 +40,10 @@ test('downloads and reverifies the artifact before immutable publishing', () => 
   assert.match(workflow, /^      - name: Reverify downloaded release assets$/m);
   assert.match(workflow, /gh release create "\$BUILD_TAG"/);
   assert.match(workflow, /gh release create "\$BUILD_TAG"[^\n]*\\\n(?:.|\n)*?--draft/);
+  assert.match(workflow, /git\/refs/);
+  assert.match(workflow, /--verify-tag/);
   assert.match(workflow, /gh release edit "\$BUILD_TAG"[^\n]*--draft=false/);
+  assert.doesNotMatch(workflow, /--latest/);
   assert.doesNotMatch(workflow, /gh release upload|--clobber/);
 });
 

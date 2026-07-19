@@ -26,9 +26,13 @@ function validateIdentity(values) {
   if (!/^[0-9a-f]{64}$/.test(String(values.packageDigest ?? ''))) {
     throw new Error('package digest must be 64 lowercase hexadecimal characters');
   }
-  const revision = `b${String(values.buildNumber).padStart(3, '0')}`;
-  if (!String(values.buildTag ?? '').endsWith(`-${revision}`)) {
-    throw new Error(`build tag must end with ${revision}`);
+  const number = String(values.buildNumber);
+  const revisions = [
+    `b${number.padStart(3, '0')}`,
+    `b${number.padStart(6, '0')}`,
+  ];
+  if (!revisions.some((revision) => String(values.buildTag ?? '').endsWith(`-${revision}`))) {
+    throw new Error(`build tag must end with one of ${revisions.join(', ')}`);
   }
 }
 

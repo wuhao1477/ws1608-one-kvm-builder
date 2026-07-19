@@ -14,6 +14,7 @@ test('the base configuration is the source of image identity fields', () => {
 });
 
 test('the image builder requires and embeds immutable build provenance', () => {
+  assert.match(buildScript, /export BASE_ID BASE_FLAVOR BASE_KERNEL BASE_BOARD/);
   for (const variable of ['BUILD_TAG', 'BUILD_NUMBER', 'PACKAGE_DIGEST', 'BUILDER_COMMIT']) {
     assert.match(buildScript, new RegExp(`${variable}=\\$\\{${variable}:\\?`));
   }
@@ -24,6 +25,7 @@ test('the image builder requires and embeds immutable build provenance', () => {
 });
 
 test('the independent verifier checks exact identity and installed files', () => {
+  assert.match(verifyScript, /export BASE_ID BASE_KERNEL BASE_BOARD/);
   for (const variable of [
     'UPSTREAM_TAG',
     'PACKAGE_DIGEST',
@@ -42,4 +44,6 @@ test('the independent verifier checks exact identity and installed files', () =>
   assert.match(verifyScript, /test ! -e "\$MOUNT_DIR\/tmp\/one-kvm\.deb"/);
   assert.match(verifyScript, /test ! -e "\$MOUNT_DIR\/usr\/bin\/qemu-arm-static"/);
   assert.match(verifyScript, /write-validation-report\.mjs/);
+  assert.match(verifyScript, /mktemp -d "\$VERIFY_ROOT\/ws1608-verify\.XXXXXX"/);
+  assert.doesNotMatch(verifyScript, /rm -rf "\$VERIFY_DIR"/);
 });

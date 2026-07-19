@@ -12,7 +12,7 @@
 - 基础：Armbian 26.8 Trixie，`6.12.28-current-meson`，OneCloud/WS1608 HDMI-test
 - 触发：每周日 02:17 UTC；无新的上游 tag + Deb digest 时只检查、不构建
 
-当前旧 Release 的未压缩和压缩资产、manifest、SHA256SUMS 都是 uploaded，且 Release 不是 draft/prerelease。新工作流将从下一个构建开始使用 `ws1608-one-kvm-0.2.4-v260709-bNNN`，以 draft 上传五项资产，复验后再公开；旧 Release 不会被覆盖。
+当前旧 Release 的未压缩和压缩资产、manifest、SHA256SUMS 都是 uploaded，且 Release 不是 draft/prerelease。新工作流将从下一个构建开始使用 `ws1608-one-kvm-0.2.4-v260709-bRRRAAA`，以 draft 上传五项资产，复验后再公开；旧 Release 不会被覆盖。
 
 ## 已实现的范围
 
@@ -60,7 +60,7 @@ rootfs 安装使用动态 apt 源，ext4 时间戳和构建时间也会变化。
 
 ### 3. 上游同 tag 替换资产
 
-当前 discover 同时比较上游 tag 和 package digest。如果上游重写同一个 tag，下一次周检会分配新的 `bNNN`；仍应检查新 manifest 的 package digest。
+当前 discover 同时比较上游 tag 和 package digest。如果上游重写同一个 tag，下一次周检会使用新的 `bRRRAAA`；仍应检查新 manifest 的 package digest。
 
 ### 4. GitHub 资产大小
 

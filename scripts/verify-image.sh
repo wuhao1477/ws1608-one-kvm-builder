@@ -3,6 +3,7 @@ set -Eeuo pipefail
 
 ROOT_DIR=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
 source "$ROOT_DIR/config/base.env"
+export BASE_ID BASE_KERNEL BASE_BOARD
 IMAGE=${IMAGE:?IMAGE is required}
 BASE_IMAGE=${BASE_IMAGE:?BASE_IMAGE is required}
 AMLIMG_BIN=${AMLIMG_BIN:?AMLIMG_BIN is required}
@@ -13,11 +14,7 @@ BUILD_TAG=${BUILD_TAG:?BUILD_TAG is required}
 BUILD_NUMBER=${BUILD_NUMBER:?BUILD_NUMBER is required}
 BUILDER_COMMIT=${BUILDER_COMMIT:?BUILDER_COMMIT is required}
 VALIDATION_REPORT=${VALIDATION_REPORT:?VALIDATION_REPORT is required}
-VERIFY_DIR=${VERIFY_DIR:-$ROOT_DIR/.verify}
-FINAL_DIR="$VERIFY_DIR/final"
-BASE_DIR="$VERIFY_DIR/base"
-ROOTFS_RAW="$VERIFY_DIR/rootfs.raw"
-MOUNT_DIR="$VERIFY_DIR/rootfs.mnt"
+VERIFY_ROOT=${VERIFY_DIR:-$ROOT_DIR/.verify}
 
 as_root() {
   if [[ ${EUID:-$(id -u)} -eq 0 ]]; then "$@"; else sudo "$@"; fi
@@ -34,13 +31,20 @@ verify() {
   fi
 }
 
-cleanup() {
+mkdir -p "$VERIFY_ROOT"
+VERIFY_WORK_DIR=$(mktemp -d "$VERIFY_ROOT/ws1608-verify.XXXXXX")
+FINAL_DIR="$VERIFY_WORK_DIR/final"
+BASE_DIR="$VERIFY_WORK_DIR/base"
+ROOTFS_RAW="$VERIFY_WORK_DIR/rootfs.raw"
+MOUNT_DIR="$VERIFY_WORK_DIR/rootfs.mnt"
+
+cleanup() (
   set +e
   if mountpoint -q "$MOUNT_DIR"; then as_root umount "$MOUNT_DIR"; fi
-}
+  if ! mountpoint -q "$MOUNT_DIR"; then as_root rm -rf -- "$VERIFY_WORK_DIR"; fi
+)
 trap cleanup EXIT
 
-as_root rm -rf "$VERIFY_DIR"
 mkdir -p "$FINAL_DIR" "$BASE_DIR" "$MOUNT_DIR"
 "$AMLIMG_BIN" unpack "$IMAGE" "$FINAL_DIR"
 "$AMLIMG_BIN" unpack "$BASE_IMAGE" "$BASE_DIR"
@@ -96,6 +100,7 @@ verify 'qemu removed after install' test ! -e "$MOUNT_DIR/usr/bin/qemu-arm-stati
 verify 'systemctl stub removed after install' test ! -e "$MOUNT_DIR/usr/local/sbin/systemctl"
 
 as_root umount "$MOUNT_DIR"
+as_root rm -rf -- "$VERIFY_WORK_DIR"
 trap - EXIT
 mkdir -p "$(dirname "$VALIDATION_REPORT")"
 node "$ROOT_DIR/scripts/write-validation-report.mjs" "$VALIDATION_REPORT"

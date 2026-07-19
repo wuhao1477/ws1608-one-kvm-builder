@@ -12,7 +12,7 @@
 - [troubleshooting.md](troubleshooting.md)：已发生故障、症状、原因和修复方法。
 - [hardware-validation.md](hardware-validation.md)：WS1608 实机刷写、One-KVM、视频采集和 HID 验收表。
 - [adr/0001-pinned-base-weekly-check.md](adr/0001-pinned-base-weekly-check.md)：固定稳定基础镜像并每周检查上游的决策记录。
-- [adr/0002-immutable-versioned-rebuilds.md](adr/0002-immutable-versioned-rebuilds.md)：不可变 `bNNN` Release、摘要判定和发布门禁。
+- [adr/0002-immutable-versioned-rebuilds.md](adr/0002-immutable-versioned-rebuilds.md)：不可变 `bRRRAAA` Release、摘要判定和发布门禁。
 
 ## 当前基线
 
@@ -29,7 +29,7 @@
 
 1. 查看 [Actions](https://github.com/wuhao1477/ws1608-one-kvm-builder/actions) 最近一次运行。
 2. 没有新上游版本时，`Check One-KVM release` 成功且 `Build and verify image` 应为 skipped。
-3. 只有需要修复同一版本或验证流程变更时，才使用 `force=true`；它会创建新的 `bNNN`。
+3. 只有需要修复同一版本或验证流程变更时，才使用 `force=true`；它会创建新的 `bRRRAAA`。
 4. 下载 Release 的 `.burn.img` 或 `.burn.img.xz`，先核对 `SHA256SUMS`、manifest 和 validation report，再进行实体刷写。
 5. 实机结果填写到 [hardware-validation.md](hardware-validation.md) 的验收表；云端结构测试不能替代实体刷写。
 

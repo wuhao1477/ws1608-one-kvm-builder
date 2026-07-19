@@ -9,11 +9,25 @@ async function sha256File(filePath) {
   return hash.digest('hex');
 }
 
+function assertBasename(name) {
+  if (
+    typeof name !== 'string'
+    || !name
+    || name === '.'
+    || name === '..'
+    || path.basename(name) !== name
+    || name.includes('\\')
+  ) {
+    throw new Error(`artifact name is not a basename: ${name}`);
+  }
+}
+
 async function fileMetadata(outputDir, name) {
-  if (path.basename(name) !== name) throw new Error(`artifact name is not a basename: ${name}`);
+  assertBasename(name);
   const filePath = path.join(outputDir, name);
-  const stat = await fsp.stat(filePath);
-  if (!stat.isFile() || stat.size === 0) throw new Error(`artifact is missing or empty: ${name}`);
+  const stat = await fsp.lstat(filePath);
+  if (!stat.isFile()) throw new Error(`artifact is not a regular file: ${name}`);
+  if (stat.size === 0) throw new Error(`artifact is missing or empty: ${name}`);
   return { name, size: stat.size, sha256: await sha256File(filePath) };
 }
 
@@ -86,6 +100,7 @@ export async function finalizeManifest({
 }
 
 async function readChecksums(outputDir, expectedNames) {
+  await fileMetadata(outputDir, 'SHA256SUMS');
   const text = await fsp.readFile(path.join(outputDir, 'SHA256SUMS'), 'utf8');
   const entries = new Map();
   for (const line of text.trimEnd().split(/\r?\n/)) {
@@ -121,15 +136,14 @@ export async function writeChecksums(outputDir, names) {
 }
 
 export async function validateReleaseAssets({ outputDir, expected }) {
+  await fileMetadata(outputDir, 'manifest.json');
   const manifest = JSON.parse(await fsp.readFile(path.join(outputDir, 'manifest.json'), 'utf8'));
   for (const [key, value] of Object.entries(expected ?? {})) compareField(manifest[key], value, key);
   if (manifest.schema_version !== 2) throw new Error('manifest schema_version must be 2');
   if (manifest.validation !== 'passed') throw new Error('manifest validation must be passed');
 
   const names = [manifest.image, manifest.compressed_image, manifest.validation_report];
-  for (const name of names) {
-    if (path.basename(String(name)) !== name) throw new Error(`artifact name is not a basename: ${name}`);
-  }
+  for (const name of names) assertBasename(name);
   const report = JSON.parse(await fsp.readFile(path.join(outputDir, manifest.validation_report), 'utf8'));
   if (report.result !== 'passed') throw new Error('validation report result is not passed');
   if (report.hardware_boot_tested !== false) throw new Error('validation report hardware claim is invalid');

@@ -1,4 +1,8 @@
 import assert from 'node:assert/strict';
+import { spawnSync } from 'node:child_process';
+import fs from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
 import test from 'node:test';
 
 import { discoverRelease } from '../scripts/lib/release-discovery.mjs';
@@ -84,6 +88,36 @@ test('force allocates the next immutable build sequence', () => {
   assert.equal(result.buildTag, 'ws1608-one-kvm-0.2.4-v260709-b003');
 });
 
+test('parallel workflow runs receive distinct immutable build identities', () => {
+  const first = discoverRelease({
+    upstreamRelease: upstreamRelease(),
+    forceBuild: true,
+    workflowRunNumber: 14,
+    workflowRunAttempt: 1,
+  });
+  const second = discoverRelease({
+    upstreamRelease: upstreamRelease(),
+    forceBuild: true,
+    workflowRunNumber: 15,
+    workflowRunAttempt: 1,
+  });
+
+  assert.equal(first.buildTag, 'ws1608-one-kvm-0.2.4-v260709-b014001');
+  assert.equal(second.buildTag, 'ws1608-one-kvm-0.2.4-v260709-b015001');
+});
+
+test('a workflow rerun attempt receives a new immutable build identity', () => {
+  const result = discoverRelease({
+    upstreamRelease: upstreamRelease(),
+    forceBuild: true,
+    workflowRunNumber: 14,
+    workflowRunAttempt: 2,
+  });
+
+  assert.equal(result.buildNumber, 14002);
+  assert.equal(result.buildRevision, 'b014002');
+});
+
 test('a replaced Deb digest allocates a new build for the same upstream tag', () => {
   const result = discoverRelease({
     upstreamRelease: upstreamRelease(DIGEST_B),
@@ -107,6 +141,41 @@ test('a failed draft reserves its build sequence but does not suppress a rebuild
   assert.equal(result.changed, true);
   assert.equal(result.buildNumber, 2);
   assert.equal(result.buildTag, 'ws1608-one-kvm-0.2.4-v260709-b002');
+});
+
+test('a tag ref reserves a sequence when the draft Release is not visible', () => {
+  const result = discoverRelease({
+    upstreamRelease: upstreamRelease(),
+    existingReleases: [],
+    existingTags: [{ name: 'ws1608-one-kvm-0.2.4-v260709-b001' }],
+    forceBuild: false,
+  });
+
+  assert.equal(result.changed, true);
+  assert.equal(result.buildNumber, 2);
+  assert.equal(result.buildTag, 'ws1608-one-kvm-0.2.4-v260709-b002');
+});
+
+test('the discovery CLI passes tag refs into sequence allocation', () => {
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'ws1608-discovery-'));
+  const releasePath = path.join(directory, 'upstream.json');
+  const releasesPath = path.join(directory, 'releases.json');
+  const tagsPath = path.join(directory, 'tags.json');
+  fs.writeFileSync(releasePath, JSON.stringify(upstreamRelease()));
+  fs.writeFileSync(releasesPath, '[]');
+  fs.writeFileSync(tagsPath, JSON.stringify([[{
+    name: 'ws1608-one-kvm-0.2.4-v260709-b001',
+  }]]));
+
+  const result = spawnSync(
+    process.execPath,
+    ['scripts/discover-release.mjs', releasePath, releasesPath, tagsPath, 'false'],
+    { cwd: process.cwd(), encoding: 'utf8' },
+  );
+
+  assert.equal(result.status, 0, result.stderr);
+  assert.match(result.stdout, /^build_number=2$/m);
+  assert.match(result.stdout, /^build_tag=ws1608-one-kvm-0\.2\.4-v260709-b002$/m);
 });
 
 test('rejects an armhf asset without a GitHub SHA-256 digest', () => {

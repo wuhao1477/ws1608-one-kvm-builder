@@ -43,7 +43,7 @@ systemctl status one-kvm-otg.service --no-pager
 curl -fsS http://127.0.0.1:8080/api/health
 ```
 
-预期：版本文件包含 `one_kvm_version=0.2.4` 和 `one_kvm_release=v260709`；health API 返回状态 ok；One-KVM 服务为 enabled/active。具体版本应以实际 Release manifest 为准。
+预期：版本文件包含 `one_kvm_version=0.2.4`、`one_kvm_release=v260709`、对应 `build_tag=...-bRRRAAA` 和 package SHA-256；health API 返回状态 ok；One-KVM 服务为 enabled/active。具体版本应以实际 Release manifest 为准。
 
 ## OTG、视频和 HID
 

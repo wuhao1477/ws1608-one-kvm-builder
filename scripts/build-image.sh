@@ -3,6 +3,7 @@ set -Eeuo pipefail
 
 ROOT_DIR=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
 source "$ROOT_DIR/config/base.env"
+export BASE_ID BASE_FLAVOR BASE_KERNEL BASE_BOARD
 BASE_IMAGE_XZ=${BASE_IMAGE_XZ:?BASE_IMAGE_XZ is required}
 ONE_KVM_DEB=${ONE_KVM_DEB:?ONE_KVM_DEB is required}
 AMLIMG_BIN=${AMLIMG_BIN:?AMLIMG_BIN is required}

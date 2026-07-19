@@ -13,14 +13,15 @@ One-KVM Rust Deb 版本。旧流程只按 tag 判断是否更新，上游同 tag
 
 ## 决策
 
-1. tag 使用 `ws1608-one-kvm-<deb-version>-<upstream-tag>-bNNN`。
+1. tag 使用 `ws1608-one-kvm-<deb-version>-<upstream-tag>-bRRRAAA`；构建号由 Actions run number 和 run attempt 组成。
 2. 普通检查同时比较 upstream tag 和 package SHA-256。
-3. `force=true`、上游 tag 变化或 package digest 变化都会分配下一个序号。
+3. `force=true`、上游 tag 变化或 package digest 变化都会使用当前 workflow 的唯一构建号。
 4. 每个构建创建新的 Release，不覆盖旧 tag 或旧资产。
 5. 发布 job 与 build job 分离，默认权限为 `contents: read`。
 6. Release 先保持 draft，五项资产上传完成后才公开。
 7. build job 和 release job 都验证 manifest、报告、xz 往返和校验和。
-8. draft/prerelease 不算成功输入，但其序号仍视为已占用。
+8. draft/prerelease 不算成功输入，其 tag ref 仍视为已占用。
+9. 强制 dispatch 使用独立 concurrency group；普通检查保持串行，防止并发请求丢失或争用 tag。
 
 ## 结果
 

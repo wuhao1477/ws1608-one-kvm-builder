@@ -42,6 +42,16 @@ test('accepts metadata only when every expected identity field matches', () => {
   assert.deepEqual(assertImageMetadata(text, expected), parseImageMetadata(text));
 });
 
+test('accepts the run-number and attempt build identity used by Actions', () => {
+  const workflowBuild = {
+    ...expected,
+    buildTag: 'ws1608-one-kvm-0.2.4-v260709-b014001',
+    buildNumber: 14001,
+  };
+
+  assert.doesNotThrow(() => createImageMetadata(workflowBuild));
+});
+
 test('rejects an altered package digest', () => {
   const text = createImageMetadata(expected).replace(expected.packageDigest, 'b'.repeat(64));
   assert.throws(() => assertImageMetadata(text, expected), /package_sha256/);

@@ -12,13 +12,25 @@ function readPages(path) {
   return payload.flatMap((page) => (Array.isArray(page) ? page : [page]));
 }
 
-const [releasePath, releasesPath, forceValue] = process.argv.slice(2);
-if (!releasePath || !releasesPath) throw new Error('release JSON paths are required');
+const [
+  releasePath,
+  releasesPath,
+  tagsPath,
+  forceValue,
+  runNumberValue,
+  runAttemptValue,
+] = process.argv.slice(2);
+if (!releasePath || !releasesPath || !tagsPath) {
+  throw new Error('release and tag JSON paths are required');
+}
 
 const result = discoverRelease({
   upstreamRelease: readJson(releasePath),
   existingReleases: readPages(releasesPath),
+  existingTags: readPages(tagsPath),
   forceBuild: forceValue === 'true',
+  workflowRunNumber: runNumberValue,
+  workflowRunAttempt: runAttemptValue,
 });
 
 for (const [key, value] of Object.entries({

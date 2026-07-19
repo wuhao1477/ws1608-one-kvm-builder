@@ -13,7 +13,7 @@ on:
   workflow_dispatch:
     inputs:
       force:
-        description: Create the next build even when this One-KVM input was published
+        description: Create an independent build even when this One-KVM input was published
         required: false
         default: false
         type: boolean
@@ -29,7 +29,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: ws1608-one-kvm-${{ github.event_name == 'pull_request' && format('pr-{0}', github.event.pull_request.number) || 'release' }}
+  group: ws1608-one-kvm-${{ github.event_name == 'pull_request' && format('pr-{0}', github.event.pull_request.number) || (github.event_name == 'workflow_dispatch' && inputs.force && format('force-{0}', github.run_id) || 'release') }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
@@ -56,7 +56,7 @@ jobs:
           npm test
           for script in scripts/*.sh; do bash -n "$script"; done
       - id: release
-        name: Resolve upstream input and build sequence
+        name: Resolve upstream input and build identity
         env:
           GH_TOKEN: ${{ github.token }}
           FORCE_BUILD: ${{ github.event_name == 'pull_request' || (github.event_name == 'workflow_dispatch' && inputs.force) }}
@@ -145,6 +145,7 @@ jobs:
     if: >-
       needs.build.result == 'success' &&
       github.event_name != 'pull_request' &&
+      github.ref == format('refs/heads/{0}', github.event.repository.default_branch) &&
       (github.event_name != 'workflow_dispatch' || inputs.publish)
     runs-on: ubuntu-24.04
     permissions:
@@ -179,6 +180,14 @@ jobs:
           path: ${{ runner.temp }}/ws1608-release
       - name: Reverify downloaded release assets
         run: ./scripts/verify-release-assets.sh
+      - name: Reserve immutable tag at builder commit
+        run: |
+          gh api --method POST "repos/$GITHUB_REPOSITORY/git/refs" \
+            --raw-field "ref=refs/tags/$BUILD_TAG" \
+            --raw-field "sha=$BUILDER_COMMIT" \
+            > "$RUNNER_TEMP/tag-ref.json"
+          tag_commit=$(gh api "repos/$GITHUB_REPOSITORY/git/ref/tags/$BUILD_TAG" --jq '.object.sha')
+          test "$tag_commit" = "$BUILDER_COMMIT"
       - name: Publish draft after all assets upload
         run: |
           cat > "$RUNNER_TEMP/release-notes.md" <<EOF
@@ -206,12 +215,12 @@ jobs:
           )
           gh release create "$BUILD_TAG" \
             --repo "$GITHUB_REPOSITORY" \
-            --target "$BUILDER_COMMIT" \
+            --verify-tag \
             --title "WS1608 One-KVM Rust $ONE_KVM_VERSION ($UPSTREAM_TAG, $BUILD_REVISION)" \
             --notes-file "$RUNNER_TEMP/release-notes.md" \
             --draft \
             "${assets[@]}"
-          gh release edit "$BUILD_TAG" --repo "$GITHUB_REPOSITORY" --draft=false --latest
+          gh release edit "$BUILD_TAG" --repo "$GITHUB_REPOSITORY" --draft=false
 
   skipped:
     name: No new One-KVM input

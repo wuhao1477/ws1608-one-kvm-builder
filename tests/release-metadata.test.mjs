@@ -141,6 +141,43 @@ test('rejects path-bearing artifact names before reading them', async () => {
   );
 });
 
+test('rejects release assets that are symbolic links', async () => {
+  const data = await prepareRelease();
+  const compressedPath = path.join(data.outputDir, data.compressedName);
+  const outsidePath = path.join(os.tmpdir(), `ws1608-outside-${crypto.randomUUID()}.xz`);
+  await fs.copyFile(compressedPath, outsidePath);
+  await fs.unlink(compressedPath);
+  await fs.symlink(outsidePath, compressedPath);
+
+  await assert.rejects(
+    validateReleaseAssets({ outputDir: data.outputDir, expected: expectedValues() }),
+    /artifact is not a regular file/,
+  );
+});
+
+test('rejects path-bearing image names before creating compressed output', async () => {
+  const parent = await fs.mkdtemp(path.join(os.tmpdir(), 'ws1608-path-'));
+  const outputDir = path.join(parent, 'output');
+  const imagePath = path.join(parent, 'victim');
+  const compressedPath = `${imagePath}.xz`;
+  await fs.mkdir(outputDir);
+  await fs.writeFile(imagePath, 'outside image');
+  await fs.writeFile(path.join(outputDir, 'validation-report.json'), '{}');
+
+  const result = spawnSync('bash', ['scripts/package-release.sh'], {
+    cwd: process.cwd(),
+    encoding: 'utf8',
+    env: {
+      ...process.env,
+      OUTPUT_DIR: outputDir,
+      IMAGE_NAME: '../victim',
+    },
+  });
+
+  assert.notEqual(result.status, 0);
+  await assert.rejects(fs.access(compressedPath));
+});
+
 test('packages and verifies release assets through the shell entrypoint', async () => {
   const data = await fixture();
   const imageBytes = await fs.readFile(data.imagePath);

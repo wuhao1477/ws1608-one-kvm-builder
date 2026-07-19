@@ -50,7 +50,7 @@ flowchart LR
 | Amlogic 工具 | `scripts/build-tools.sh` 从 `config/tool-versions.env` 固定提交构建 AmlImg |
 | One-KVM 包 | 上游 Release API 返回的唯一 `armhf.deb` |
 | 工作目录 | GitHub runner 的 `$RUNNER_TEMP/ws1608-work` |
-| 未压缩成品 | `One-KVM_<version>-<upstream-tag>-bNNN_<flavor>.burn.img` |
+| 未压缩成品 | `One-KVM_<version>-<upstream-tag>-bRRRAAA_<flavor>.burn.img` |
 | 压缩成品 | 同名加 `.xz` |
 | 构建摘要 | `manifest.json`，包含基础/上游摘要、版本、序号、builder 和全部文件摘要 |
 | 验证报告 | `validation-report.json`，记录 CI 检查通过且 `hardware_boot_tested=false` |
@@ -94,7 +94,7 @@ OTG unit 有 `WantedBy=multi-user.target`，但当前设计不依赖单独的 wa
 
 ## 稳定性和可复现性
 
-镜像结构是可复现的，但当前构建不是严格字节级可复现：rootfs 安装会访问当天的 Debian/Armbian 仓库，ext4 时间戳、apt 元数据和 `built_at` 可能变化。同一 One-KVM 输入使用 `force=true` 重建，成品 SHA-256 可能不同；每次构建都有新的 `bNNN` tag，manifest 和上游/基础摘要仍能追溯来源。
+镜像结构是可复现的，但当前构建不是严格字节级可复现：rootfs 安装会访问当天的 Debian/Armbian 仓库，ext4 时间戳、apt 元数据和 `built_at` 可能变化。同一 One-KVM 输入使用 `force=true` 重建，成品 SHA-256 可能不同；每次构建都有新的 `bRRRAAA` tag，manifest 和上游/基础摘要仍能追溯来源。
 
 如果将来需要字节级复现，应使用 Debian snapshot、固定依赖版本、固定构建时间和可控 ext4 元数据。当前 Release 通过内容校验和、完整结构检查和独立 artifact 复验保证可验证性，而不是宣称二次构建得到相同字节。
 

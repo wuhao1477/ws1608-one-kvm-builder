@@ -20,30 +20,30 @@ physical hardware.
 An immutable build tag has this form:
 
 ```text
-ws1608-one-kvm-<deb-version>-<upstream-tag>-b<sequence>
+ws1608-one-kvm-<deb-version>-<upstream-tag>-b<run-number><attempt>
 ```
 
-For the current upstream input, the first tag is:
+For example, Actions run 14 attempt 1 produces:
 
 ```text
-ws1608-one-kvm-0.2.4-v260709-b001
+ws1608-one-kvm-0.2.4-v260709-b014001
 ```
 
 The image file uses the same human-readable identity:
 
 ```text
-One-KVM_0.2.4-v260709-b001_Onecloud_trixie_6.12.28_HDMI-test.burn.img
+One-KVM_0.2.4-v260709-b014001_Onecloud_trixie_6.12.28_HDMI-test.burn.img
 ```
 
-The sequence is scoped to the One-KVM Deb version and upstream release tag.
-Forced rebuilds increment the sequence and create a new immutable Release;
-they never replace assets from an earlier build.
+The run number is padded to at least three digits and the attempt to exactly
+three digits. Forced dispatches use independent concurrency groups and create
+new immutable Releases; they never replace assets from an earlier build.
 
 ## Update Detection
 
 The discovery job obtains the latest non-draft, non-prerelease One-KVM
 Release and requires exactly one `one-kvm_*_armhf.deb` asset with a GitHub
-SHA-256 digest. It then reads this repository's published Releases.
+SHA-256 digest. It then reads this repository's published Releases and tags.
 
 A scheduled or ordinary manual check skips the image build when a published
 Release contains the same upstream tag and package digest. A changed upstream
@@ -64,7 +64,7 @@ The jobs are separated by responsibility:
 2. `build` downloads pinned inputs, builds the image, independently verifies
    it, packages it, verifies every release asset, and uploads one artifact.
 3. `release` downloads the verified artifact, repeats release-asset checks,
-   and creates the tag and Release.
+   atomically creates and verifies the tag, then creates the draft Release.
 4. `skipped` records that the exact upstream input was already published.
 
 Repository contents are read-only by default. Only the `release` job receives
@@ -111,4 +111,4 @@ digest-change detection, manifest finalization, and tamper detection. Shell
 syntax and workflow policy tests cover the orchestration. A validation-only
 GitHub Actions run on the feature branch must complete the full image build
 before the pull request is merged. After merge, a publishing run must create
-the new `b001` Release, and a following ordinary check must skip the build.
+the new versioned Release, and a following ordinary check must skip the build.

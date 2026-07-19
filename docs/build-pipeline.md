@@ -9,26 +9,27 @@
 | `schedule` | 每周日 `02:17 UTC` 检查一次，约北京时间周日 `10:17` |
 | `pull_request` | 对构建相关文件执行完整云构建与验证，不发布 |
 | `workflow_dispatch`，`force=false` | 与定时检查相同；已有相同上游 tag 和 Deb digest 时跳过 |
-| `workflow_dispatch`，`force=true` | 为同一 One-KVM 输入创建下一个 `bNNN` 构建 |
+| `workflow_dispatch`，`force=true` | 为同一 One-KVM 输入创建独立 `bRRRAAA` 构建 |
 | `workflow_dispatch`，`publish=false` | 上传短期 Actions artifact，但不创建 tag 或 Release |
 | `repository_dispatch: one-kvm-release` | 预留接口；上游当前不会主动发送 |
 
 工作流默认只有 `contents: read`。只有依赖完整构建成功的 `release` job
 获得 `contents: write`；该 job 不会在 pull request 或 `publish=false` 时运行。
+每个强制 dispatch 使用包含 run ID 的独立 concurrency group；普通周检共享串行组。
 
 ## 阶段一：发现上游输入
 
-`scripts/discover-release.sh` 查询上游 latest Release 和本仓库全部 Release：
+`scripts/discover-release.sh` 查询上游 latest Release，以及本仓库全部 Release 和 tag ref：
 
 1. 只接受非 draft、非 prerelease 的上游 Release。
 2. 必须且只能找到一个 `one-kvm_*_armhf.deb`。
 3. GitHub API 必须提供有效的 SHA-256 digest；缺失或格式错误时检查失败。
 4. 包文件名提供 One-KVM Rust Deb 版本，上游 Release 提供 tag。
-5. 构建 tag 为 `ws1608-one-kvm-<deb-version>-<upstream-tag>-bNNN`。
+5. 构建 tag 为 `ws1608-one-kvm-<deb-version>-<upstream-tag>-bRRRAAA`；后缀由 workflow run number 和 attempt 组成。
 6. 已有公开 Release 同时匹配上游 tag 和 package digest 时输出
    `changed=false`，后续 build job 不启动。
-7. `force=true` 或 digest 变化时，序号在已有公开、draft 和 prerelease
-   记录之后递增，防止失败遗留 draft 复用同一身份。
+7. `force=true` 或 digest 变化时使用当前 workflow 的唯一构建号；已有 tag ref
+   会阻止复用失败 draft 或其他运行已经占用的身份。
 
 Release body 的 `one_kvm_release=` 和 `package_sha256=` 是更新判定的
 机器可读标记。这里不使用可被并发覆盖的 state 文件。
@@ -70,7 +71,7 @@ SHA-256 = GitHub Release asset digest
    commit 到 `/etc/ws1608-one-kvm-release`。
 8. 严格卸载所有挂载点；rootfs 仍挂载时禁止继续。
 9. 执行修复性 `e2fsck`、raw/sparse 往返 `cmp`，更新 sparse SHA-1 VERIFY。
-10. 重打包 Amlogic 容器，文件名包含 `version-tag-bNNN`，生成初始 manifest。
+10. 重打包 Amlogic 容器，文件名包含 `version-tag-bRRRAAA`，生成初始 manifest。
 
 ## 阶段五：独立镜像验证
 
@@ -97,13 +98,14 @@ SHA-256 = GitHub Release asset digest
 - raw、xz 和 validation report 的文件名、大小与 SHA-256；
 - 构建时间和 `validation=passed`。
 
-`scripts/verify-release-assets.sh` 执行 `xz -t`，流式解压并比较 raw
-SHA-256，核对 `SHA256SUMS`，再由 Node 验证器检查 manifest、报告、文件
-白名单和所有摘要。`SHA256SUMS` 只允许 basename，且包含 raw、xz、
+`scripts/verify-release-assets.sh` 先由 Node 验证器检查 basename、符号链接、
+manifest、报告、文件白名单和所有摘要，再执行 `xz -t`、流式解压比较和
+`sha256sum --check`。`SHA256SUMS` 只允许 basename，且包含 raw、xz、
 manifest 和 validation report。
 
 验证后的目录通过 Actions artifact 传给独立 `release` job。该 job 下载后
-再次运行同一个资产验证器，先以 draft 上传五项资产：
+再次验证资产，原子创建指向 builder commit 的 tag 并核对 SHA，再以
+`--verify-tag` 创建 draft Release 并上传五项资产：
 
 1. `.burn.img`
 2. `.burn.img.xz`
@@ -111,8 +113,9 @@ manifest 和 validation report。
 4. `manifest.json`
 5. `validation-report.json`
 
-全部上传完成后才把 draft 公开并标记 latest。任何检查、上传或发布步骤
-失败都会使 workflow 失败；旧 Release 不会被覆盖。
+全部上传完成后才把 draft 公开；Latest 由 GitHub 按发布记录自动选择，
+避免并发强制构建互相回退指针。任何检查、上传或发布步骤失败都会使
+workflow 失败；旧 Release 不会被覆盖。
 
 ## 本地验证
 

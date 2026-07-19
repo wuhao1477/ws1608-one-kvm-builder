@@ -18,8 +18,8 @@
 | Amlogic CRC/条目失败 | 手工改了容器布局、使用错误版本工具或截断文件 | 用固定 AmlImg commit，先 `unpack` 再独立 `verify-image.sh` |
 | 刷写工具拒绝 sparse | RAW chunk 过大或总块数变化 | 使用仓库的 `raw-to-sparse.mjs`，不要替换成未验证的 `img2simg` |
 | `SHA256SUMS` 含 `/home/runner/...` | 在输出目录外调用 sha256sum | 使用 `(cd "$OUTPUT_DIR" && sha256sum --check SHA256SUMS)`；当前 asset verifier 会拒绝路径 |
-| force 构建在发布阶段 tag 冲突 | draft 或并发运行占用了序号 | discover 会把 draft/prerelease 序号计入下一次分配；不要手工复用旧 tag |
-| Release 没有公开 | draft 上传、资产验证或 `release edit --draft=false` 失败 | 先修复失败步骤；下一次 `force=true` 会使用新的 `bNNN`，旧 draft 不会被当成成功构建 |
+| force 构建在发布阶段 tag 冲突 | tag 被预先创建或同一构建身份已占用 | 检查 tag 指向；修复后重新 dispatch，新的 run number 会产生新身份 |
+| Release 没有公开 | draft 上传、资产验证或 `release edit --draft=false` 失败 | 先修复失败步骤；重新 dispatch `force=true` 会使用新的 `bRRRAAA`，旧 draft 不会被当成成功构建 |
 | GitHub Release 资产超过 2 GiB | 未压缩镜像或 rootfs 持续变大 | 保留 xz 资产并评估拆分/外部存储；不要静默省略直刷 `.img` |
 | OrbStack Docker daemon `unexpected EOF` | macOS 特权 loop mount 在本次测试中不稳定 | 使用 GitHub Actions 云 runner 或原生 Linux；不要删除用户 Docker 卷来解决 |
 | HDMI 有画面但没有音频 | 基础内核的 `gx-sound-card` 注册错误，已观测到 error -22 | 记录为已知基础镜像限制；One-KVM 的 USB 视频/HID 功能不以 HDMI 音频为前置条件 |

@@ -4,7 +4,7 @@
 
 **Goal:** Publish immutable, repeatable WS1608 builds whose identity visibly includes the One-KVM Rust version, while skipping unchanged weekly inputs and blocking every unverified Release.
 
-**Architecture:** A pure Node.js discovery module derives the input identity and next build sequence from GitHub Release JSON. The build job creates and independently validates the image, then a release-asset module finalizes and validates provenance before a separately permissioned release job publishes it.
+**Architecture:** A pure Node.js discovery module derives the input identity and a collision-free build number from GitHub Release/tag JSON plus the Actions run identity. The build job creates and independently validates the image, then a release-asset module finalizes and validates provenance before a separately permissioned release job publishes it.
 
 **Tech Stack:** Bash, Node.js built-in test runner, GitHub Actions, `gh`, AmlImg, qemu-user-static, ext4 tools, xz.
 
@@ -12,8 +12,8 @@
 
 - Schedule exactly one check each Sunday at `02:17 UTC`.
 - Do not build when a published Release has the same upstream tag and package SHA-256.
-- Use immutable tags `ws1608-one-kvm-<deb-version>-<upstream-tag>-b<sequence>`.
-- A forced rebuild increments the sequence and never overwrites an earlier Release.
+- Use immutable tags `ws1608-one-kvm-<deb-version>-<upstream-tag>-b<run-number><attempt>`.
+- A forced rebuild uses an independent run identity and never overwrites an earlier Release.
 - Only a post-validation release job may have `contents: write`.
 - Keep the physically validated Armbian 26.8 Trixie 6.12.28 base pinned.
 - Hosted CI must not claim that physical WS1608 boot, HDMI, video, or HID passed.
@@ -34,8 +34,8 @@
 
 - [ ] **Step 1: Write failing discovery tests**
 
-  Cover first build `b001`, unchanged input skip, forced `b002`, changed digest
-  `b002`, missing digest rejection, and multiple armhf asset rejection.
+  Cover first build, unchanged input skip, parallel forced identities, changed
+  digest allocation, missing digest rejection, and multiple armhf assets.
 
 - [ ] **Step 2: Run the focused test and observe RED**
 
@@ -82,7 +82,7 @@
 
 - [ ] **Step 3: Add the minimum image metadata and verification gates**
 
-  Derive `One-KVM_<version>-<tag>-bNNN_<base>.burn.img` from the validated
+  Derive `One-KVM_<version>-<tag>-bRRRAAA_<base>.burn.img` from the validated
   build tag. Write the complete identity to `/etc/ws1608-one-kvm-release` and
   verify every field from the independently unpacked final image.
 
@@ -209,5 +209,5 @@
 - [ ] **Step 5: Merge and prove immutable publishing plus skip behavior**
 
   Merge only after cloud validation succeeds. Dispatch `main` with
-  `force=true,publish=true`, verify the new `b001` tag and all five assets, then
+  `force=true,publish=true`, verify the new versioned tag and all five assets, then
   dispatch `force=false` and verify that the build job is skipped.

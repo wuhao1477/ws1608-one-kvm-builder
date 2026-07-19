@@ -41,26 +41,67 @@ function parseMarkers(body) {
   return markers;
 }
 
-function buildRecords(releases, prefix) {
-  return (Array.isArray(releases) ? releases : [])
-    .map((release) => {
-      const tag = String(release?.tag_name ?? '');
-      const marker = `${prefix}-b`;
-      if (!tag.startsWith(marker)) return null;
-      const suffix = tag.slice(marker.length);
-      if (!/^\d+$/.test(suffix)) return null;
-      return {
-        release,
-        tag,
-        buildNumber: Number(suffix),
-        markers: parseMarkers(release.body),
-        published: !release?.draft && !release?.prerelease,
-      };
-    })
-    .filter(Boolean);
+function parseBuildRecord(name, prefix, release, published) {
+  const marker = `${prefix}-b`;
+  if (!name.startsWith(marker)) return null;
+  const suffix = name.slice(marker.length);
+  if (!/^\d+$/.test(suffix)) return null;
+  return {
+    release,
+    tag: name,
+    buildNumber: Number(suffix),
+    markers: parseMarkers(release?.body),
+    published,
+  };
 }
 
-export function discoverRelease({ upstreamRelease, existingReleases = [], forceBuild = false }) {
+function buildRecords(releases, tags, prefix) {
+  const records = [];
+  const seen = new Set();
+  for (const release of Array.isArray(releases) ? releases : []) {
+    const tag = String(release?.tag_name ?? '');
+    if (!tag) continue;
+    const published = !release?.draft && !release?.prerelease;
+    const record = parseBuildRecord(tag, prefix, release, published);
+    if (record) {
+      records.push(record);
+      seen.add(tag);
+    }
+  }
+  for (const tagValue of Array.isArray(tags) ? tags : []) {
+    const name = String(tagValue?.name ?? tagValue?.tag_name ?? '');
+    if (!name || seen.has(name)) continue;
+    const record = parseBuildRecord(name, prefix, {}, false);
+    if (record) records.push(record);
+  }
+  return records;
+}
+
+function workflowBuildNumber(runNumberValue, runAttemptValue) {
+  const runText = String(runNumberValue ?? '');
+  const attemptText = String(runAttemptValue ?? '');
+  if (!runText && !attemptText) return null;
+  const runNumber = Number(runText);
+  const runAttempt = Number(attemptText);
+  if (!Number.isSafeInteger(runNumber) || runNumber < 1) {
+    throw new Error('workflow run number must be a positive integer');
+  }
+  if (!Number.isSafeInteger(runAttempt) || runAttempt < 1 || runAttempt > 999) {
+    throw new Error('workflow run attempt must be between 1 and 999');
+  }
+  const buildNumber = runNumber * 1000 + runAttempt;
+  if (!Number.isSafeInteger(buildNumber)) throw new Error('workflow build number is too large');
+  return buildNumber;
+}
+
+export function discoverRelease({
+  upstreamRelease,
+  existingReleases = [],
+  existingTags = [],
+  forceBuild = false,
+  workflowRunNumber,
+  workflowRunAttempt,
+}) {
   if (upstreamRelease?.draft || upstreamRelease?.prerelease) {
     throw new Error('latest upstream release must not be draft or prerelease');
   }
@@ -71,7 +112,7 @@ export function discoverRelease({ upstreamRelease, existingReleases = [], forceB
   const safeVersion = safeComponent(asset.oneKvmVersion, 'One-KVM version');
   const safeReleaseTag = safeComponent(releaseTag, 'upstream release tag');
   const prefix = `ws1608-one-kvm-${safeVersion}-${safeReleaseTag}`;
-  const records = buildRecords(existingReleases, prefix);
+  const records = buildRecords(existingReleases, existingTags, prefix);
   const matching = records
     .filter((record) => record.published)
     .filter((record) => record.markers.one_kvm_release === releaseTag)
@@ -82,9 +123,17 @@ export function discoverRelease({ upstreamRelease, existingReleases = [], forceB
     0,
   );
   const changed = Boolean(forceBuild) || matching.length === 0;
-  const buildNumber = changed ? maxBuildNumber + 1 : matching[0].buildNumber;
-  const buildRevision = `b${String(buildNumber).padStart(3, '0')}`;
-  const buildTag = `${prefix}-${buildRevision}`;
+  const workflowNumber = workflowBuildNumber(workflowRunNumber, workflowRunAttempt);
+  const buildNumber = changed
+    ? (workflowNumber ?? maxBuildNumber + 1)
+    : matching[0].buildNumber;
+  const buildRevision = changed
+    ? `b${String(buildNumber).padStart(workflowNumber === null ? 3 : 6, '0')}`
+    : matching[0].tag.slice(prefix.length + 1);
+  const buildTag = changed ? `${prefix}-${buildRevision}` : matching[0].tag;
+  if (changed && records.some((record) => record.tag === buildTag)) {
+    throw new Error(`build tag is already reserved: ${buildTag}`);
+  }
 
   return {
     changed,
