@@ -11,7 +11,7 @@
 - Pull request 会执行完整构建，但不会获得发布权限。
 - 预留 `repository_dispatch` 的 `one-kvm-release` 事件，但上游仓库目前不会向本仓库发送该事件，所以每周检查是实际触发方式。
 
-当前已通过完整云端构建和发布检查的版本是 [`ws1608-one-kvm-0.2.4-v260709-173450`](https://github.com/wuhao1477/ws1608-one-kvm-builder/releases/tag/ws1608-one-kvm-0.2.4-v260709-173450)。构建证据和摘要见 [HANDOFF.md](docs/HANDOFF.md)；该成品仍需实体 WS1608 刷写验收，不能仅凭 CI 标记为硬件已通过。
+当前已通过完整云端构建和发布检查的版本是 [`ws1608-one-kvm-0.2.4-v260709-b016001`](https://github.com/wuhao1477/ws1608-one-kvm-builder/releases/tag/ws1608-one-kvm-0.2.4-v260709-b016001)。完整发布见 [run 29703507602](https://github.com/wuhao1477/ws1608-one-kvm-builder/actions/runs/29703507602)，无更新跳过构建见 [run 29703930315](https://github.com/wuhao1477/ws1608-one-kvm-builder/actions/runs/29703930315)。构建证据和摘要见 [HANDOFF.md](docs/HANDOFF.md)；该成品仍需实体 WS1608 刷写验收，不能仅凭 CI 标记为硬件已通过。
 
 ## 基础镜像
 

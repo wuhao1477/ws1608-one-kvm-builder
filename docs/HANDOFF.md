@@ -7,15 +7,16 @@
 公开仓库已经建立并可独立运行：
 
 - 仓库：[wuhao1477/ws1608-one-kvm-builder](https://github.com/wuhao1477/ws1608-one-kvm-builder)
-- 当前 Release：[ws1608-one-kvm-0.2.4-v260709-173450](https://github.com/wuhao1477/ws1608-one-kvm-builder/releases/tag/ws1608-one-kvm-0.2.4-v260709-173450)
-- 完整构建与发布：[Actions run 29697101081](https://github.com/wuhao1477/ws1608-one-kvm-builder/actions/runs/29697101081)，结论 `success`
-- 新格式识别与跳过：[Actions run 29697714162](https://github.com/wuhao1477/ws1608-one-kvm-builder/actions/runs/29697714162)，识别当前 Release 后完整构建 job 为 skipped
-- 迁移前 Release：[ws1608-one-kvm-v260709](https://github.com/wuhao1477/ws1608-one-kvm-builder/releases/tag/ws1608-one-kvm-v260709)
+- 当前 Release：[ws1608-one-kvm-0.2.4-v260709-b016001](https://github.com/wuhao1477/ws1608-one-kvm-builder/releases/tag/ws1608-one-kvm-0.2.4-v260709-b016001)
+- PR 完整构建验证：[Actions run 29703193309](https://github.com/wuhao1477/ws1608-one-kvm-builder/actions/runs/29703193309)，结论 `success`，发布 job 按设计 skipped
+- 完整构建与发布：[Actions run 29703507602](https://github.com/wuhao1477/ws1608-one-kvm-builder/actions/runs/29703507602)，结论 `success`
+- 无更新识别与跳过：[Actions run 29703930315](https://github.com/wuhao1477/ws1608-one-kvm-builder/actions/runs/29703930315)，build 和 release job 均为 skipped
+- 旧格式 Release：[ws1608-one-kvm-0.2.4-v260709-173450](https://github.com/wuhao1477/ws1608-one-kvm-builder/releases/tag/ws1608-one-kvm-0.2.4-v260709-173450) 和 [ws1608-one-kvm-v260709](https://github.com/wuhao1477/ws1608-one-kvm-builder/releases/tag/ws1608-one-kvm-v260709)
 - 上游版本：One-KVM `0.2.4`，tag `v260709`
 - 基础：Armbian 26.8 Trixie，`6.12.28-current-meson`，OneCloud/WS1608 HDMI-test
 - 触发：每周日 02:17 UTC；无新的上游 tag + Deb digest 时只检查、不构建
 
-当前旧 Release 的未压缩和压缩资产、manifest、SHA256SUMS 都是 uploaded，且 Release 不是 draft/prerelease。新工作流将从下一个构建开始使用 `ws1608-one-kvm-0.2.4-v260709-bRRRAAA`，以 draft 上传五项资产，复验后再公开；旧 Release 不会被覆盖。
+当前 Release 使用 `ws1608-one-kvm-0.2.4-v260709-bRRRAAA` 身份，五项资产均为 uploaded，且 Release 不是 draft/prerelease。tag 指向 builder commit `0271eeb2f35e70cbc6bf741874ac0c20a524cb8d`；Release body、manifest、validation report、`SHA256SUMS` 和 GitHub 资产 digest 已相互核对。随后一次普通检查识别同一上游 tag、Deb digest 和完整资产契约后跳过构建；旧 Release 未被覆盖。
 
 ## 已实现的范围
 
@@ -71,7 +72,7 @@ rootfs 安装使用动态 apt 源，ext4 时间戳和构建时间也会变化。
 
 ## 后续优先级
 
-1. 用 `ws1608-one-kvm-0.2.4-v260709-173450` 在实体 WS1608 完成一次完整刷写、断电重启和 One-KVM/OTG/视频/HID 验收。
+1. 用 `ws1608-one-kvm-0.2.4-v260709-b016001` 在实体 WS1608 完成一次完整刷写、断电重启和 One-KVM/OTG/视频/HID 验收。
 2. 将不含敏感信息的硬件结论记录到私有测试记录；公开仓库只记录结论和 Release tag。
 3. 若需要最新内核，建立 candidate 基础镜像流程，先通过硬件验收再提升稳定基础。
 4. 若需要严格可复现，固定 Debian snapshot、依赖版本、时间戳，并保留 manifest 中的 builder commit。

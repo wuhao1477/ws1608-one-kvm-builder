@@ -22,12 +22,12 @@
 | 板卡 | OneCloud / WS1608，Amlogic S805，armhf |
 | 稳定基础 | Armbian 26.8 Trixie，`6.12.28-current-meson` |
 | One-KVM | `0.2.4`，上游 Release `v260709` |
-| 当前 Release | [`ws1608-one-kvm-0.2.4-v260709-173450`](https://github.com/wuhao1477/ws1608-one-kvm-builder/releases/tag/ws1608-one-kvm-0.2.4-v260709-173450) |
+| 当前 Release | [`ws1608-one-kvm-0.2.4-v260709-b016001`](https://github.com/wuhao1477/ws1608-one-kvm-builder/releases/tag/ws1608-one-kvm-0.2.4-v260709-b016001) |
 | 成品 SHA-256 | 见 Release 的 `SHA256SUMS`，不要从聊天记录复制 |
 | 自动检查 | 每周日 02:17 UTC，即北京时间周日 10:17 |
-| 完整云构建 | [run 29697101081](https://github.com/wuhao1477/ws1608-one-kvm-builder/actions/runs/29697101081)，成功 |
-| 最近一次无更新检查 | [run 29697714162](https://github.com/wuhao1477/ws1608-one-kvm-builder/actions/runs/29697714162)，成功且 build skipped |
-| 当前实机状态 | 固定基础已验证；当前时间戳 Release 待实体刷写 |
+| 完整云构建与发布 | [run 29703507602](https://github.com/wuhao1477/ws1608-one-kvm-builder/actions/runs/29703507602)，成功 |
+| 最近一次无更新检查 | [run 29703930315](https://github.com/wuhao1477/ws1608-one-kvm-builder/actions/runs/29703930315)，成功且 build/release skipped |
+| 当前实机状态 | 固定基础已验证；当前 `b016001` Release 待实体刷写 |
 
 ## 最短操作路径
 
