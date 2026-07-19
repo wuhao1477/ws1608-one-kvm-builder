@@ -61,18 +61,25 @@ node "$ROOT_DIR/scripts/sparse-to-raw.mjs" "$PACKAGE_DIR/$rootfs_sparse" "$ROOTF
 as_root e2fsck -fn "$ROOTFS_RAW"
 
 cleanup_mounts() (
-  set +e
-  if mountpoint -q "$MOUNT_DIR/proc"; then as_root umount "$MOUNT_DIR/proc"; fi
-  if mountpoint -q "$MOUNT_DIR/sys"; then as_root umount -R "$MOUNT_DIR/sys"; fi
-  if mountpoint -q "$MOUNT_DIR/dev"; then as_root umount -R "$MOUNT_DIR/dev"; fi
-  if mountpoint -q "$MOUNT_DIR"; then as_root umount "$MOUNT_DIR"; fi
+  set -u
+  local failed=0
+  as_root sync || failed=1
+  for target in "$MOUNT_DIR/proc" "$MOUNT_DIR/sys" "$MOUNT_DIR/dev"; do
+    if mountpoint -q "$target" && ! as_root umount "$target"; then failed=1; fi
+  done
+  if mountpoint -q "$MOUNT_DIR" && ! as_root umount "$MOUNT_DIR"; then failed=1; fi
+  if mountpoint -q "$MOUNT_DIR"; then
+    echo "rootfs mount is still active: $MOUNT_DIR" >&2
+    failed=1
+  fi
+  return "$failed"
 )
-trap cleanup_mounts EXIT
+on_exit() { cleanup_mounts || true; }
+trap on_exit EXIT
 
 mkdir -p "$MOUNT_DIR"
 as_root mount -o loop "$ROOTFS_RAW" "$MOUNT_DIR"
-as_root mount --rbind /dev "$MOUNT_DIR/dev"
-as_root mount --make-rslave "$MOUNT_DIR/dev"
+as_root mount --bind /dev "$MOUNT_DIR/dev"
 as_root mount -t proc proc "$MOUNT_DIR/proc"
 as_root mount -t sysfs sysfs "$MOUNT_DIR/sys"
 
@@ -130,6 +137,7 @@ as_root chown root:root "$MOUNT_DIR/etc/ws1608-one-kvm-release"
 
 cleanup_mounts
 trap - EXIT
+mountpoint -q "$MOUNT_DIR" && { echo 'rootfs is still mounted before e2fsck' >&2; exit 1; }
 as_root e2fsck -fy "$ROOTFS_RAW"
 rm -f "$PACKAGE_DIR/$rootfs_sparse"
 echo "Creating Android sparse rootfs"
