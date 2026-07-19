@@ -8,10 +8,14 @@
 - [image-lineage.md](image-lineage.md)：当前基础镜像、历史参考镜像及选型依据。
 - [architecture.md](architecture.md)：稳定构建的边界、镜像分层和启动/OTG设计。
 - [build-pipeline.md](build-pipeline.md)：GitHub Actions 从上游 Release 到直刷包的逐步流程。
+- [manifest-schema.md](manifest-schema.md)：成品身份、输入摘要和发布资产的数据契约。
 - [maintenance.md](maintenance.md)：日常更新、基础镜像更换、强制重建和 Release 维护。
 - [troubleshooting.md](troubleshooting.md)：已发生故障、症状、原因和修复方法。
 - [hardware-validation.md](hardware-validation.md)：WS1608 实机刷写、One-KVM、视频采集和 HID 验收表。
 - [adr/0001-pinned-base-weekly-check.md](adr/0001-pinned-base-weekly-check.md)：固定稳定基础镜像并每周检查上游的决策记录。
+- [adr/0002-immutable-verified-releases.md](adr/0002-immutable-verified-releases.md)：同版本多次构建、不可变 tag 和 draft 验证发布的决策记录。
+- [superpowers/specs/2026-07-20-one-kvm-release-identity-design.md](superpowers/specs/2026-07-20-one-kvm-release-identity-design.md)：本次发布加固设计。
+- [superpowers/plans/2026-07-20-one-kvm-cloud-release-hardening.md](superpowers/plans/2026-07-20-one-kvm-cloud-release-hardening.md)：实现与云端验收计划。
 
 ## 当前基线
 

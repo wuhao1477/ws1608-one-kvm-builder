@@ -6,7 +6,8 @@
 
 - 每周日 02:17 UTC（北京时间 10:17）查询 `mofeng-git/One-KVM` 的最新稳定 Release。
 - 只有发现尚未构建的上游版本才下载 `armhf.deb`、构建并发布新 Release。
-- `workflow_dispatch` 可手动运行；勾选 `force` 会忽略已发布版本检查。
+- `workflow_dispatch` 可手动运行；勾选 `force` 会为同一上游版本创建新的不可变 Release，不覆盖历史资产。
+- 新 tag 格式为 `ws1608-one-kvm-<Deb版本>-<上游tag>-<UTC时分秒>`，例如 `ws1608-one-kvm-0.2.4-v260709-143015`。
 - 预留 `repository_dispatch` 的 `one-kvm-release` 事件，但上游仓库目前不会向本仓库发送该事件，所以每周检查是实际触发方式。
 
 ## 基础镜像
@@ -15,20 +16,25 @@
 
 ## CI 验证
 
-构建任务会重新解包成品并检查：Amlogic v2 CRC、12 个标准条目、非 rootfs 分区字节一致性、每个分区 VERIFY SHA1、`one-kvm` armhf 包和依赖、systemd 开机链接、OneCloud OTG 配置、ext4 文件系统一致性。
+构建任务会重新解包成品并检查：输入摘要、Amlogic v2 CRC、12 个标准条目、非 rootfs 分区字节一致性、每个分区 VERIFY SHA1、`one-kvm` armhf 包与运行库、ARM 动态加载器、systemd 开机链接和 ExecStart、OneCloud OTG 配置、ext4 文件系统一致性。
+
+压缩后还会验证 `SHA256SUMS`、manifest 全字段和 xz 解压字节往返；Actions artifact 上传后会下载到新目录再次执行资产与镜像验证。最终先上传 draft Release，GitHub 返回的四个 asset digest 与本地 SHA-256 全部一致后才公开。任一步非零都会使 build job 失败，不会公开该构建。
 
 GitHub 托管 runner 没有连接实体 WS1608，因此 CI 不把结构验证写成硬件启动结论。Release 中同时提供未压缩 `.burn.img` 和 `.burn.img.xz`，以及 `SHA256SUMS`。
 
 ## 本地运行
 
-推荐直接使用 GitHub Actions 云构建，不需要在本地保存解压后的大镜像。云 runner 会安装 root 权限所需的 `qemu-user-static`、Go、Node.js 和 `e2fsprogs`，完成构建与验证后只保留 Release 资产。
+推荐直接使用 GitHub Actions 云构建，不需要在本地保存解压后的大镜像。云 runner 会安装 root 权限所需的 `qemu-user-static`、Go、Node.js、`binutils` 和 `e2fsprogs`，完成构建与验证后只保留 Release 资产。
 
-本地复现需要 Linux 主机、root 权限、`qemu-user-static`、Go、Node.js、`e2fsprogs` 和 Amlogic 基础镜像。先准备 `BASE_IMAGE_XZ`、`ONE_KVM_DEB`、`ONE_KVM_VERSION`、`UPSTREAM_TAG` 和 `AMLIMG_BIN` 环境变量，再执行：
+本地复现需要 Linux 主机、root 权限、`qemu-user-static`、Go、Node.js、`binutils`、`e2fsprogs` 和 Amlogic 基础镜像。先准备 `BASE_IMAGE_XZ`、`ONE_KVM_DEB`、`ONE_KVM_VERSION`、`UPSTREAM_TAG`、`BUILD_STAMP`、`BUILD_TAG`、`IMAGE_NAME` 和 `AMLIMG_BIN` 环境变量，再执行：
 
 ```sh
 ./scripts/build-image.sh
 ./scripts/verify-image.sh
+node ./scripts/verify-artifacts.mjs "$OUTPUT_DIR" "$IMAGE_NAME" "$EXPECTED_MANIFEST_JSON"
 ```
+
+`BUILD_TAG` 和 `IMAGE_NAME` 必须由 `scripts/lib/release-identity.mjs` 生成，不能手工拼接不一致的名称。
 
 纯格式测试不需要镜像或 root 权限：
 

@@ -37,7 +37,11 @@ flowchart LR
   H --> I[raw-to-sparse + SHA1 VERIFY]
   I --> J[AmlImg repack]
   J --> K[独立解包/校验]
-  K --> L[.burn.img / .xz / manifest / Release]
+  K --> L[压缩/manifest/SHA256SUMS]
+  L --> M[artifact 上传后重新下载]
+  M --> N[再次验证镜像和资产]
+  N --> O[draft Release + 远端 digest]
+  O --> P[公开不可变 Release]
 ```
 
 ## 输入与输出
@@ -48,9 +52,10 @@ flowchart LR
 | Amlogic 工具 | `scripts/build-tools.sh` 从 `config/tool-versions.env` 固定提交构建 AmlImg |
 | One-KVM 包 | 上游 Release API 返回的唯一 `armhf.deb` |
 | 工作目录 | GitHub runner 的 `$RUNNER_TEMP/ws1608-work` |
-| 未压缩成品 | `One-KVM_<version>_Onecloud_trixie_6.12.28_HDMI-test.burn.img` |
+| 未压缩成品 | `One-KVM_<version>_<upstream-tag>_<UTC-HHMMSS>_Onecloud_trixie_6.12.28_HDMI-test.burn.img` |
 | 压缩成品 | 同名加 `.xz` |
-| 构建摘要 | `manifest.json`，包含基础资产、上游 URL/摘要、版本和构建时间 |
+| 构建 tag | `ws1608-one-kvm-<version>-<upstream-tag>-<UTC-HHMMSS>` |
+| 构建摘要 | `manifest.json`，包含输入 URL/摘要、完整时间、run ID/attempt、builder commit 和工具提交 |
 | 校验和 | `SHA256SUMS`，只使用文件名，不包含 runner 的绝对路径 |
 
 ## Amlogic 容器布局
@@ -86,13 +91,21 @@ Amlogic v2 的头部是无填充的二进制布局，`itemCount` 位于偏移 24
 - 安装 `/usr/sbin/one-kvm-enable-otg`，在 `/sys/devices/platform/soc/c9040000.usb/usb_role/*/role` 出现后将角色设为 `device`，最多重试 30 秒。
 - 写入 `/etc/ws1608-one-kvm-release`，便于实机识别构建来源。
 
+版本文件同时包含 `build_tag` 和 `build_stamp_utc`。`verify-image.sh` 要求这些值与工作流身份一致，并检查 One-KVM 的 Deb 状态、运行库、ARM 动态加载器、service symlink/ExecStart 以及 OTG 文件内容。
+
 OTG unit 有 `WantedBy=multi-user.target`，但当前设计不依赖单独的 wants symlink；One-KVM drop-in 的 `Wants=` 已经提供依赖关系。不要为了“看起来启用”再次添加第二个链接。
 
 ## 稳定性和可复现性
 
 镜像结构是可复现的，但当前构建不是严格字节级可复现：rootfs 安装会访问当天的 Debian/Armbian 仓库，ext4 时间戳、apt 元数据和 `built_at` 可能变化。同一 One-KVM tag 使用 `force=true` 重建，成品 SHA-256 可能不同；manifest 和上游/基础摘要仍能追溯来源。
 
-如果将来需要字节级复现，应使用 Debian snapshot、固定依赖版本、固定构建时间和可控 ext4 元数据，并把 builder commit 写入 manifest。当前 Release 通过内容校验和和完整结构检查保证可验证性，而不是宣称二次构建得到相同字节。
+如果将来需要字节级复现，应使用 Debian snapshot、固定依赖版本、固定构建时间和可控 ext4 元数据。当前 manifest 已记录 builder commit、run ID/attempt 和所有输入摘要；Release 通过内容校验和、完整结构检查和远端 asset digest 保证可验证性，而不是宣称二次构建得到相同字节。
+
+## 发布身份和不可变性
+
+普通周检判断“该上游 tag 是否已有成功公开构建”，而不是判断即将生成的时间戳 tag 是否存在。旧格式 `ws1608-one-kvm-v260709` 在迁移期间仍算成功构建。`force=true` 忽略这个版本级状态，但生成新的 `HHMMSS` tag；发布脚本同时检查 Release 和 Git ref 均不存在，任何碰撞都失败。
+
+发布资产必须只有四个文件：未压缩镜像、xz 镜像、`SHA256SUMS` 和 `manifest.json`。`verify-artifacts.mjs` 流式计算摘要并执行 xz 字节往返，避免把大镜像载入内存。工作流在本地输出目录和重新下载的 Actions artifact 上各执行一次；随后 draft Release 的 GitHub digest 再与本地摘要逐项比较。
 
 ## 非目标
 

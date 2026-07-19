@@ -9,7 +9,7 @@
 | 四核 60 秒负载 | 已验证 | 基础镜像现场测试通过 |
 | HDMI 音频 | 已知问题 | `gx-sound-card` 注册出现 error -22，当前不影响 One-KVM 的 USB 视频/HID目标 |
 | One-KVM `0.2.4` 运行 | 已验证过 | 在已启动系统中安装，systemd active，health API 返回 ok |
-| 当前 Release `ws1608-one-kvm-v260709` 实体刷写 | 未验证 | GitHub runner 没有 WS1608、USB Burning Tool 或显示器 |
+| 新时间戳 Release 实体刷写 | 待本次云构建后验收 | GitHub runner 没有 WS1608、USB Burning Tool 或显示器 |
 | USB HDMI 采集卡 | 未验证 | 之前测试时未连接实际采集卡 |
 | 被控机 USB HID | 未验证 | 之前测试时未连接被控机 USB 线 |
 
@@ -43,7 +43,16 @@ systemctl status one-kvm-otg.service --no-pager
 curl -fsS http://127.0.0.1:8080/api/health
 ```
 
-预期：版本文件包含 `one_kvm_version=0.2.4` 和 `one_kvm_release=v260709`；health API 返回状态 ok；One-KVM 服务为 enabled/active。具体版本应以实际 Release manifest 为准。
+预期：版本文件包含 `one_kvm_version=0.2.4`、`one_kvm_release=v260709`、`build_tag=...` 和 `build_stamp_utc=...`；health API 返回状态 ok；One-KVM 服务为 enabled/active。具体值应以实际 Release manifest 为准。
+
+下载验证应先在维护者电脑或 Linux runner 执行：
+
+```sh
+gh release download <tag> --repo wuhao1477/ws1608-one-kvm-builder --dir release-check
+node scripts/verify-artifacts.mjs release-check <image-name> '<manifest-fields-json>'
+```
+
+不要只用浏览器下载完成作为完整性证据；四个资产、SHA256SUMS、manifest 和 xz 解压回读都必须通过。
 
 ## OTG、视频和 HID
 
@@ -93,7 +102,12 @@ stress-ng --cpu 4 --timeout 60s --metrics-brief
 
 ```text
 Release tag:
+Build tag:
+One-KVM Deb version:
+Upstream One-KVM tag:
 burn.img SHA-256:
+burn.img.xz SHA-256:
+manifest.json / SHA256SUMS:
 测试日期:
 板卡/硬件版本（不含序列号）:
 刷写结果:

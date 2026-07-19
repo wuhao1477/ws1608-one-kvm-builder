@@ -18,7 +18,11 @@
 | Amlogic CRC/条目失败 | 手工改了容器布局、使用错误版本工具或截断文件 | 用固定 AmlImg commit，先 `unpack` 再独立 `verify-image.sh` |
 | 刷写工具拒绝 sparse | RAW chunk 过大或总块数变化 | 使用仓库的 `raw-to-sparse.mjs`，不要替换成未验证的 `img2simg` |
 | `SHA256SUMS` 含 `/home/runner/...` | 在输出目录外调用 sha256sum | 使用 `(cd "$OUTPUT_DIR" && sha256sum ...)`，当前 workflow 已修复 |
-| force 构建在发布阶段 tag 冲突 | 旧 workflow 只调用 `gh release create` | 当前 workflow 会 `upload --clobber` 和 `release edit`；确认运行的是最新 `main` |
+| force 构建在发布前 tag 冲突 | 两次构建取得同一个 UTC 时分秒，或 tag 被手工创建 | 这是防覆盖门槛；确认旧资产不动，重新触发取得新时分秒，不能使用 `--clobber` |
+| `verify-artifacts` 报额外文件 | 输出目录残留 `.sha256` 或其他中间文件 | 发布目录必须恰好四个文件；修复构建脚本，不要放宽检查 |
+| xz round-trip mismatch | 压缩资产截断、上传/下载损坏或文件被替换 | 重新计算 raw/xz 摘要并检查 Actions artifact；不得继续创建 Release |
+| manifest field mismatch | 构建身份、输入摘要或 runner metadata 与 manifest 不一致 | 检查 `EXPECTED_MANIFEST_JSON` 的来源，不能以修改 manifest 掩盖输入差异 |
+| draft asset digest mismatch | GitHub 返回摘要与本地文件不同或上传未完成 | 发布脚本会删除本次 draft/tag 并失败；检查网络/API 后创建新的时间戳构建 |
 | GitHub Release 资产超过 2 GiB | 未压缩镜像或 rootfs 持续变大 | 保留 xz 资产并评估拆分/外部存储；不要静默省略直刷 `.img` |
 | OrbStack Docker daemon `unexpected EOF` | macOS 特权 loop mount 在本次测试中不稳定 | 使用 GitHub Actions 云 runner 或原生 Linux；不要删除用户 Docker 卷来解决 |
 | HDMI 有画面但没有音频 | 基础内核的 `gx-sound-card` 注册错误，已观测到 error -22 | 记录为已知基础镜像限制；One-KVM 的 USB 视频/HID 功能不以 HDMI 音频为前置条件 |
@@ -55,8 +59,10 @@ cat verify-dir/11.rootfs.VERIFY
 2. 再看 `Download and verify inputs`，确认基础包、Deb metadata 和 SHA-256。
 3. `Build burn image` 失败时看 mount、chroot、apt 和 e2fsck；这时不应有 Release 资产。
 4. `Verify burn image` 失败时看命名的 `verified:` 行，最后一行就是第一项失败的检查。
-5. 发布失败时先下载 workflow artifact，不要立即重复 force；检查是否只是 Release API/权限问题。
-6. 修复后提交到 `main`，再用 `force=true` 覆盖同一 tag，并保存新的 manifest/hash。
+5. `Verify packaged artifact` 失败时检查四文件集合、两行 SHA256SUMS、manifest 和 xz 往返。
+6. `Verify downloaded artifact` 或 `Re-verify downloaded burn image` 失败说明上传后的 artifact 不可发布。
+7. draft 发布失败时检查远端 asset digest/state 和 cleanup 日志；公开 Release 不应存在。
+8. 修复后提交到 `main`，再用 `force=true` 创建新的 tag，并保存新的 manifest/hash。
 
 ## 历史故障记录
 

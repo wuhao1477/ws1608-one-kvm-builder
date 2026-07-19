@@ -42,6 +42,8 @@ Armbian_23.02.0-trunk_Onecloud_jammy_edge_6.1.9.burn.img
 - 保留已验证的 WS1608 启动链和 HDMI 行为。
 - 无上游更新时每周只检查，不进行大镜像构建。
 
+每个成品使用 `ws1608-one-kvm-<Deb版本>-<上游tag>-<UTC-HHMMSS>` 的不可变身份；同一版本的重复构建不会覆盖旧 Release。
+
 Jammy 6.1.9 和官方 Bookworm 5.9.0-rc7 均为历史参考，不进入稳定流水线。新的 Armbian、内核、DTB 或 U-Boot 只能先进入候选测试，按 [hardware-validation.md](hardware-validation.md) 完成实体验收后，再创建新的不可变基础 Release。
 
 ## 来源与事实边界
