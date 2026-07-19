@@ -33,7 +33,7 @@ jobs:
       package_url: ${{ steps.release.outputs.package_url }}
       package_digest: ${{ steps.release.outputs.package_digest }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - name: Test image utilities
         run: |
           npm test
@@ -58,8 +58,8 @@ jobs:
       PACKAGE_DIGEST: ${{ needs.discover.outputs.package_digest }}
       BUILD_TAG: ${{ needs.discover.outputs.build_tag }}
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-go@v5
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
         with:
           go-version: "1.24.x"
           cache: false
@@ -116,7 +116,7 @@ jobs:
              "$OUTPUT_DIR/manifest.json" > "$RUNNER_TEMP/manifest.json"
           mv "$RUNNER_TEMP/manifest.json" "$OUTPUT_DIR/manifest.json"
       - name: Upload workflow artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: ws1608-one-kvm-${{ needs.discover.outputs.release_tag }}
           path: ${{ runner.temp }}/ws1608-output
