@@ -111,8 +111,6 @@ as_root install -D -m 0644 "$ROOT_DIR/config/one-kvm-modules.conf" "$MOUNT_DIR/e
 as_root install -D -m 0755 "$ROOT_DIR/config/one-kvm-enable-otg" "$MOUNT_DIR/usr/sbin/one-kvm-enable-otg"
 as_root install -D -m 0644 "$ROOT_DIR/config/one-kvm-otg.service" "$MOUNT_DIR/etc/systemd/system/one-kvm-otg.service"
 as_root install -D -m 0644 "$ROOT_DIR/config/one-kvm.service.d-otg.conf" "$MOUNT_DIR/etc/systemd/system/one-kvm.service.d/otg.conf"
-as_root mkdir -p "$MOUNT_DIR/etc/systemd/system/multi-user.target.wants"
-as_root ln -sfn /etc/systemd/system/one-kvm-otg.service "$MOUNT_DIR/etc/systemd/system/multi-user.target.wants/one-kvm-otg.service"
 
 as_root tee "$MOUNT_DIR/etc/ws1608-one-kvm-release" >/dev/null <<EOF
 one_kvm_version=$ONE_KVM_VERSION

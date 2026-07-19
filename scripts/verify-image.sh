@@ -57,13 +57,15 @@ package_state=$(dpkg-query --admindir="$MOUNT_DIR/var/lib/dpkg" -W -f='${Status}
 libdrm_state=$(dpkg-query --admindir="$MOUNT_DIR/var/lib/dpkg" -W -f='${Status}' libdrm2)
 binary_info=$(file "$MOUNT_DIR/usr/bin/one-kvm")
 service_link=$(readlink "$MOUNT_DIR/etc/systemd/system/multi-user.target.wants/one-kvm.service" || true)
-otg_link=$(readlink "$MOUNT_DIR/etc/systemd/system/multi-user.target.wants/one-kvm-otg.service" || true)
-printf 'one-kvm=%q libdrm2=%q binary=%s service=%q otg=%q\n' \
-  "$package_state" "$libdrm_state" "$binary_info" "$service_link" "$otg_link"
+printf 'one-kvm=%q libdrm2=%q binary=%s service=%q\n' \
+  "$package_state" "$libdrm_state" "$binary_info" "$service_link"
 [[ "$package_state" == "install ok installed $ONE_KVM_VERSION armhf" ]]
 [[ "$libdrm_state" == "install ok installed" ]]
 grep -q 'ELF 32-bit.*ARM' <<<"$binary_info"
-[[ -n "$service_link" && -n "$otg_link" ]]
+[[ -n "$service_link" ]]
+test -f "$MOUNT_DIR/etc/systemd/system/one-kvm-otg.service"
+grep -Fqx 'Wants=one-kvm-otg.service' "$MOUNT_DIR/etc/systemd/system/one-kvm.service.d/otg.conf"
+grep -Fqx 'After=one-kvm-otg.service' "$MOUNT_DIR/etc/systemd/system/one-kvm.service.d/otg.conf"
 grep -Fqx 'libcomposite' "$MOUNT_DIR/etc/modules-load.d/one-kvm.conf"
 grep -Fqx "one_kvm_version=$ONE_KVM_VERSION" "$MOUNT_DIR/etc/ws1608-one-kvm-release"
 test -x "$MOUNT_DIR/usr/sbin/one-kvm-enable-otg"
