@@ -16,6 +16,7 @@ PACKAGE_DIR="$WORK_DIR/package"
 ROOTFS_RAW="$WORK_DIR/rootfs.raw"
 ROUNDTRIP_RAW="$WORK_DIR/rootfs.roundtrip.raw"
 MOUNT_DIR="$WORK_DIR/rootfs.mnt"
+RESOLV_BACKUP="$WORK_DIR/resolv.conf.backup"
 OUTPUT_IMAGE="$OUTPUT_DIR/One-KVM_${ONE_KVM_VERSION}_Onecloud_trixie_6.12.28_HDMI-test.burn.img"
 
 as_root() {
@@ -59,14 +60,13 @@ echo "Expanding rootfs sparse image"
 node "$ROOT_DIR/scripts/sparse-to-raw.mjs" "$PACKAGE_DIR/$rootfs_sparse" "$ROOTFS_RAW"
 as_root e2fsck -fn "$ROOTFS_RAW"
 
-cleanup_mounts() {
+cleanup_mounts() (
   set +e
-  if mountpoint -q "$MOUNT_DIR/etc/resolv.conf"; then as_root umount "$MOUNT_DIR/etc/resolv.conf"; fi
   if mountpoint -q "$MOUNT_DIR/proc"; then as_root umount "$MOUNT_DIR/proc"; fi
   if mountpoint -q "$MOUNT_DIR/sys"; then as_root umount -R "$MOUNT_DIR/sys"; fi
   if mountpoint -q "$MOUNT_DIR/dev"; then as_root umount -R "$MOUNT_DIR/dev"; fi
   if mountpoint -q "$MOUNT_DIR"; then as_root umount "$MOUNT_DIR"; fi
-}
+)
 trap cleanup_mounts EXIT
 
 mkdir -p "$MOUNT_DIR"
@@ -76,13 +76,17 @@ as_root mount --make-rslave "$MOUNT_DIR/dev"
 as_root mount -t proc proc "$MOUNT_DIR/proc"
 as_root mount -t sysfs sysfs "$MOUNT_DIR/sys"
 
+resolv_kind=missing
 resolv_link=''
 if [[ -L "$MOUNT_DIR/etc/resolv.conf" ]]; then
+  resolv_kind=link
   resolv_link=$(readlink "$MOUNT_DIR/etc/resolv.conf")
+elif [[ -f "$MOUNT_DIR/etc/resolv.conf" ]]; then
+  resolv_kind=file
+  as_root cp -a "$MOUNT_DIR/etc/resolv.conf" "$RESOLV_BACKUP"
 fi
 as_root rm -f "$MOUNT_DIR/etc/resolv.conf"
 as_root cp -L /etc/resolv.conf "$MOUNT_DIR/etc/resolv.conf"
-as_root mount --bind /etc/resolv.conf "$MOUNT_DIR/etc/resolv.conf"
 
 as_root install -D -m 0755 /usr/bin/qemu-arm-static "$MOUNT_DIR/usr/bin/qemu-arm-static"
 as_root install -D -m 0644 "$ONE_KVM_DEB" "$MOUNT_DIR/tmp/one-kvm.deb"
@@ -99,13 +103,13 @@ as_root chroot "$MOUNT_DIR" /usr/bin/qemu-arm-static /bin/sh -euxc '
   ln -sfn /lib/systemd/system/one-kvm.service /etc/systemd/system/multi-user.target.wants/one-kvm.service
 '
 
-if [[ -n "$resolv_link" ]]; then
-  as_root umount "$MOUNT_DIR/etc/resolv.conf"
-  as_root rm -f "$MOUNT_DIR/etc/resolv.conf"
+as_root rm -f "$MOUNT_DIR/etc/resolv.conf"
+if [[ "$resolv_kind" == link ]]; then
   as_root ln -s "$resolv_link" "$MOUNT_DIR/etc/resolv.conf"
-else
-  as_root umount "$MOUNT_DIR/etc/resolv.conf"
+elif [[ "$resolv_kind" == file ]]; then
+  as_root cp -a "$RESOLV_BACKUP" "$MOUNT_DIR/etc/resolv.conf"
 fi
+mountpoint -q "$MOUNT_DIR" || { echo 'rootfs was unmounted unexpectedly' >&2; exit 1; }
 
 echo "Installing WS1608 OTG integration"
 as_root install -D -m 0644 "$ROOT_DIR/config/one-kvm-modules.conf" "$MOUNT_DIR/etc/modules-load.d/one-kvm.conf"
