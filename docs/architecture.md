@@ -2,7 +2,7 @@
 
 ## 目标
 
-仓库把一个已经在 OneCloud/WS1608 上启动验证过的 Amlogic 直刷包，转换成带 One-KVM Rust 的新直刷包。启动链、内核、设备树、HDMI 配置和 Amlogic 容器结构保持来自固定基础资产；自动变化的主要内容是 rootfs 内的 One-KVM 包和 WS1608 OTG 配置。
+仓库把一个已经在 OneCloud/WS1608 上启动验证过的 Amlogic 直刷包，转换成带 One-KVM Rust 的新直刷包。启动链、内核、设备树、HDMI 配置和 Amlogic 容器结构保持来自固定基础资产；自动变化的主要内容是 rootfs 内的 One-KVM 包、WS1608 OTG 配置和可追溯的构建 metadata。
 
 ## 稳定通道决策
 
@@ -27,8 +27,8 @@
 ```mermaid
 flowchart LR
   A[One-KVM latest Release] --> B[discover-release.sh]
-  B -->|新 tag| C[下载 armhf.deb]
-  B -->|已有 tag| S[跳过构建]
+  B -->|新 tag 或 digest| C[下载 armhf.deb]
+  B -->|已发布相同 digest| S[跳过构建]
   D[固定 Armbian burn.img.xz] --> E[解压 Amlogic v2]
   C --> F[armhf chroot + apt 安装]
   E --> F
@@ -37,7 +37,9 @@ flowchart LR
   H --> I[raw-to-sparse + SHA1 VERIFY]
   I --> J[AmlImg repack]
   J --> K[独立解包/校验]
-  K --> L[.burn.img / .xz / manifest / Release]
+  K --> M[压缩、manifest、SHA256SUMS、报告]
+  M --> N[artifact 下载后复验]
+  N --> L[draft Release 通过后公开]
 ```
 
 ## 输入与输出
@@ -48,10 +50,11 @@ flowchart LR
 | Amlogic 工具 | `scripts/build-tools.sh` 从 `config/tool-versions.env` 固定提交构建 AmlImg |
 | One-KVM 包 | 上游 Release API 返回的唯一 `armhf.deb` |
 | 工作目录 | GitHub runner 的 `$RUNNER_TEMP/ws1608-work` |
-| 未压缩成品 | `One-KVM_<version>_Onecloud_trixie_6.12.28_HDMI-test.burn.img` |
+| 未压缩成品 | `One-KVM_<version>-<upstream-tag>-bNNN_<flavor>.burn.img` |
 | 压缩成品 | 同名加 `.xz` |
-| 构建摘要 | `manifest.json`，包含基础资产、上游 URL/摘要、版本和构建时间 |
-| 校验和 | `SHA256SUMS`，只使用文件名，不包含 runner 的绝对路径 |
+| 构建摘要 | `manifest.json`，包含基础/上游摘要、版本、序号、builder 和全部文件摘要 |
+| 验证报告 | `validation-report.json`，记录 CI 检查通过且 `hardware_boot_tested=false` |
+| 校验和 | `SHA256SUMS`，只使用文件名，覆盖 raw、xz、manifest 和报告 |
 
 ## Amlogic 容器布局
 
@@ -85,14 +88,15 @@ Amlogic v2 的头部是无填充的二进制布局，`itemCount` 位于偏移 24
 - 安装 `/etc/modules-load.d/one-kvm.conf`，内容为 `libcomposite`。
 - 安装 `/usr/sbin/one-kvm-enable-otg`，在 `/sys/devices/platform/soc/c9040000.usb/usb_role/*/role` 出现后将角色设为 `device`，最多重试 30 秒。
 - 写入 `/etc/ws1608-one-kvm-release`，便于实机识别构建来源。
+- metadata 同时记录 One-KVM Deb 摘要、上游 tag、构建 tag/序号和 builder commit。
 
 OTG unit 有 `WantedBy=multi-user.target`，但当前设计不依赖单独的 wants symlink；One-KVM drop-in 的 `Wants=` 已经提供依赖关系。不要为了“看起来启用”再次添加第二个链接。
 
 ## 稳定性和可复现性
 
-镜像结构是可复现的，但当前构建不是严格字节级可复现：rootfs 安装会访问当天的 Debian/Armbian 仓库，ext4 时间戳、apt 元数据和 `built_at` 可能变化。同一 One-KVM tag 使用 `force=true` 重建，成品 SHA-256 可能不同；manifest 和上游/基础摘要仍能追溯来源。
+镜像结构是可复现的，但当前构建不是严格字节级可复现：rootfs 安装会访问当天的 Debian/Armbian 仓库，ext4 时间戳、apt 元数据和 `built_at` 可能变化。同一 One-KVM 输入使用 `force=true` 重建，成品 SHA-256 可能不同；每次构建都有新的 `bNNN` tag，manifest 和上游/基础摘要仍能追溯来源。
 
-如果将来需要字节级复现，应使用 Debian snapshot、固定依赖版本、固定构建时间和可控 ext4 元数据，并把 builder commit 写入 manifest。当前 Release 通过内容校验和和完整结构检查保证可验证性，而不是宣称二次构建得到相同字节。
+如果将来需要字节级复现，应使用 Debian snapshot、固定依赖版本、固定构建时间和可控 ext4 元数据。当前 Release 通过内容校验和、完整结构检查和独立 artifact 复验保证可验证性，而不是宣称二次构建得到相同字节。
 
 ## 非目标
 

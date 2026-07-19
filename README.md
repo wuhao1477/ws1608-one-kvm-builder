@@ -5,8 +5,10 @@
 ## 自动更新规则
 
 - 每周日 02:17 UTC（北京时间 10:17）查询 `mofeng-git/One-KVM` 的最新稳定 Release。
-- 只有发现尚未构建的上游版本才下载 `armhf.deb`、构建并发布新 Release。
-- `workflow_dispatch` 可手动运行；勾选 `force` 会忽略已发布版本检查。
+- 只有发现尚未发布的上游 tag 与 Deb SHA-256 组合才下载 `armhf.deb`、构建并发布新 Release。
+- Release/tag 格式为 `ws1608-one-kvm-<one-kvm-rust-version>-<upstream-tag>-bNNN`，例如 `ws1608-one-kvm-0.2.4-v260709-b001`。
+- `workflow_dispatch` 可手动运行；`force=true` 创建下一个构建序号，`publish=false` 只做云端构建和验证，不发布。
+- Pull request 会执行完整构建，但不会获得发布权限。
 - 预留 `repository_dispatch` 的 `one-kvm-release` 事件，但上游仓库目前不会向本仓库发送该事件，所以每周检查是实际触发方式。
 
 ## 基础镜像
@@ -15,19 +17,20 @@
 
 ## CI 验证
 
-构建任务会重新解包成品并检查：Amlogic v2 CRC、12 个标准条目、非 rootfs 分区字节一致性、每个分区 VERIFY SHA1、`one-kvm` armhf 包和依赖、systemd 开机链接、OneCloud OTG 配置、ext4 文件系统一致性。
+构建任务会重新解包成品并检查：Amlogic v2 CRC、12 个标准条目、非 rootfs 分区字节一致性、每个分区 VERIFY SHA1、`one-kvm` armhf 包和依赖、systemd 开机链接、OneCloud OTG 配置、ext4 文件系统一致性、构建来源 metadata 和临时文件清理。
 
-GitHub 托管 runner 没有连接实体 WS1608，因此 CI 不把结构验证写成硬件启动结论。Release 中同时提供未压缩 `.burn.img` 和 `.burn.img.xz`，以及 `SHA256SUMS`。
+GitHub 托管 runner 没有连接实体 WS1608，因此 CI 不把结构验证写成硬件启动结论。发布前会验证 xz 解压后与原始镜像摘要一致、manifest、`SHA256SUMS` 和 validation report。Release 提供未压缩 `.burn.img`、`.burn.img.xz`、`SHA256SUMS`、`manifest.json` 和 `validation-report.json`。
 
 ## 本地运行
 
 推荐直接使用 GitHub Actions 云构建，不需要在本地保存解压后的大镜像。云 runner 会安装 root 权限所需的 `qemu-user-static`、Go、Node.js 和 `e2fsprogs`，完成构建与验证后只保留 Release 资产。
 
-本地复现需要 Linux 主机、root 权限、`qemu-user-static`、Go、Node.js、`e2fsprogs` 和 Amlogic 基础镜像。先准备 `BASE_IMAGE_XZ`、`ONE_KVM_DEB`、`ONE_KVM_VERSION`、`UPSTREAM_TAG` 和 `AMLIMG_BIN` 环境变量，再执行：
+本地复现需要 Linux 主机、root 权限、`qemu-user-static`、Go、Node.js、`e2fsprogs` 和 Amlogic 基础镜像。准备 `BASE_IMAGE_XZ`、`ONE_KVM_DEB`、`AMLIMG_BIN`、`ONE_KVM_VERSION`、`UPSTREAM_TAG`、`PACKAGE_DIGEST`、`PACKAGE_URL`、`BUILD_TAG`、`BUILD_NUMBER`、`BUILDER_COMMIT`、`OUTPUT_DIR`、`WORK_DIR`、`IMAGE_NAME` 和 `VALIDATION_REPORT` 后执行：
 
 ```sh
 ./scripts/build-image.sh
 ./scripts/verify-image.sh
+./scripts/package-release.sh
 ```
 
 纯格式测试不需要镜像或 root 权限：

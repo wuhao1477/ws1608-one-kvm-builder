@@ -1,6 +1,6 @@
 # WS1608 One-KVM 构建器交接
 
-更新时间：2026-07-19
+更新时间：2026-07-20
 
 ## 当前结论
 
@@ -10,9 +10,9 @@
 - 当前 Release：[ws1608-one-kvm-v260709](https://github.com/wuhao1477/ws1608-one-kvm-builder/releases/tag/ws1608-one-kvm-v260709)
 - 上游版本：One-KVM `0.2.4`，tag `v260709`
 - 基础：Armbian 26.8 Trixie，`6.12.28-current-meson`，OneCloud/WS1608 HDMI-test
-- 触发：每周日 02:17 UTC；无新上游 tag 时只检查、不构建
+- 触发：每周日 02:17 UTC；无新的上游 tag + Deb digest 时只检查、不构建
 
-当前 Release 的未压缩和压缩资产、manifest、SHA256SUMS 都是 uploaded，且 Release 不是 draft/prerelease。最终构建和强制覆盖运行均已成功；无更新跳过也已成功验证。详细运行链接和校验和见 [maintenance.md](maintenance.md) 与 Release 本身。
+当前旧 Release 的未压缩和压缩资产、manifest、SHA256SUMS 都是 uploaded，且 Release 不是 draft/prerelease。新工作流将从下一个构建开始使用 `ws1608-one-kvm-0.2.4-v260709-bNNN`，以 draft 上传五项资产，复验后再公开；旧 Release 不会被覆盖。
 
 ## 已实现的范围
 
@@ -26,7 +26,8 @@
 6. 严格卸载 rootfs 后运行 e2fsck，重建 sparse 并验证往返一致性。
 7. 更新 sparse rootfs 的 Amlogic VERIFY SHA-1，重打包容器。
 8. 独立解包成品，比较非 rootfs 分区、检查所有 VERIFY、Deb/systemd/OTG/ext4。
-9. 发布 `.burn.img`、`.burn.img.xz`、`SHA256SUMS` 和 `manifest.json`。
+9. 生成并验证 versioned image、xz、`SHA256SUMS`、`manifest.json` 和 `validation-report.json`。
+10. 下载 artifact 后再次验证，再公开不可变 Release。
 
 具体实现不要从本文件复制，直接以 [build-pipeline.md](build-pipeline.md)、[scripts/build-image.sh](../scripts/build-image.sh) 和 [scripts/verify-image.sh](../scripts/verify-image.sh) 为准。
 
@@ -59,7 +60,7 @@ rootfs 安装使用动态 apt 源，ext4 时间戳和构建时间也会变化。
 
 ### 3. 上游同 tag 替换资产
 
-当前 discover 以本仓库构建 tag 是否存在作为状态。如果上游重写同一个 tag，普通周检不会重建。发现这种情况时使用 force，并检查 manifest 的 package digest；长期方案是把 asset digest 纳入状态键。
+当前 discover 同时比较上游 tag 和 package digest。如果上游重写同一个 tag，下一次周检会分配新的 `bNNN`；仍应检查新 manifest 的 package digest。
 
 ### 4. GitHub 资产大小
 
@@ -70,7 +71,7 @@ rootfs 安装使用动态 apt 源，ext4 时间戳和构建时间也会变化。
 1. 用当前 Release 在实体 WS1608 完成一次完整刷写、断电重启和 One-KVM/OTG/视频/HID验收。
 2. 将不含敏感信息的硬件结论记录到私有测试记录；公开仓库只记录结论和 Release tag。
 3. 若需要最新内核，建立 candidate 基础镜像流程，先通过硬件验收再提升稳定基础。
-4. 若需要严格可复现，固定 Debian snapshot、依赖版本、时间戳，并把 builder commit 写入 manifest。
+4. 若需要严格可复现，固定 Debian snapshot、依赖版本、时间戳，并保留 manifest 中的 builder commit。
 
 ## 建议的后续技能
 

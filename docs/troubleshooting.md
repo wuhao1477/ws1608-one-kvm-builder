@@ -4,7 +4,7 @@
 
 | 症状 | 常见原因 | 处理 |
 | --- | --- | --- |
-| build job skipped | 同一上游 tag 已有 Release | 这是正常行为；修复代码或资产被上游替换时用 `force=true` |
+| build job skipped | 同一上游 tag 和 Deb digest 已有公开 Release | 这是正常行为；修复代码或资产被上游替换时用 `force=true` |
 | discover 失败，找到 0 或多个 armhf 包 | 上游资产命名或发布策略改变 | 先查看上游 Release JSON，再修改选择规则；不要静默选第一个 |
 | 基础包 SHA-256 不匹配 | URL 指向了被替换的资产、下载损坏或 `base.env` 未更新 | 比较 GitHub asset digest，创建新基础 tag，不覆盖旧 tag |
 | Deb 架构不是 armhf | 误选 arm64/amd64 包 | 检查 `dpkg-deb -f`，保持 WS1608 的 armhf 约束 |
@@ -17,8 +17,9 @@
 | rootfs VERIFY mismatch | 对 raw ext4 而不是 sparse 文件计算 SHA1，或 VERIFY 有换行 | 重新用 `sha1sum` 计算 sparse 文件，写入固定 48 字节格式 |
 | Amlogic CRC/条目失败 | 手工改了容器布局、使用错误版本工具或截断文件 | 用固定 AmlImg commit，先 `unpack` 再独立 `verify-image.sh` |
 | 刷写工具拒绝 sparse | RAW chunk 过大或总块数变化 | 使用仓库的 `raw-to-sparse.mjs`，不要替换成未验证的 `img2simg` |
-| `SHA256SUMS` 含 `/home/runner/...` | 在输出目录外调用 sha256sum | 使用 `(cd "$OUTPUT_DIR" && sha256sum ...)`，当前 workflow 已修复 |
-| force 构建在发布阶段 tag 冲突 | 旧 workflow 只调用 `gh release create` | 当前 workflow 会 `upload --clobber` 和 `release edit`；确认运行的是最新 `main` |
+| `SHA256SUMS` 含 `/home/runner/...` | 在输出目录外调用 sha256sum | 使用 `(cd "$OUTPUT_DIR" && sha256sum --check SHA256SUMS)`；当前 asset verifier 会拒绝路径 |
+| force 构建在发布阶段 tag 冲突 | draft 或并发运行占用了序号 | discover 会把 draft/prerelease 序号计入下一次分配；不要手工复用旧 tag |
+| Release 没有公开 | draft 上传、资产验证或 `release edit --draft=false` 失败 | 先修复失败步骤；下一次 `force=true` 会使用新的 `bNNN`，旧 draft 不会被当成成功构建 |
 | GitHub Release 资产超过 2 GiB | 未压缩镜像或 rootfs 持续变大 | 保留 xz 资产并评估拆分/外部存储；不要静默省略直刷 `.img` |
 | OrbStack Docker daemon `unexpected EOF` | macOS 特权 loop mount 在本次测试中不稳定 | 使用 GitHub Actions 云 runner 或原生 Linux；不要删除用户 Docker 卷来解决 |
 | HDMI 有画面但没有音频 | 基础内核的 `gx-sound-card` 注册错误，已观测到 error -22 | 记录为已知基础镜像限制；One-KVM 的 USB 视频/HID 功能不以 HDMI 音频为前置条件 |
@@ -51,12 +52,12 @@ cat verify-dir/11.rootfs.VERIFY
 
 ## Actions 排障顺序
 
-1. 先看 `Check One-KVM release` 的输出，确认 `changed`、上游 tag、资产 URL 和 digest。
+1. 先看 `Check One-KVM release` 的输出，确认 `changed`、上游 tag、Deb 版本、构建序号、资产 URL 和 digest。
 2. 再看 `Download and verify inputs`，确认基础包、Deb metadata 和 SHA-256。
-3. `Build burn image` 失败时看 mount、chroot、apt 和 e2fsck；这时不应有 Release 资产。
-4. `Verify burn image` 失败时看命名的 `verified:` 行，最后一行就是第一项失败的检查。
+3. `Build burn image` 失败时看 mount、chroot、apt 和 e2fsck；这时不应有公开 Release。
+4. `Verify burn image`、`Package release assets` 或 `Reverify downloaded release assets` 失败时，先看 validation report、manifest 和 checksum 输出。
 5. 发布失败时先下载 workflow artifact，不要立即重复 force；检查是否只是 Release API/权限问题。
-6. 修复后提交到 `main`，再用 `force=true` 覆盖同一 tag，并保存新的 manifest/hash。
+6. 修复后提交到 `main`，再用 `force=true` 创建新的序号，并保存新的 manifest/hash。
 
 ## 历史故障记录
 
