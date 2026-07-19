@@ -7,121 +7,114 @@
 | 触发器 | 行为 |
 | --- | --- |
 | `schedule` | 每周日 `02:17 UTC` 检查一次，约北京时间周日 `10:17` |
-| `workflow_dispatch`，`force=false` | 与定时检查相同；该上游 tag 已有完整公开 Release 时跳过 |
-| `workflow_dispatch`，`force=true` | 忽略版本级检查，创建新的 UTC 时分秒 tag 和独立 Release |
-| `repository_dispatch: one-kvm-release` | 预留接口；上游 One-KVM 当前不会主动发送，因此不能依赖它及时触发 |
+| `pull_request` | 对构建相关文件执行完整云构建与验证，不发布 |
+| `workflow_dispatch`，`force=false` | 与定时检查相同；已有相同上游 tag 和 Deb digest 时跳过 |
+| `workflow_dispatch`，`force=true` | 为同一 One-KVM 输入创建独立 `bRRRAAA` 构建 |
+| `workflow_dispatch`，`publish=false` | 上传短期 Actions artifact，但不创建 tag 或 Release |
+| `repository_dispatch: one-kvm-release` | 预留接口；上游当前不会主动发送 |
 
-工作流的 `contents: write` 权限只用于发布 Release。当前没有 `pull_request` 构建路径，不要在未来引入未审查的 PR 代码并保留同样的写权限。
+工作流默认只有 `contents: read`。只有依赖完整构建成功的 `release` job
+获得 `contents: write`；该 job 不会在 pull request 或 `publish=false` 时运行。
+每个强制 dispatch 使用包含 run ID 的独立 concurrency group；普通周检共享串行组。
 
-## 阶段一：发现上游版本
+## 阶段一：发现上游输入
 
-`scripts/discover-release.sh` 使用 `gh api repos/mofeng-git/One-KVM/releases/latest`：
+`scripts/discover-release.sh` 查询上游 latest Release，以及本仓库全部 Release 和 tag ref：
 
-1. 只接受非 draft、非 prerelease 的最新 Release。
-2. 必须找到且只能找到一个名称以 `one-kvm_` 开头、以 `_armhf.deb` 结尾的资产。
-3. 从文件名取得包版本，从 GitHub API 取得下载 URL 和 digest。
-4. 以 Deb 版本、上游 tag 和当前 UTC 时分秒生成构建身份，例如 `ws1608-one-kvm-0.2.4-v260709-143015`。
-5. 查询全部公开 Release。旧格式 tag 或匹配新格式、且四个必要资产均为 uploaded 的 Release 才算成功构建。
-6. 已有成功构建且不是 force 时输出 `changed=false`；draft、prerelease 或资产不完整不会阻止重建。
-7. API 没有提供 digest 时，下载步骤自行计算实际 Deb SHA-256 并写入 manifest。
+1. 只接受非 draft、非 prerelease 的上游 Release。
+2. 必须且只能找到一个 `one-kvm_*_armhf.deb`。
+3. GitHub API 必须提供有效的 SHA-256 digest；缺失或格式错误时检查失败。
+4. 包文件名提供 One-KVM Rust Deb 版本，上游 Release 提供 tag。
+5. 构建 tag 为 `ws1608-one-kvm-<deb-version>-<upstream-tag>-bRRRAAA`；后缀由 workflow run number 和 attempt 组成。
+6. 只有公开 Release 同时匹配上游 tag、package digest、五个资产名称、上传状态和 Release body 中的资产摘要时才输出 `changed=false`，后续 build job 不启动。
+7. `force=true` 或 digest 变化时使用当前 workflow 的唯一构建号；已有 tag ref
+   会阻止复用失败 draft 或其他运行已经占用的身份。
 
-这里没有单独的 state 文件，完整公开 Release 是“已构建版本”的事实来源。上游若在同一个 tag 下替换资产，普通周检仍不会自动重建；使用 `force=true` 生成新构建，并比较新旧 manifest 的 `package_sha256`。
+Release body 的输入身份、五个资产名称和摘要是更新判定的机器可读标记。这里不使用可被并发覆盖的 state 文件。
 
 ## 阶段二：准备云 runner
 
-构建 job 使用 `ubuntu-24.04`，安装：
+构建 job 使用 `ubuntu-24.04`，安装 `binutils`、`e2fsprogs`、`qemu-user-static`、`util-linux`、`file` 和 `xz-utils`。Go `1.24.x` 只用于从固定提交构建 AmlImg。
+`checkout`、`setup-go`、artifact upload/download 都固定到完整 commit SHA。
 
-- `e2fsprogs`：`e2fsck`、文件系统检查。
-- `qemu-user-static`：在 x86/arm64 runner 中执行 armhf rootfs 的命令。
-- `binutils`、`file`、`jq`、`xz-utils`。
-- Go `1.24.x`，用于构建固定提交的 AmlImg。
+标准 runner 当前可以容纳约 1.19 GB 未压缩成品、约 339 MB xz 成品、
+308 MB 基础 xz、rootfs raw 和验证副本。artifact 上传关闭二次压缩。
 
-标准 runner 当前足够容纳约 1.19 GB 未压缩成品、约 339 MB xz 成品、308 MB 基础 xz、rootfs raw 和验证副本。若 rootfs 或 Release 资产继续增长，先检查 runner 磁盘和 GitHub 单文件 2 GiB 限制。
+## 阶段三：校验不可变输入
 
-## 阶段三：下载和校验输入
-
-基础包从本仓库的 `base-20260719` Release 下载，URL 和 xz SHA-256 固定在 `config/base.env`。One-KVM 包从上游 URL 下载，并检查：
+基础包从 `base-20260719` Release 下载，URL、名称、平台字段和 xz
+SHA-256 固定在 `config/base.env`。One-KVM Deb 必须同时满足：
 
 ```text
 Package = one-kvm
 Architecture = armhf
 Version = discover-release 输出的版本
+SHA-256 = GitHub Release asset digest
 ```
 
-任何摘要、包名或架构不匹配都会停止，不会发布不确定来源的镜像。
+任何输入摘要或 Deb metadata 不匹配都会停止构建。
 
-## 阶段四：解包和修改 rootfs
+## 阶段四：构建 rootfs
 
-`scripts/build-image.sh` 的实际顺序：
+`scripts/build-image.sh` 的顺序：
 
-1. 解压基础 `.img.xz`。
-2. 使用固定提交的 AmlImg 解包 Amlogic v2 容器。
-3. 从 `commands.txt` 找到 `rootfs` sparse 项和对应 VERIFY 项，不硬编码偏移。
-4. `sparse-to-raw.mjs` 将 Android sparse 展开为 ext4 raw；逻辑大小约为 342016 个 4096 字节块。
-5. 先运行 `e2fsck -fn`，确认基础 rootfs 可读。
-6. 以 loop 方式挂载 raw，绑定 `/dev`，挂载 proc 和 sysfs。
-7. 临时保存 rootfs 的 `resolv.conf`，复制 runner DNS；不使用文件级 bind mount。
-8. 复制 qemu、Deb 包和 build-only `systemctl` stub，进入 armhf chroot。
-9. 在 chroot 中运行 `apt-get update`，再安装 One-KVM Deb 和依赖；删除 apt 列表、临时包、qemu 和 stub。
-10. 恢复 `resolv.conf`，写入 OTG 文件和版本 metadata。
-11. 严格卸载 proc、sys、dev 和 rootfs；卸载失败或 rootfs 仍是挂载点时停止。
-12. `e2fsck -fy` 修复并检查 raw，转回 sparse，再做 raw→sparse→raw 的 `cmp`。
-13. 对 sparse rootfs 计算 SHA-1，写成无换行的 `sha1sum <40hex>` VERIFY 文件。
-14. 使用 AmlImg 按原 `commands.txt` 重打包，生成新的容器 CRC 和分区 VERIFY。
-15. 删除中间 raw/package，保留输出和 manifest。
+1. 解压并用固定 AmlImg 解包基础 Amlogic v2 容器。
+2. 从 `commands.txt` 找到 rootfs sparse 和 VERIFY，不硬编码条目偏移。
+3. 在任何覆盖操作前拒绝残留挂载，展开 sparse，先执行只读 `e2fsck`，再挂载 rootfs 和临时 `/dev`。
+4. 保存 DNS 状态，在隔离的 mount/PID namespace 中挂载 proc，通过 qemu armhf chroot 安装 Deb 和依赖；不向 chroot 暴露宿主 `/dev` 或 sysfs。
+5. 删除 Deb、qemu、systemctl stub 和 apt lists，恢复 DNS。
+6. 安装 One-KVM service、WS1608 OTG unit/drop-in、helper 和 `libcomposite`。
+7. 写入 Deb 版本、上游 tag、package digest、build tag/number 和 builder
+   commit 到 `/etc/ws1608-one-kvm-release`。
+8. 严格卸载所有挂载点；rootfs 仍挂载时禁止继续。
+9. 执行修复性 `e2fsck`、raw/sparse 往返 `cmp`，更新 sparse SHA-1 VERIFY。
+10. 重打包 Amlogic 容器，文件名包含 `version-tag-bRRRAAA`，生成初始 manifest。
 
-## VERIFY 和 sparse 的关键规则
+## 阶段五：独立镜像验证
 
-- Amlogic `VERIFY` 的内容是 48 字节：`sha1sum ` 加 40 位十六进制摘要，不带换行。
-- 摘要对象是 Amlogic 容器中的 sparse 文件字节，不是展开后的 ext4 raw。
-- 普通 `img2simg` 可能产生过大的 RAW chunk；`raw-to-sparse.mjs` 把单个 RAW chunk 的总大小限制在约 2 MiB 以内，保留 WS1608/Amlogic 刷写兼容性。
-- 稀疏转换必须保持总块数、非零块和文件系统逻辑大小；测试和构建都执行往返比较。
+`scripts/verify-image.sh` 只读取最终成品和基础包，重新解包并检查：
 
-## 阶段五：独立验证
+- AmlImg 解包及 Amlogic CRC；
+- 12 行 `commands.txt` 和全部分区 VERIFY SHA-1；
+- boot、bootloader、resource 等非 rootfs 条目逐字节不变；
+- rootfs 已改变、sparse 可展开、ext4 `e2fsck -fn` 通过；
+- `one-kvm` 为指定版本的 armhf 包，二进制为 32-bit ARM ELF，动态加载器和全部运行库存在；
+- 主服务链接、`ExecStart` 和 `User=root` 精确匹配，OTG 四个配置文件与仓库源文件逐字节一致；
+- 镜像 metadata 的版本、tag、摘要、序号和 builder commit 完全匹配；
+- Deb、qemu 和 build-only systemctl stub 不存在于成品。
 
-`scripts/verify-image.sh` 不信任构建目录中的中间结果，而是重新解包成品和基础包，然后检查：
+全部检查完成后才写出 `validation-report.json`。报告明确记录
+`hardware_boot_tested=false`，不能替代实体 WS1608 验收。
 
-- AmlImg 解包成功，间接验证 Amlogic v2 CRC。
-- `commands.txt` 与 `config/commands.expected` 完全一致。
-- 除 rootfs 和 rootfs VERIFY 外，所有分区文件与基础包逐字节相同。
-- 每个 PARTITION 后的 VERIFY SHA-1 正确。
-- rootfs sparse 与基础包不同。
-- raw ext4 的 `e2fsck -fn` 通过。
-- `one-kvm` 状态为 `install ok installed`、版本匹配、架构为 armhf。
-- `libdrm2` 已安装，`/usr/bin/one-kvm` 是 32-bit ARM ELF。
-- `libc6`、`libgcc-s1`、`libstdc++6`、ALSA 和 ELF NEEDED 运行库均存在，动态加载器为 armhf。
-- One-KVM service symlink 指向精确目标，`ExecStart=/usr/bin/one-kvm`、`User=root`。
-- OTG vendor unit、drop-in、`libcomposite` 和 helper 与仓库配置逐字节一致。
-- 镜像 metadata 的 One-KVM 版本、build tag 和 UTC 构建时分秒匹配工作流。
+## 阶段六：发布资产验证
 
-## 阶段六：打包与 artifact 回读
+`scripts/package-release.sh` 生成 `.burn.img.xz`，然后 finalizer 写入：
 
-构建输出目录先生成未压缩 `.burn.img`，再用 `xz -T0 -9e` 生成压缩包。`SHA256SUMS` 在输出目录内执行，因此只包含 basename。manifest 追加：
+- One-KVM 包名、URL、package SHA-256、版本和上游 tag；
+- base tag、文件名、URL、SHA-256，build tag/revision/number、builder commit、Actions run ID/number/attempt 和固定 AmlImg commit；
+- raw、xz 和 validation report 的文件名、大小与 SHA-256；
+- 构建时间和 `validation=passed`。
 
-- 上游 One-KVM URL 和 digest。
-- 固定基础 xz digest。
-- 完整构建时间、build tag/stamp、run ID/attempt 和 builder commit。
-- AmlImg 仓库与固定提交、成品 raw/xz 文件名和摘要。
+`scripts/verify-release-assets.sh` 先由 Node 验证器检查 basename、符号链接、
+manifest、报告、文件白名单和所有摘要，再执行 `xz -t`、流式解压比较和
+`sha256sum --check`。`SHA256SUMS` 只允许 basename，且包含 raw、xz、
+manifest 和 validation report。
 
-`verify-artifacts.mjs` 要求输出目录恰好只有四个发布文件，严格解析两行 `SHA256SUMS`，流式计算 raw/xz 摘要，核对 manifest 全字段，并把 xz 解压到临时文件与 raw 逐字节比较。
+build job 上传 Actions artifact 后会立即下载副本，重复资产校验和完整镜像校验。独立 `release` job 再次下载并验证资产，原子创建指向 builder commit 的 tag 并核对 SHA，然后创建 draft Release 并上传五项资产：
 
-通过后上传 Actions artifact，再使用 `actions/download-artifact` 下载到新的目录。下载副本再次执行 `verify-artifacts.mjs`，并对下载后的 `.burn.img` 完整执行 `verify-image.sh`。任一步失败时不会进入 Release 步骤。
+1. `.burn.img`
+2. `.burn.img.xz`
+3. `SHA256SUMS`
+4. `manifest.json`
+5. `validation-report.json`
 
-## 阶段七：draft Release 与远端摘要
+全部上传完成后才把 draft 公开；Latest 由 GitHub 按发布记录自动选择，
+避免并发强制构建互相回退指针。任何检查、上传或发布步骤失败都会使
+workflow 失败；旧 Release 不会被覆盖。
 
-发布逻辑：
+## 本地验证
 
-- 发布前再次确认 build tag 的 Release 和 Git ref 均不存在；存在即失败。
-- 从已下载并验证的 Actions artifact 创建 draft Release，不使用原始输出目录。
-- 查询 draft 的四个 asset digest/state，与本地文件逐项比较。
-- 只有全部为 uploaded 且摘要完全一致时才执行 `--draft=false` 公开。
-- 公开后再次核对 Release 状态和远端摘要。
-- 公开前任一步失败会删除本次新建的 draft/tag；历史 Release 永不修改。
-- Actions artifact 保留 14 天，便于失败后短期下载检查。
-
-## 本地复现边界
-
-本地纯格式测试：
+不需要 root 或大镜像的检查：
 
 ```sh
 npm test
@@ -129,18 +122,5 @@ for script in scripts/*.sh; do bash -n "$script"; done
 go run github.com/rhysd/actionlint/cmd/actionlint@v1.7.7 .github/workflows/build.yml
 ```
 
-完整本地构建还必须设置与 discovery 输出一致的 `BUILD_STAMP`、`BUILD_TAG`、`IMAGE_NAME`，并在压缩后执行：
-
-```sh
-node scripts/verify-artifacts.mjs "$OUTPUT_DIR" "$IMAGE_NAME" "$EXPECTED_MANIFEST_JSON"
-```
-
-`verify-image.sh` 同样要求 `BUILD_TAG` 和 `BUILD_STAMP`，以防把未标识或身份错配的镜像当作成品。
-
-完整镜像构建需要 Linux root、loop mount、qemu-user-static 和大量空间。macOS OrbStack 的特权 loop mount 在本次验证中两次导致 Docker daemon `unexpected EOF`，所以维护者应优先使用 GitHub Actions；不要为了本地复现删除或重置用户现有 Docker 数据。
-
-## 已验证实例
-
-- 完整不可变发布：[run 29697101081](https://github.com/wuhao1477/ws1608-one-kvm-builder/actions/runs/29697101081)，Release [`ws1608-one-kvm-0.2.4-v260709-173450`](https://github.com/wuhao1477/ws1608-one-kvm-builder/releases/tag/ws1608-one-kvm-0.2.4-v260709-173450)。
-- 新格式跳过：[run 29697714162](https://github.com/wuhao1477/ws1608-one-kvm-builder/actions/runs/29697714162)，discovery 输出 `changed=false` 且 `existing` 为上述新格式 tag。
-- Release API 的四个 asset digest、manifest 和 `SHA256SUMS` 交叉核对结果及实际摘要见 [HANDOFF.md](HANDOFF.md)。
+完整镜像构建需要 Linux root、loop mount、qemu-user-static 和足够磁盘。
+macOS 上优先使用 pull request 或 `publish=false` 的 GitHub Actions 构建。
