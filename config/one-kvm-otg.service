@@ -1,0 +1,13 @@
+[Unit]
+Description=Enable OneCloud USB OTG peripheral mode
+After=systemd-modules-load.service sys-kernel-config.mount
+Before=one-kvm.service
+Wants=sys-kernel-config.mount
+
+[Service]
+Type=oneshot
+ExecStart=/usr/sbin/one-kvm-enable-otg
+RemainAfterExit=yes
+
+[Install]
+WantedBy=multi-user.target

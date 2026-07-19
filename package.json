@@ -1,0 +1,8 @@
+{
+  "name": "ws1608-one-kvm-builder",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "node --test"
+  }
+}

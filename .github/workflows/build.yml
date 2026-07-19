@@ -1,0 +1,152 @@
+name: Build WS1608 One-KVM image
+
+on:
+  schedule:
+    - cron: "17 2 * * 0"
+  workflow_dispatch:
+    inputs:
+      force:
+        description: Build even when this One-KVM release was already published
+        required: false
+        default: false
+        type: boolean
+  repository_dispatch:
+    types: [one-kvm-release]
+
+permissions:
+  contents: write
+
+concurrency:
+  group: ws1608-one-kvm-build
+  cancel-in-progress: false
+
+jobs:
+  discover:
+    name: Check One-KVM release
+    runs-on: ubuntu-24.04
+    outputs:
+      changed: ${{ steps.release.outputs.changed }}
+      release_tag: ${{ steps.release.outputs.release_tag }}
+      build_tag: ${{ steps.release.outputs.build_tag }}
+      one_kvm_version: ${{ steps.release.outputs.one_kvm_version }}
+      package_name: ${{ steps.release.outputs.package_name }}
+      package_url: ${{ steps.release.outputs.package_url }}
+      package_digest: ${{ steps.release.outputs.package_digest }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Test image utilities
+        run: |
+          npm test
+          for script in scripts/*.sh; do bash -n "$script"; done
+      - id: release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          FORCE_BUILD: ${{ (github.event_name == 'workflow_dispatch' && inputs.force) || false }}
+        run: ./scripts/discover-release.sh
+
+  build:
+    name: Build and verify image
+    needs: discover
+    if: needs.discover.outputs.changed == 'true'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    env:
+      GH_TOKEN: ${{ github.token }}
+      ONE_KVM_VERSION: ${{ needs.discover.outputs.one_kvm_version }}
+      UPSTREAM_TAG: ${{ needs.discover.outputs.release_tag }}
+      PACKAGE_URL: ${{ needs.discover.outputs.package_url }}
+      PACKAGE_DIGEST: ${{ needs.discover.outputs.package_digest }}
+      BUILD_TAG: ${{ needs.discover.outputs.build_tag }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.24.x"
+          cache: false
+      - name: Install image build dependencies
+        run: |
+          df -h "$RUNNER_TEMP"
+          sudo apt-get update
+          sudo apt-get install -y e2fsprogs file jq qemu-user-static xz-utils
+      - name: Build AmlImg tool
+        env:
+          TOOLS_DIR: ${{ runner.temp }}/ws1608-tools
+        run: echo "AMLIMG_BIN=$(./scripts/build-tools.sh)" >> "$GITHUB_ENV"
+      - name: Download and verify inputs
+        run: |
+          source config/base.env
+          curl --fail --location --retry 5 "$BASE_IMAGE_URL" -o "$RUNNER_TEMP/$BASE_IMAGE_NAME"
+          echo "$BASE_IMAGE_SHA256  $RUNNER_TEMP/$BASE_IMAGE_NAME" | sha256sum --check
+          echo "BASE_IMAGE_XZ=$RUNNER_TEMP/$BASE_IMAGE_NAME" >> "$GITHUB_ENV"
+          curl --fail --location --retry 5 "$PACKAGE_URL" -o "$RUNNER_TEMP/one-kvm.deb"
+          actual_package_digest=$(sha256sum "$RUNNER_TEMP/one-kvm.deb" | awk '{print $1}')
+          if [[ -n "$PACKAGE_DIGEST" ]]; then
+            echo "$PACKAGE_DIGEST  $RUNNER_TEMP/one-kvm.deb" | sha256sum --check
+          else
+            PACKAGE_DIGEST=$actual_package_digest
+          fi
+          echo "PACKAGE_DIGEST=$PACKAGE_DIGEST" >> "$GITHUB_ENV"
+          test "$(dpkg-deb -f "$RUNNER_TEMP/one-kvm.deb" Package)" = one-kvm
+          test "$(dpkg-deb -f "$RUNNER_TEMP/one-kvm.deb" Version)" = "$ONE_KVM_VERSION"
+          test "$(dpkg-deb -f "$RUNNER_TEMP/one-kvm.deb" Architecture)" = armhf
+      - name: Build burn image
+        env:
+          ONE_KVM_DEB: ${{ runner.temp }}/one-kvm.deb
+          OUTPUT_DIR: ${{ runner.temp }}/ws1608-output
+          WORK_DIR: ${{ runner.temp }}/ws1608-work
+        run: ./scripts/build-image.sh
+      - name: Verify burn image
+        env:
+          IMAGE: ${{ runner.temp }}/ws1608-output/One-KVM_${{ needs.discover.outputs.one_kvm_version }}_Onecloud_trixie_6.12.28_HDMI-test.burn.img
+          BASE_IMAGE: ${{ runner.temp }}/ws1608-work/base.burn.img
+          VERIFY_DIR: ${{ runner.temp }}/ws1608-verify
+        run: ./scripts/verify-image.sh
+      - name: Compress and write manifest
+        env:
+          OUTPUT_DIR: ${{ runner.temp }}/ws1608-output
+          IMAGE_NAME: One-KVM_${{ needs.discover.outputs.one_kvm_version }}_Onecloud_trixie_6.12.28_HDMI-test.burn.img
+        run: |
+          xz -T0 -9e -c "$OUTPUT_DIR/$IMAGE_NAME" > "$OUTPUT_DIR/$IMAGE_NAME.xz"
+          sha256sum "$OUTPUT_DIR/$IMAGE_NAME" "$OUTPUT_DIR/$IMAGE_NAME.xz" > "$OUTPUT_DIR/SHA256SUMS"
+          jq --arg package_url "$PACKAGE_URL" \
+             --arg package_sha256 "$PACKAGE_DIGEST" \
+             --arg base_sha256 "$(source config/base.env; echo "$BASE_IMAGE_SHA256")" \
+             --arg built_at "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+             '. + {package_url: $package_url, package_sha256: $package_sha256, base_sha256: $base_sha256, built_at: $built_at}' \
+             "$OUTPUT_DIR/manifest.json" > "$RUNNER_TEMP/manifest.json"
+          mv "$RUNNER_TEMP/manifest.json" "$OUTPUT_DIR/manifest.json"
+      - name: Upload workflow artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ws1608-one-kvm-${{ needs.discover.outputs.release_tag }}
+          path: ${{ runner.temp }}/ws1608-output
+          if-no-files-found: error
+          retention-days: 14
+      - name: Publish GitHub Release
+        run: |
+          cat > "$RUNNER_TEMP/release-notes.md" <<EOF
+          ## WS1608 One-KVM $ONE_KVM_VERSION
+
+          Upstream One-KVM release: [$UPSTREAM_TAG](https://github.com/mofeng-git/One-KVM/releases/tag/$UPSTREAM_TAG)
+
+          Base: Armbian 26.8 Trixie, kernel 6.12.28-current-meson, OneCloud/WS1608 HDMI-test image.
+
+          CI validation covers Amlogic container CRC and VERIFY SHA1, immutable boot partition comparison, armhf Deb metadata, systemd units, OTG files, and ext4 consistency. GitHub-hosted CI cannot flash a physical WS1608; hardware boot status is therefore not inferred from this job.
+          EOF
+          gh release create "$BUILD_TAG" \
+            --repo "$GITHUB_REPOSITORY" \
+            --title "WS1608 One-KVM $ONE_KVM_VERSION ($UPSTREAM_TAG)" \
+            --notes-file "$RUNNER_TEMP/release-notes.md" \
+            --latest \
+            "$RUNNER_TEMP/ws1608-output/One-KVM_${ONE_KVM_VERSION}_Onecloud_trixie_6.12.28_HDMI-test.burn.img" \
+            "$RUNNER_TEMP/ws1608-output/One-KVM_${ONE_KVM_VERSION}_Onecloud_trixie_6.12.28_HDMI-test.burn.img.xz" \
+            "$RUNNER_TEMP/ws1608-output/SHA256SUMS" \
+            "$RUNNER_TEMP/ws1608-output/manifest.json"
+
+  skipped:
+    name: No new One-KVM release
+    needs: discover
+    if: needs.discover.outputs.changed != 'true'
+    runs-on: ubuntu-24.04
+    steps:
+      - run: echo "One-KVM ${{ needs.discover.outputs.release_tag }} is already published; no image build was started."

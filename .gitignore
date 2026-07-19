@@ -1,0 +1,10 @@
+.base/
+.build/
+.tools/
+.verify/
+out/
+node_modules/
+.DS_Store
+*.burn.img
+*.burn.img.xz
+*.deb

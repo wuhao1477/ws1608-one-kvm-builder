@@ -1,0 +1,19 @@
+#!/bin/sh
+set -eu
+
+attempt=1
+while [ "$attempt" -le 30 ]; do
+    for role in /sys/devices/platform/soc/c9040000.usb/usb_role/*/role; do
+        [ -e "$role" ] || continue
+        current=$(cat "$role")
+        if [ "$current" != "device" ]; then
+            printf '%s\n' device >"$role"
+        fi
+        exit 0
+    done
+    sleep 1
+    attempt=$((attempt + 1))
+done
+
+echo "OneCloud USB role switch was not found" >&2
+exit 1
