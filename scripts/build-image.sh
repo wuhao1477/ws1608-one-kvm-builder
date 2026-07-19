@@ -2,11 +2,16 @@
 set -Eeuo pipefail
 
 ROOT_DIR=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
+source "$ROOT_DIR/config/base.env"
 BASE_IMAGE_XZ=${BASE_IMAGE_XZ:?BASE_IMAGE_XZ is required}
 ONE_KVM_DEB=${ONE_KVM_DEB:?ONE_KVM_DEB is required}
 AMLIMG_BIN=${AMLIMG_BIN:?AMLIMG_BIN is required}
 ONE_KVM_VERSION=${ONE_KVM_VERSION:?ONE_KVM_VERSION is required}
 UPSTREAM_TAG=${UPSTREAM_TAG:?UPSTREAM_TAG is required}
+BUILD_TAG=${BUILD_TAG:?BUILD_TAG is required}
+BUILD_NUMBER=${BUILD_NUMBER:?BUILD_NUMBER is required}
+PACKAGE_DIGEST=${PACKAGE_DIGEST:?PACKAGE_DIGEST is required}
+BUILDER_COMMIT=${BUILDER_COMMIT:?BUILDER_COMMIT is required}
 OUTPUT_DIR=${OUTPUT_DIR:-$ROOT_DIR/out}
 WORK_DIR=${WORK_DIR:-$ROOT_DIR/.build}
 
@@ -17,7 +22,10 @@ ROOTFS_RAW="$WORK_DIR/rootfs.raw"
 ROUNDTRIP_RAW="$WORK_DIR/rootfs.roundtrip.raw"
 MOUNT_DIR="$WORK_DIR/rootfs.mnt"
 RESOLV_BACKUP="$WORK_DIR/resolv.conf.backup"
-OUTPUT_IMAGE="$OUTPUT_DIR/One-KVM_${ONE_KVM_VERSION}_Onecloud_trixie_6.12.28_HDMI-test.burn.img"
+METADATA_FILE="$WORK_DIR/ws1608-one-kvm-release"
+image_identity=${BUILD_TAG#ws1608-one-kvm-}
+[[ "$image_identity" != "$BUILD_TAG" ]] || { echo "invalid build tag: $BUILD_TAG" >&2; exit 1; }
+OUTPUT_IMAGE="$OUTPUT_DIR/One-KVM_${image_identity}_${BASE_FLAVOR}.burn.img"
 
 as_root() {
   if [[ ${EUID:-$(id -u)} -eq 0 ]]; then
@@ -126,14 +134,8 @@ as_root install -D -m 0644 "$ROOT_DIR/config/one-kvm.service.d-otg.conf" "$MOUNT
 test -f "$MOUNT_DIR/usr/lib/systemd/system/one-kvm-otg.service"
 test -f "$MOUNT_DIR/etc/systemd/system/one-kvm.service.d/otg.conf"
 
-as_root tee "$MOUNT_DIR/etc/ws1608-one-kvm-release" >/dev/null <<EOF
-one_kvm_version=$ONE_KVM_VERSION
-one_kvm_release=$UPSTREAM_TAG
-base=Armbian_26.8.0-trunk.413_Onecloud_trixie_6.12.28_HDMI-test
-kernel=6.12.28-current-meson
-board=ws1608
-EOF
-as_root chown root:root "$MOUNT_DIR/etc/ws1608-one-kvm-release"
+node "$ROOT_DIR/scripts/write-image-metadata.mjs" "$METADATA_FILE"
+as_root install -D -m 0644 "$METADATA_FILE" "$MOUNT_DIR/etc/ws1608-one-kvm-release"
 
 cleanup_mounts
 trap - EXIT
@@ -151,18 +153,8 @@ printf 'sha1sum %s' "$rootfs_sha1" > "$PACKAGE_DIR/$rootfs_verify"
 echo "Repacking Amlogic container"
 rm -f "$OUTPUT_IMAGE"
 "$AMLIMG_BIN" pack "$OUTPUT_IMAGE" "$PACKAGE_DIR"
-sha256sum "$OUTPUT_IMAGE" > "$OUTPUT_IMAGE.sha256"
-cat > "$OUTPUT_DIR/manifest.json" <<EOF
-{
-  "board": "WS1608 / OneCloud",
-  "base": "Armbian_26.8.0-trunk.413_Onecloud_trixie_6.12.28_HDMI-test",
-  "kernel": "6.12.28-current-meson",
-  "one_kvm_version": "$ONE_KVM_VERSION",
-  "one_kvm_release": "$UPSTREAM_TAG",
-  "image": "$(basename "$OUTPUT_IMAGE")",
-  "image_sha256": "$(cut -d' ' -f1 "$OUTPUT_IMAGE.sha256")"
-}
-EOF
+node "$ROOT_DIR/scripts/write-image-manifest.mjs" "$OUTPUT_DIR/manifest.json" "$OUTPUT_IMAGE"
 rm -f "$ROOTFS_RAW"
+rm -f "$METADATA_FILE"
 rm -rf "$PACKAGE_DIR"
 echo "Built $OUTPUT_IMAGE"

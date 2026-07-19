@@ -2,10 +2,17 @@
 set -Eeuo pipefail
 
 ROOT_DIR=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
+source "$ROOT_DIR/config/base.env"
 IMAGE=${IMAGE:?IMAGE is required}
 BASE_IMAGE=${BASE_IMAGE:?BASE_IMAGE is required}
 AMLIMG_BIN=${AMLIMG_BIN:?AMLIMG_BIN is required}
 ONE_KVM_VERSION=${ONE_KVM_VERSION:?ONE_KVM_VERSION is required}
+UPSTREAM_TAG=${UPSTREAM_TAG:?UPSTREAM_TAG is required}
+PACKAGE_DIGEST=${PACKAGE_DIGEST:?PACKAGE_DIGEST is required}
+BUILD_TAG=${BUILD_TAG:?BUILD_TAG is required}
+BUILD_NUMBER=${BUILD_NUMBER:?BUILD_NUMBER is required}
+BUILDER_COMMIT=${BUILDER_COMMIT:?BUILDER_COMMIT is required}
+VALIDATION_REPORT=${VALIDATION_REPORT:?VALIDATION_REPORT is required}
 VERIFY_DIR=${VERIFY_DIR:-$ROOT_DIR/.verify}
 FINAL_DIR="$VERIFY_DIR/final"
 BASE_DIR="$VERIFY_DIR/base"
@@ -73,14 +80,24 @@ printf 'one-kvm=%q libdrm2=%q binary=%s service=%q\n' \
 verify 'one-kvm package' test "$package_state" = "install ok installed $ONE_KVM_VERSION armhf"
 verify 'libdrm2 package' test "$libdrm_state" = 'install ok installed'
 verify 'ARM ELF binary' grep -q 'ELF 32-bit.*ARM' <<<"$binary_info"
-verify 'one-kvm service link' test -n "$service_link"
-verify 'OTG systemd unit' test -f "$MOUNT_DIR/usr/lib/systemd/system/one-kvm-otg.service"
+verify 'one-kvm service link' test "$service_link" = /lib/systemd/system/one-kvm.service
+verify 'one-kvm service unit' test -f "$MOUNT_DIR/lib/systemd/system/one-kvm.service"
+verify 'OTG helper content' cmp "$ROOT_DIR/config/one-kvm-enable-otg" "$MOUNT_DIR/usr/sbin/one-kvm-enable-otg"
+verify 'OTG systemd unit' cmp "$ROOT_DIR/config/one-kvm-otg.service" "$MOUNT_DIR/usr/lib/systemd/system/one-kvm-otg.service"
+verify 'OTG drop-in' cmp "$ROOT_DIR/config/one-kvm.service.d-otg.conf" "$MOUNT_DIR/etc/systemd/system/one-kvm.service.d/otg.conf"
+verify 'module configuration' cmp "$ROOT_DIR/config/one-kvm-modules.conf" "$MOUNT_DIR/etc/modules-load.d/one-kvm.conf"
 verify 'OTG Wants dependency' grep -Fqx 'Wants=one-kvm-otg.service' "$MOUNT_DIR/etc/systemd/system/one-kvm.service.d/otg.conf"
 verify 'OTG ordering dependency' grep -Fqx 'After=one-kvm-otg.service' "$MOUNT_DIR/etc/systemd/system/one-kvm.service.d/otg.conf"
 verify 'libcomposite module' grep -Fqx 'libcomposite' "$MOUNT_DIR/etc/modules-load.d/one-kvm.conf"
-verify 'image release metadata' grep -Fqx "one_kvm_version=$ONE_KVM_VERSION" "$MOUNT_DIR/etc/ws1608-one-kvm-release"
+verify 'image release metadata' node "$ROOT_DIR/scripts/verify-image-metadata.mjs" "$MOUNT_DIR/etc/ws1608-one-kvm-release"
 verify 'OTG helper executable' test -x "$MOUNT_DIR/usr/sbin/one-kvm-enable-otg"
+verify 'Deb removed after install' test ! -e "$MOUNT_DIR/tmp/one-kvm.deb"
+verify 'qemu removed after install' test ! -e "$MOUNT_DIR/usr/bin/qemu-arm-static"
+verify 'systemctl stub removed after install' test ! -e "$MOUNT_DIR/usr/local/sbin/systemctl"
 
 as_root umount "$MOUNT_DIR"
 trap - EXIT
+mkdir -p "$(dirname "$VALIDATION_REPORT")"
+node "$ROOT_DIR/scripts/write-validation-report.mjs" "$VALIDATION_REPORT"
+verify 'validation report' test -s "$VALIDATION_REPORT"
 echo "Verified $(basename "$IMAGE")"
