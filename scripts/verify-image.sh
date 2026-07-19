@@ -74,7 +74,7 @@ verify 'one-kvm package' test "$package_state" = "install ok installed $ONE_KVM_
 verify 'libdrm2 package' test "$libdrm_state" = 'install ok installed'
 verify 'ARM ELF binary' grep -q 'ELF 32-bit.*ARM' <<<"$binary_info"
 verify 'one-kvm service link' test -n "$service_link"
-verify 'OTG systemd unit' test -f "$MOUNT_DIR/etc/systemd/system/one-kvm-otg.service"
+verify 'OTG systemd unit' test -f "$MOUNT_DIR/usr/lib/systemd/system/one-kvm-otg.service"
 verify 'OTG Wants dependency' grep -Fqx 'Wants=one-kvm-otg.service' "$MOUNT_DIR/etc/systemd/system/one-kvm.service.d/otg.conf"
 verify 'OTG ordering dependency' grep -Fqx 'After=one-kvm-otg.service' "$MOUNT_DIR/etc/systemd/system/one-kvm.service.d/otg.conf"
 verify 'libcomposite module' grep -Fqx 'libcomposite' "$MOUNT_DIR/etc/modules-load.d/one-kvm.conf"

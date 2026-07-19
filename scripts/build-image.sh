@@ -14,6 +14,7 @@ mkdir -p "$OUTPUT_DIR" "$WORK_DIR"
 BASE_IMAGE="$WORK_DIR/base.burn.img"
 PACKAGE_DIR="$WORK_DIR/package"
 ROOTFS_RAW="$WORK_DIR/rootfs.raw"
+ROUNDTRIP_RAW="$WORK_DIR/rootfs.roundtrip.raw"
 MOUNT_DIR="$WORK_DIR/rootfs.mnt"
 OUTPUT_IMAGE="$OUTPUT_DIR/One-KVM_${ONE_KVM_VERSION}_Onecloud_trixie_6.12.28_HDMI-test.burn.img"
 
@@ -109,8 +110,10 @@ fi
 echo "Installing WS1608 OTG integration"
 as_root install -D -m 0644 "$ROOT_DIR/config/one-kvm-modules.conf" "$MOUNT_DIR/etc/modules-load.d/one-kvm.conf"
 as_root install -D -m 0755 "$ROOT_DIR/config/one-kvm-enable-otg" "$MOUNT_DIR/usr/sbin/one-kvm-enable-otg"
-as_root install -D -m 0644 "$ROOT_DIR/config/one-kvm-otg.service" "$MOUNT_DIR/etc/systemd/system/one-kvm-otg.service"
+as_root install -D -m 0644 "$ROOT_DIR/config/one-kvm-otg.service" "$MOUNT_DIR/usr/lib/systemd/system/one-kvm-otg.service"
 as_root install -D -m 0644 "$ROOT_DIR/config/one-kvm.service.d-otg.conf" "$MOUNT_DIR/etc/systemd/system/one-kvm.service.d/otg.conf"
+test -f "$MOUNT_DIR/usr/lib/systemd/system/one-kvm-otg.service"
+test -f "$MOUNT_DIR/etc/systemd/system/one-kvm.service.d/otg.conf"
 
 as_root tee "$MOUNT_DIR/etc/ws1608-one-kvm-release" >/dev/null <<EOF
 one_kvm_version=$ONE_KVM_VERSION
@@ -127,6 +130,9 @@ as_root e2fsck -fy "$ROOTFS_RAW"
 rm -f "$PACKAGE_DIR/$rootfs_sparse"
 echo "Creating Android sparse rootfs"
 node "$ROOT_DIR/scripts/raw-to-sparse.mjs" "$ROOTFS_RAW" "$PACKAGE_DIR/$rootfs_sparse"
+node "$ROOT_DIR/scripts/sparse-to-raw.mjs" "$PACKAGE_DIR/$rootfs_sparse" "$ROUNDTRIP_RAW"
+cmp "$ROOTFS_RAW" "$ROUNDTRIP_RAW"
+rm -f "$ROUNDTRIP_RAW"
 rootfs_sha1=$(sha1sum "$PACKAGE_DIR/$rootfs_sparse" | awk '{print $1}')
 printf 'sha1sum %s' "$rootfs_sha1" > "$PACKAGE_DIR/$rootfs_verify"
 
