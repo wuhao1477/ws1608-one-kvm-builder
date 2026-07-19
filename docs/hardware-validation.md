@@ -43,16 +43,7 @@ systemctl status one-kvm-otg.service --no-pager
 curl -fsS http://127.0.0.1:8080/api/health
 ```
 
-当前 Release 的预期版本文件包含 `one_kvm_version=0.2.4`、`one_kvm_release=v260709`、`build_tag=ws1608-one-kvm-0.2.4-v260709-173450` 和 `build_stamp_utc=173450`；health API 返回状态 ok；One-KVM 服务为 enabled/active。后续版本仍以各自 manifest 为准。
-
-下载验证应先在维护者电脑或 Linux runner 执行：
-
-```sh
-gh release download <tag> --repo wuhao1477/ws1608-one-kvm-builder --dir release-check
-node scripts/verify-artifacts.mjs release-check <image-name> '<manifest-fields-json>'
-```
-
-不要只用浏览器下载完成作为完整性证据；四个资产、SHA256SUMS、manifest 和 xz 解压回读都必须通过。
+预期：版本文件包含 `one_kvm_version=0.2.4`、`one_kvm_release=v260709`、对应 `build_tag=...-bRRRAAA` 和 package SHA-256；health API 返回状态 ok；One-KVM 服务为 enabled/active。具体版本应以实际 Release manifest 为准。
 
 ## OTG、视频和 HID
 

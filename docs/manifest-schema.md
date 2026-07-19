@@ -1,46 +1,40 @@
 # manifest 数据契约
 
-新格式 Release 的 `manifest.json` 是构建来源和成品身份的机器可读事实记录。生成逻辑位于 [build.yml](../.github/workflows/build.yml)，校验逻辑位于 [verify-artifacts.mjs](../scripts/verify-artifacts.mjs)。
+新格式 Release 的 `manifest.json` 是构建来源和成品身份的机器可读记录。生成逻辑位于 `scripts/write-image-manifest.mjs` 与 `scripts/finalize-release.mjs`，验证逻辑位于 `scripts/verify-release-assets.mjs`。
 
 ## 字段
 
-| 字段 | 类型 | 来源 | 验证 |
-| --- | --- | --- | --- |
-| `board` | string | 固定为 `WS1608 / OneCloud` | artifact verifier 精确比较 |
-| `base` | string | 固定基础镜像名称 | artifact verifier 精确比较 |
-| `kernel` | string | 固定为 `6.12.28-current-meson` | artifact verifier 精确比较 |
-| `build_tag` | string | release identity formatter | build script、artifact verifier、远端 Release |
-| `build_stamp` | string | discovery 的 UTC `HHMMSS` | identity formatter、镜像 metadata |
-| `built_at` | string | runner UTC ISO-8601 时间 | artifact verifier 精确比较 |
-| `one_kvm_version` | string | Deb 文件名和 Package metadata | dpkg、identity、artifact verifier |
-| `one_kvm_release` | string | 上游 Release tag | discovery、镜像 metadata |
-| `image` | string | 未压缩成品 basename | 文件集合、SHA256SUMS、manifest |
-| `image_sha256` | string | 未压缩成品实际 SHA-256 | 流式重算、SHA256SUMS、GitHub digest |
-| `image_xz` | string | 压缩成品 basename | 文件集合、SHA256SUMS、manifest |
-| `image_xz_sha256` | string | 压缩成品实际 SHA-256 | 流式重算、SHA256SUMS、GitHub digest |
-| `package_url` | string | 上游 armhf Deb asset URL | artifact verifier 精确比较 |
-| `package_sha256` | string | GitHub digest 或下载后实算 | 下载检查、artifact verifier |
-| `base_image_url` | string | `config/base.env` | artifact verifier 精确比较 |
-| `base_sha256` | string | `config/base.env` | 下载检查、artifact verifier |
-| `builder_commit` | string | `github.sha` | artifact verifier 精确比较 |
-| `github_run_id` | string | `github.run_id` | artifact verifier 精确比较 |
-| `github_run_attempt` | string | `github.run_attempt` | artifact verifier 精确比较 |
-| `amlimg_repository` | string | `config/tool-versions.env` | artifact verifier 精确比较 |
-| `amlimg_commit` | string | `config/tool-versions.env` | build-tools 固定提交、artifact verifier |
+| 字段 | 类型 | 来源 |
+| --- | --- | --- |
+| `schema_version` | number | 固定为 `2` |
+| `board` / `base` / `kernel` | string | `config/base.env` |
+| `one_kvm_version` / `one_kvm_release` | string | armhf Deb 文件名和上游 tag |
+| `package_name` / `package_url` / `package_sha256` | string | 上游 Release asset |
+| `base_release_tag` / `base_image_name` / `base_image_url` / `base_sha256` | string | `config/base.env` |
+| `build_tag` / `build_revision` / `build_number` | string / string / number | discovery 和 Actions run number/attempt |
+| `builder_commit` | 40 字符十六进制 | `github.sha` |
+| `github_run_id` / `github_run_number` / `github_run_attempt` | string | GitHub Actions |
+| `amlimg_repository` / `amlimg_commit` | string | `config/tool-versions.env` |
+| `built_at` | ISO-8601 string | finalizer 完成时间 |
+| `image` / `image_size` / `image_sha256` | string / number / string | raw burn image |
+| `compressed_image` / `compressed_image_size` / `compressed_image_sha256` | string / number / string | xz asset |
+| `validation_report` / `validation_report_size` / `validation_report_sha256` | string / number / string | validation report |
+| `validation` | string | 固定为 `passed` |
 
 ## 不变量
 
-- `build_tag` 必须是 `ws1608-one-kvm-<version>-<upstream-tag>-<HHMMSS>`。
-- `image` 必须是 `One-KVM_<version>_<upstream-tag>_<HHMMSS>_Onecloud_trixie_6.12.28_HDMI-test.burn.img`。
-- `image_xz` 必须等于 `image + .xz`。
-- `SHA256SUMS` 只能有两行，使用 basename，分别对应 raw 和 xz。
-- xz 解压后的文件必须与 raw 镜像逐字节相同。
-- 发布目录只能包含 raw、xz、`SHA256SUMS` 和 `manifest.json`。
-- GitHub draft Release 的四个 asset digest 必须与本地文件完全一致。
+- `build_tag` 必须为 `ws1608-one-kvm-<Deb版本>-<上游tag>-bRRRAAA`；`build_revision` 是末段，且与 `build_number` 一致。
+- `image` 必须为 `One-KVM_<Deb版本>-<上游tag>-bRRRAAA_<BASE_FLAVOR>.burn.img`，`compressed_image` 等于 `image + .xz`。
+- 所有 manifest、报告和 `SHA256SUMS` 中的文件名都是 basename，不能是符号链接。
+- `SHA256SUMS` 恰好四行，覆盖 raw image、xz image、`manifest.json` 和 `validation-report.json`。
+- xz 解压后的字节必须与 raw image 完全相同。
+- 发布目录恰好包含五个文件：raw image、xz image、`SHA256SUMS`、`manifest.json`、`validation-report.json`。
+- draft 和公开 Release 的五个 GitHub asset 都必须是 `uploaded`，远端 `sha256:` digest 必须与本地文件一致。
+- Release body 同时记录五个资产的名称和摘要；周检只有在这些标记完整一致时才跳过构建。
+- `validation-report.json` 必须有 `result=passed` 且 `hardware_boot_tested=false`。这不代表实体 WS1608 已刷写启动。
 
 ## 兼容性
 
-迁移前 Release `ws1608-one-kvm-v260709` 的 manifest 没有完整构建身份和工具字段，因此不能直接通过新 `verify-artifacts.mjs` 的完整 expected JSON。它只用于历史恢复和迁移状态判断；新的 force 构建会产生完整 schema，不修改旧 manifest。
+迁移前的 `ws1608-one-kvm-v260709` 和旧 HHMMSS Release 只作为历史资产，不满足 schema 2 的跳过条件。新的 force 构建会产生完整五资产 schema，不修改旧 Release。
 
-维护者增加字段时，应先更新 synthetic artifact 测试、workflow 的 `EXPECTED_MANIFEST_JSON` 和本文档，再运行完整云构建。
-
+维护者增加字段时，应先更新 synthetic artifact 测试、发布/验证脚本和本文档，再运行完整云构建。
