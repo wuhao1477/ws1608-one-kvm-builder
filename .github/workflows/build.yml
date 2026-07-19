@@ -107,7 +107,7 @@ jobs:
           IMAGE_NAME: One-KVM_${{ needs.discover.outputs.one_kvm_version }}_Onecloud_trixie_6.12.28_HDMI-test.burn.img
         run: |
           xz -T0 -9e -c "$OUTPUT_DIR/$IMAGE_NAME" > "$OUTPUT_DIR/$IMAGE_NAME.xz"
-          sha256sum "$OUTPUT_DIR/$IMAGE_NAME" "$OUTPUT_DIR/$IMAGE_NAME.xz" > "$OUTPUT_DIR/SHA256SUMS"
+          (cd "$OUTPUT_DIR" && sha256sum "$IMAGE_NAME" "$IMAGE_NAME.xz" > SHA256SUMS)
           jq --arg package_url "$PACKAGE_URL" \
              --arg package_sha256 "$PACKAGE_DIGEST" \
              --arg base_sha256 "$(source config/base.env; echo "$BASE_IMAGE_SHA256")" \
@@ -133,16 +133,22 @@ jobs:
 
           CI validation covers Amlogic container CRC and VERIFY SHA1, immutable boot partition comparison, armhf Deb metadata, systemd units, OTG files, and ext4 consistency. GitHub-hosted CI cannot flash a physical WS1608; hardware boot status is therefore not inferred from this job.
           EOF
-          gh release create "$BUILD_TAG" \
-            --repo "$GITHUB_REPOSITORY" \
-            --title "WS1608 One-KVM $ONE_KVM_VERSION ($UPSTREAM_TAG)" \
-            --notes-file "$RUNNER_TEMP/release-notes.md" \
-            --latest \
+          assets=(
             "$RUNNER_TEMP/ws1608-output/One-KVM_${ONE_KVM_VERSION}_Onecloud_trixie_6.12.28_HDMI-test.burn.img" \
             "$RUNNER_TEMP/ws1608-output/One-KVM_${ONE_KVM_VERSION}_Onecloud_trixie_6.12.28_HDMI-test.burn.img.xz" \
             "$RUNNER_TEMP/ws1608-output/SHA256SUMS" \
             "$RUNNER_TEMP/ws1608-output/manifest.json"
-
+          )
+          if gh release view "$BUILD_TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            gh release upload "$BUILD_TAG" --repo "$GITHUB_REPOSITORY" --clobber "${assets[@]}"
+            gh release edit "$BUILD_TAG" --repo "$GITHUB_REPOSITORY" \
+              --title "WS1608 One-KVM $ONE_KVM_VERSION ($UPSTREAM_TAG)" \
+              --notes-file "$RUNNER_TEMP/release-notes.md" --latest
+          else
+            gh release create "$BUILD_TAG" --repo "$GITHUB_REPOSITORY" \
+              --title "WS1608 One-KVM $ONE_KVM_VERSION ($UPSTREAM_TAG)" \
+              --notes-file "$RUNNER_TEMP/release-notes.md" --latest "${assets[@]}"
+          fi
   skipped:
     name: No new One-KVM release
     needs: discover
