@@ -16,6 +16,17 @@ as_root() {
   if [[ ${EUID:-$(id -u)} -eq 0 ]]; then "$@"; else sudo "$@"; fi
 }
 
+verify() {
+  local name=$1
+  shift
+  if "$@"; then
+    echo "verified: $name"
+  else
+    echo "verification failed: $name" >&2
+    exit 1
+  fi
+}
+
 cleanup() {
   set +e
   if mountpoint -q "$MOUNT_DIR"; then as_root umount "$MOUNT_DIR"; fi
@@ -59,16 +70,16 @@ binary_info=$(file "$MOUNT_DIR/usr/bin/one-kvm")
 service_link=$(readlink "$MOUNT_DIR/etc/systemd/system/multi-user.target.wants/one-kvm.service" || true)
 printf 'one-kvm=%q libdrm2=%q binary=%s service=%q\n' \
   "$package_state" "$libdrm_state" "$binary_info" "$service_link"
-[[ "$package_state" == "install ok installed $ONE_KVM_VERSION armhf" ]]
-[[ "$libdrm_state" == "install ok installed" ]]
-grep -q 'ELF 32-bit.*ARM' <<<"$binary_info"
-[[ -n "$service_link" ]]
-test -f "$MOUNT_DIR/etc/systemd/system/one-kvm-otg.service"
-grep -Fqx 'Wants=one-kvm-otg.service' "$MOUNT_DIR/etc/systemd/system/one-kvm.service.d/otg.conf"
-grep -Fqx 'After=one-kvm-otg.service' "$MOUNT_DIR/etc/systemd/system/one-kvm.service.d/otg.conf"
-grep -Fqx 'libcomposite' "$MOUNT_DIR/etc/modules-load.d/one-kvm.conf"
-grep -Fqx "one_kvm_version=$ONE_KVM_VERSION" "$MOUNT_DIR/etc/ws1608-one-kvm-release"
-test -x "$MOUNT_DIR/usr/sbin/one-kvm-enable-otg"
+verify 'one-kvm package' test "$package_state" = "install ok installed $ONE_KVM_VERSION armhf"
+verify 'libdrm2 package' test "$libdrm_state" = 'install ok installed'
+verify 'ARM ELF binary' grep -q 'ELF 32-bit.*ARM' <<<"$binary_info"
+verify 'one-kvm service link' test -n "$service_link"
+verify 'OTG systemd unit' test -f "$MOUNT_DIR/etc/systemd/system/one-kvm-otg.service"
+verify 'OTG Wants dependency' grep -Fqx 'Wants=one-kvm-otg.service' "$MOUNT_DIR/etc/systemd/system/one-kvm.service.d/otg.conf"
+verify 'OTG ordering dependency' grep -Fqx 'After=one-kvm-otg.service' "$MOUNT_DIR/etc/systemd/system/one-kvm.service.d/otg.conf"
+verify 'libcomposite module' grep -Fqx 'libcomposite' "$MOUNT_DIR/etc/modules-load.d/one-kvm.conf"
+verify 'image release metadata' grep -Fqx "one_kvm_version=$ONE_KVM_VERSION" "$MOUNT_DIR/etc/ws1608-one-kvm-release"
+verify 'OTG helper executable' test -x "$MOUNT_DIR/usr/sbin/one-kvm-enable-otg"
 
 as_root umount "$MOUNT_DIR"
 trap - EXIT
