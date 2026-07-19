@@ -44,14 +44,17 @@ if [[ -n "$TARGET_REPOSITORY" ]]; then
         and ($names | index("manifest.json") != null)
         and ([$names[] | select(endswith(".burn.img"))] | length == 1)
         and ([$names[] | select(endswith(".burn.img.xz"))] | length == 1);
-      first(.[] | select(
+      [.[] | select(
         .draft == false
         and .prerelease == false
         and (.tag_name == $legacy
           or ((.tag_name | startswith($prefix))
             and (.tag_name | test("[0-9]{6}$"))))
         and has_required_assets
-      ) | .tag_name) // empty
+      )] as $matching
+      | (($matching | map(select(.tag_name != $legacy)))
+        + ($matching | map(select(.tag_name == $legacy))))
+      | .[0].tag_name // empty
     ' <<<"$published_releases")
   if [[ -n "$existing_build_tag" ]]; then changed=false; fi
 fi

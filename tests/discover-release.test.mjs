@@ -100,6 +100,25 @@ test('skips a valid new-format release for the same upstream tag', () => {
   assert.equal(values.changed, 'false');
 });
 
+test('reports a new-format release before the legacy migration release', () => {
+  const { values } = runDiscover([
+    {
+      draft: false,
+      prerelease: false,
+      tag_name: 'ws1608-one-kvm-v260709',
+      assets,
+    },
+    {
+      draft: false,
+      prerelease: false,
+      tag_name: 'ws1608-one-kvm-0.2.4-v260709-143015',
+      assets,
+    },
+  ]);
+  assert.equal(values.changed, 'false');
+  assert.equal(values.existing_build_tag, 'ws1608-one-kvm-0.2.4-v260709-143015');
+});
+
 test('skips a valid legacy release during migration', () => {
   const { values } = runDiscover([{
     draft: false,
