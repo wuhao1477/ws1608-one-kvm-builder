@@ -138,3 +138,9 @@ node scripts/verify-artifacts.mjs "$OUTPUT_DIR" "$IMAGE_NAME" "$EXPECTED_MANIFES
 `verify-image.sh` 同样要求 `BUILD_TAG` 和 `BUILD_STAMP`，以防把未标识或身份错配的镜像当作成品。
 
 完整镜像构建需要 Linux root、loop mount、qemu-user-static 和大量空间。macOS OrbStack 的特权 loop mount 在本次验证中两次导致 Docker daemon `unexpected EOF`，所以维护者应优先使用 GitHub Actions；不要为了本地复现删除或重置用户现有 Docker 数据。
+
+## 已验证实例
+
+- 完整不可变发布：[run 29697101081](https://github.com/wuhao1477/ws1608-one-kvm-builder/actions/runs/29697101081)，Release [`ws1608-one-kvm-0.2.4-v260709-173450`](https://github.com/wuhao1477/ws1608-one-kvm-builder/releases/tag/ws1608-one-kvm-0.2.4-v260709-173450)。
+- 新格式跳过：[run 29697714162](https://github.com/wuhao1477/ws1608-one-kvm-builder/actions/runs/29697714162)，discovery 输出 `changed=false` 且 `existing` 为上述新格式 tag。
+- Release API 的四个 asset digest、manifest 和 `SHA256SUMS` 交叉核对结果及实际摘要见 [HANDOFF.md](HANDOFF.md)。

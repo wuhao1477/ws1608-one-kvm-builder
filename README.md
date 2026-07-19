@@ -10,6 +10,8 @@
 - 新 tag 格式为 `ws1608-one-kvm-<Deb版本>-<上游tag>-<UTC时分秒>`，例如 `ws1608-one-kvm-0.2.4-v260709-143015`。
 - 预留 `repository_dispatch` 的 `one-kvm-release` 事件，但上游仓库目前不会向本仓库发送该事件，所以每周检查是实际触发方式。
 
+当前已通过完整云端构建和发布检查的版本是 [`ws1608-one-kvm-0.2.4-v260709-173450`](https://github.com/wuhao1477/ws1608-one-kvm-builder/releases/tag/ws1608-one-kvm-0.2.4-v260709-173450)。构建证据和摘要见 [HANDOFF.md](docs/HANDOFF.md)；该成品仍需实体 WS1608 刷写验收，不能仅凭 CI 标记为硬件已通过。
+
 ## 基础镜像
 
 稳定构建固定使用 `config/base.env` 指向的基础资产：Armbian 26.8 Trixie、`6.12.28-current-meson`、OneCloud HDMI-test 设备树和启动链。固定启动链是为了避免未经 WS1608 实机验证的内核或设备树更新进入稳定直刷包。更换基础镜像时，先更新 URL 和 SHA-256，再单独完成 WS1608 刷写验证。

@@ -9,7 +9,7 @@
 | 四核 60 秒负载 | 已验证 | 基础镜像现场测试通过 |
 | HDMI 音频 | 已知问题 | `gx-sound-card` 注册出现 error -22，当前不影响 One-KVM 的 USB 视频/HID目标 |
 | One-KVM `0.2.4` 运行 | 已验证过 | 在已启动系统中安装，systemd active，health API 返回 ok |
-| 新时间戳 Release 实体刷写 | 待本次云构建后验收 | GitHub runner 没有 WS1608、USB Burning Tool 或显示器 |
+| `ws1608-one-kvm-0.2.4-v260709-173450` 实体刷写 | 待实机验收 | 云构建已通过；GitHub runner 没有 WS1608、USB Burning Tool 或显示器 |
 | USB HDMI 采集卡 | 未验证 | 之前测试时未连接实际采集卡 |
 | 被控机 USB HID | 未验证 | 之前测试时未连接被控机 USB 线 |
 
@@ -43,7 +43,7 @@ systemctl status one-kvm-otg.service --no-pager
 curl -fsS http://127.0.0.1:8080/api/health
 ```
 
-预期：版本文件包含 `one_kvm_version=0.2.4`、`one_kvm_release=v260709`、`build_tag=...` 和 `build_stamp_utc=...`；health API 返回状态 ok；One-KVM 服务为 enabled/active。具体值应以实际 Release manifest 为准。
+当前 Release 的预期版本文件包含 `one_kvm_version=0.2.4`、`one_kvm_release=v260709`、`build_tag=ws1608-one-kvm-0.2.4-v260709-173450` 和 `build_stamp_utc=173450`；health API 返回状态 ok；One-KVM 服务为 enabled/active。后续版本仍以各自 manifest 为准。
 
 下载验证应先在维护者电脑或 Linux runner 执行：
 

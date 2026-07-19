@@ -1,7 +1,7 @@
 # One-KVM 构建身份与发布门槛设计
 
 日期：2026-07-20  
-状态：已确认，待实施
+状态：已实施并完成云端验收
 
 ## 目标
 
@@ -73,3 +73,11 @@ GitHub hosted runner 不能连接 USB Burning Tool，也不能模拟 HDMI、USB 
 - 从 Release 下载的压缩包解压后 SHA-256 与 `SHA256SUMS` 和 manifest 一致。
 - Release/tag/manifest 能直接识别 One-KVM Deb 版本，且能追溯上游 tag、构建时间和 builder commit。
 - 普通周检在已有成功构建时不启动完整镜像 job。
+
+## 实施证据
+
+- 完整构建：[Actions run 29697101081](https://github.com/wuhao1477/ws1608-one-kvm-builder/actions/runs/29697101081)。本地输出、重新下载的 Actions artifact、独立镜像复验和 draft Release 远端 digest 检查全部成功。
+- 不可变 Release：[ws1608-one-kvm-0.2.4-v260709-173450](https://github.com/wuhao1477/ws1608-one-kvm-builder/releases/tag/ws1608-one-kvm-0.2.4-v260709-173450)。旧格式 Release 保持不变。
+- 新格式跳过检查：[Actions run 29697714162](https://github.com/wuhao1477/ws1608-one-kvm-builder/actions/runs/29697714162)。discovery 识别上述新格式 Release，完整构建 job 为 skipped。
+- Release API 查询没有残留 draft；实际摘要见 [HANDOFF.md](../../HANDOFF.md)。
+- 实体 WS1608 刷写、断电重启、视频采集和 HID 仍按 [hardware-validation.md](../../hardware-validation.md) 独立执行，不属于云端验收结论。

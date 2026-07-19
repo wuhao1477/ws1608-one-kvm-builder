@@ -7,13 +7,37 @@
 公开仓库已经建立并可独立运行：
 
 - 仓库：[wuhao1477/ws1608-one-kvm-builder](https://github.com/wuhao1477/ws1608-one-kvm-builder)
+- 当前 Release：[ws1608-one-kvm-0.2.4-v260709-173450](https://github.com/wuhao1477/ws1608-one-kvm-builder/releases/tag/ws1608-one-kvm-0.2.4-v260709-173450)
+- 完整构建与发布：[Actions run 29697101081](https://github.com/wuhao1477/ws1608-one-kvm-builder/actions/runs/29697101081)，结论 `success`
+- 新格式识别与跳过：[Actions run 29697714162](https://github.com/wuhao1477/ws1608-one-kvm-builder/actions/runs/29697714162)，识别当前 Release 后完整构建 job 为 skipped
 - 迁移前 Release：[ws1608-one-kvm-v260709](https://github.com/wuhao1477/ws1608-one-kvm-builder/releases/tag/ws1608-one-kvm-v260709)
-- 新发布格式：`ws1608-one-kvm-0.2.4-v260709-<UTC-HHMMSS>`；首次新格式云运行完成后，把实际 tag、运行号和摘要填入本节。
 - 上游版本：One-KVM `0.2.4`，tag `v260709`
 - 基础：Armbian 26.8 Trixie，`6.12.28-current-meson`，OneCloud/WS1608 HDMI-test
 - 触发：每周日 02:17 UTC；无新上游 tag 时只检查、不构建
 
-迁移前 Release 的四个资产均为 uploaded，且不是 draft/prerelease。旧流程的首次构建、跳过和 force 覆盖运行已有历史证据；新流程不再覆盖它，而是先验证本地/Actions artifact，再通过 draft Release 的远端 digest 检查后公开。新流程的实际云运行证据待本次验收完成后写入。
+完整运行从提交 `32eb3c38e4f284e8dfe5de047dc56a236c970461` 构建。输出目录和重新下载的 Actions artifact 均通过资产与镜像检查，draft Release 的四个远端 digest 全部匹配后才公开。当前 Release 为非 draft、非 prerelease，四个资产均为 uploaded；查询全部 Releases 未发现残留 draft。
+
+## 当前发布数据
+
+| 资产 | 字节数 | SHA-256 |
+| --- | ---: | --- |
+| `One-KVM_0.2.4_v260709_173450_Onecloud_trixie_6.12.28_HDMI-test.burn.img` | 1,188,645,868 | `ca311861c7f2a55a5f7b2cacc8f8e092ee6b2a08af755797ac287b78b3fc3c4a` |
+| `One-KVM_0.2.4_v260709_173450_Onecloud_trixie_6.12.28_HDMI-test.burn.img.xz` | 339,180,856 | `9184adedd6781dad93f18879a18be6284b6d63feafb55b77f8ea591836321358` |
+| `manifest.json` | 1,393 | `cd2e11de5219a7a8910e9cd70513d0bd121cbdc3eb6c0392e5471f49485b48ce` |
+| `SHA256SUMS` | 279 | `e9437befe11595f560a13e37962e8492ff0d69225d4a034695d32381690ba707` |
+
+manifest 的关键输入数据：
+
+| 项目 | 值 |
+| --- | --- |
+| 构建时间 | `2026-07-19T17:35:01Z` |
+| GitHub run / attempt | `29697101081` / `1` |
+| One-KVM Deb | `one-kvm_0.2.4_armhf.deb` |
+| One-KVM Deb SHA-256 | `52f9035f4949bc9a63d2c763eaced21dce7c99d8f547e1465691674f9bd0b82a` |
+| 基础镜像 xz SHA-256 | `f0bde03edd12022db41a53c546b1b16b7e49ddecbd39121f3e8c0086f700de82` |
+| AmlImg commit | `311cd4b892023bcb3cf6661698f5ab685e34a7f8` |
+
+2026-07-20 的独立复核只下载了小型 `manifest.json` 和 `SHA256SUMS`，并把其摘要、manifest 中的 raw/xz 摘要、上游 Deb digest、基础资产 digest 与 GitHub API 逐项比较，结果全部匹配。由于维护者本地空间有限，没有再次下载两个大镜像；完整大文件的上传后重新下载、xz 字节往返和镜像复验已在 run `29697101081` 的云 runner 完成。
 
 ## 已实现的范围
 
@@ -45,7 +69,7 @@
 1. 阅读 [docs/README.md](README.md)、[build-pipeline.md](build-pipeline.md) 和 [troubleshooting.md](troubleshooting.md)。
 2. 阅读 [image-lineage.md](image-lineage.md)，不要把历史 Jammy 或官方 Bookworm 参考包误当成当前稳定基础。
 3. 打开 [Actions](https://github.com/wuhao1477/ws1608-one-kvm-builder/actions)，确认最近一次完整运行和 skipped 运行的每个验证步骤。
-4. 下载新 Release 的 `manifest.json`、`SHA256SUMS` 和两个镜像，使用 `verify-artifacts.mjs` 独立核对。
+4. 实机刷写前下载当前 Release 的 xz 镜像并核对 `SHA256SUMS`；需要审计全部四个资产时，在有足够空间的 Linux runner 上使用 `verify-artifacts.mjs`。
 5. 同一上游版本需要重建时使用 `force=true`；它会生成新的 UTC 时分秒 tag，不会修改旧 Release。
 6. 如要改基础镜像，先阅读 [hardware-validation.md](hardware-validation.md)，完成实体刷写后再改 `config/base.env`。
 
@@ -61,7 +85,7 @@ rootfs 安装使用动态 apt 源，ext4 时间戳和构建时间也会变化。
 
 ### 3. 上游同 tag 替换资产或 tag 碰撞
 
-当前 discover 以完整公开 Release 的资产集合作为状态，并兼容旧 tag。上游重写同一个 tag 时普通周检不会重建；使用 force，并检查新 manifest 的 package digest。UTC 时分秒重复会在发布前直接失败，不能通过覆盖旧 tag 解决。
+当前 discover 以完整公开 Release 的资产集合作为状态，并兼容旧 tag；两种格式同时存在时优先报告新格式。上游重写同一个 tag 时普通周检不会重建；使用 force，并检查新 manifest 的 package digest。UTC 时分秒重复会在发布前直接失败，不能通过覆盖旧 tag 解决。
 
 ### 4. GitHub 资产大小
 
@@ -69,7 +93,7 @@ rootfs 安装使用动态 apt 源，ext4 时间戳和构建时间也会变化。
 
 ## 后续优先级
 
-1. 用新时间戳 Release 在实体 WS1608 完成一次完整刷写、断电重启和 One-KVM/OTG/视频/HID验收。
+1. 用 `ws1608-one-kvm-0.2.4-v260709-173450` 在实体 WS1608 完成一次完整刷写、断电重启和 One-KVM/OTG/视频/HID 验收。
 2. 将不含敏感信息的硬件结论记录到私有测试记录；公开仓库只记录结论和 Release tag。
 3. 若需要最新内核，建立 candidate 基础镜像流程，先通过硬件验收再提升稳定基础。
 4. 若需要严格可复现，固定 Debian snapshot、依赖版本、时间戳，并继续保留 manifest 的 builder commit。

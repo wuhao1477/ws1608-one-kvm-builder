@@ -103,7 +103,7 @@ OTG unit 有 `WantedBy=multi-user.target`，但当前设计不依赖单独的 wa
 
 ## 发布身份和不可变性
 
-普通周检判断“该上游 tag 是否已有成功公开构建”，而不是判断即将生成的时间戳 tag 是否存在。旧格式 `ws1608-one-kvm-v260709` 在迁移期间仍算成功构建。`force=true` 忽略这个版本级状态，但生成新的 `HHMMSS` tag；发布脚本同时检查 Release 和 Git ref 均不存在，任何碰撞都失败。
+普通周检判断“该上游 tag 是否已有成功公开构建”，而不是判断即将生成的时间戳 tag 是否存在。旧格式 `ws1608-one-kvm-v260709` 在迁移期间仍算成功构建；新旧格式同时存在时，discovery 优先报告新格式 Release。`force=true` 忽略这个版本级状态，但生成新的 `HHMMSS` tag；发布脚本同时检查 Release 和 Git ref 均不存在，任何碰撞都失败。
 
 发布资产必须只有四个文件：未压缩镜像、xz 镜像、`SHA256SUMS` 和 `manifest.json`。`verify-artifacts.mjs` 流式计算摘要并执行 xz 字节往返，避免把大镜像载入内存。工作流在本地输出目录和重新下载的 Actions artifact 上各执行一次；随后 draft Release 的 GitHub digest 再与本地摘要逐项比较。
 

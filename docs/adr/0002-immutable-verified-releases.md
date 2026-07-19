@@ -26,3 +26,10 @@
 - 任一验证失败都会使云构建失败，且不会留下公开的错误 Release。
 - UTC 时分秒可能在不同日期发生同名碰撞；串行 concurrency 降低概率，远端预检负责阻止覆盖，重新触发会取得新的时间。
 - GitHub hosted runner 仍不能证明实体 WS1608 已启动，实机刷写验收继续独立执行。
+
+## 实际验收
+
+- Release [`ws1608-one-kvm-0.2.4-v260709-173450`](https://github.com/wuhao1477/ws1608-one-kvm-builder/releases/tag/ws1608-one-kvm-0.2.4-v260709-173450) 已公开，旧 Release 未被修改。
+- [run 29697101081](https://github.com/wuhao1477/ws1608-one-kvm-builder/actions/runs/29697101081) 通过输入、镜像、artifact、draft 和远端 digest 检查。
+- [run 29697714162](https://github.com/wuhao1477/ws1608-one-kvm-builder/actions/runs/29697714162) 证明新格式 Release 能被发现并跳过完整构建。
+- 当前没有残留 draft；raw/xz、manifest 和 `SHA256SUMS` 摘要见 [HANDOFF.md](../HANDOFF.md)。

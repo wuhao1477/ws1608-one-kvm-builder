@@ -66,12 +66,13 @@ cat verify-dir/11.rootfs.VERIFY
 
 ## 历史故障记录
 
-本次首次实现经历了多次云端验证失败，最终结果仍以成功运行 [29692576405](https://github.com/wuhao1477/ws1608-one-kvm-builder/actions/runs/29692576405) 为准：
+首次镜像封装经历了多次云端验证失败；迁移前修复结果见 [29692576405](https://github.com/wuhao1477/ws1608-one-kvm-builder/actions/runs/29692576405)，当前不可变发布流程的最终证据以 [29697101081](https://github.com/wuhao1477/ws1608-one-kvm-builder/actions/runs/29697101081) 为准：
 
 - 初版验证没有打印具体断言，无法定位失败项。
 - 包状态、ARM ELF 和主服务链接先后被证明正确；OTG 独立 wants link 并非必要依赖。
 - 改成 vendor unit 后仍发现 unit 消失，随后 `e2fsck` 日志显示 journal recovery、orphan inode 和 free block/inode 计数错误。
 - 根因是嵌套 bind mount 未严格卸载，脚本却继续对仍挂载的 raw 文件执行 e2fsck。
 - 当前实现改为普通 `/dev` bind、DNS 文件复制/恢复、严格逐项卸载和 mountpoint 门禁；之后构建与独立验证通过。
+- 新流程随后增加 Actions artifact 重新下载、完整镜像复验、draft Release 远端 digest 比较和不可变 tag；这些步骤均在 `29697101081` 通过。
 
 这些修复不是可有可无的风格调整。修改 mount、chroot、e2fsck 或 sparse 转换时，必须保留同等级别的门禁和独立验证。
