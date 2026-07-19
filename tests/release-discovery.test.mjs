@@ -26,11 +26,11 @@ function upstreamRelease(digest = DIGEST_A) {
   };
 }
 
-function publishedBuild({ buildNumber = 1, digest = DIGEST_A } = {}) {
+function publishedBuild({ buildNumber = 1, digest = DIGEST_A, draft = false } = {}) {
   const revision = `b${String(buildNumber).padStart(3, '0')}`;
   const buildTag = `ws1608-one-kvm-0.2.4-v260709-${revision}`;
   return {
-    draft: false,
+    draft,
     prerelease: false,
     tag_name: buildTag,
     published_at: `2026-07-${String(19 + buildNumber).padStart(2, '0')}T00:00:00Z`,
@@ -93,6 +93,18 @@ test('a replaced Deb digest allocates a new build for the same upstream tag', ()
 
   assert.equal(result.changed, true);
   assert.equal(result.packageDigest, DIGEST_B);
+  assert.equal(result.buildNumber, 2);
+  assert.equal(result.buildTag, 'ws1608-one-kvm-0.2.4-v260709-b002');
+});
+
+test('a failed draft reserves its build sequence but does not suppress a rebuild', () => {
+  const result = discoverRelease({
+    upstreamRelease: upstreamRelease(),
+    existingReleases: [publishedBuild({ draft: true })],
+    forceBuild: false,
+  });
+
+  assert.equal(result.changed, true);
   assert.equal(result.buildNumber, 2);
   assert.equal(result.buildTag, 'ws1608-one-kvm-0.2.4-v260709-b002');
 });

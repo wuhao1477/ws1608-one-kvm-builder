@@ -43,7 +43,6 @@ function parseMarkers(body) {
 
 function buildRecords(releases, prefix) {
   return (Array.isArray(releases) ? releases : [])
-    .filter((release) => !release?.draft && !release?.prerelease)
     .map((release) => {
       const tag = String(release?.tag_name ?? '');
       const marker = `${prefix}-b`;
@@ -55,6 +54,7 @@ function buildRecords(releases, prefix) {
         tag,
         buildNumber: Number(suffix),
         markers: parseMarkers(release.body),
+        published: !release?.draft && !release?.prerelease,
       };
     })
     .filter(Boolean);
@@ -73,6 +73,7 @@ export function discoverRelease({ upstreamRelease, existingReleases = [], forceB
   const prefix = `ws1608-one-kvm-${safeVersion}-${safeReleaseTag}`;
   const records = buildRecords(existingReleases, prefix);
   const matching = records
+    .filter((record) => record.published)
     .filter((record) => record.markers.one_kvm_release === releaseTag)
     .filter((record) => record.markers.package_sha256 === asset.packageDigest)
     .sort((left, right) => right.buildNumber - left.buildNumber);

@@ -3,22 +3,34 @@ name: Build WS1608 One-KVM image
 on:
   schedule:
     - cron: "17 2 * * 0"
+  pull_request:
+    paths:
+      - ".github/workflows/build.yml"
+      - "config/**"
+      - "scripts/**"
+      - "tests/**"
+      - "package.json"
   workflow_dispatch:
     inputs:
       force:
-        description: Build even when this One-KVM release was already published
+        description: Create the next build even when this One-KVM input was published
         required: false
         default: false
+        type: boolean
+      publish:
+        description: Publish the verified artifact as an immutable Release
+        required: false
+        default: true
         type: boolean
   repository_dispatch:
     types: [one-kvm-release]
 
 permissions:
-  contents: write
+  contents: read
 
 concurrency:
-  group: ws1608-one-kvm-build
-  cancel-in-progress: false
+  group: ws1608-one-kvm-${{ github.event_name == 'pull_request' && format('pr-{0}', github.event.pull_request.number) || 'release' }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
   discover:
@@ -28,20 +40,26 @@ jobs:
       changed: ${{ steps.release.outputs.changed }}
       release_tag: ${{ steps.release.outputs.release_tag }}
       build_tag: ${{ steps.release.outputs.build_tag }}
+      build_number: ${{ steps.release.outputs.build_number }}
+      build_revision: ${{ steps.release.outputs.build_revision }}
+      image_stem: ${{ steps.release.outputs.image_stem }}
       one_kvm_version: ${{ steps.release.outputs.one_kvm_version }}
       package_name: ${{ steps.release.outputs.package_name }}
       package_url: ${{ steps.release.outputs.package_url }}
       package_digest: ${{ steps.release.outputs.package_digest }}
     steps:
-      - uses: actions/checkout@v7
-      - name: Test image utilities
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7
+        with:
+          persist-credentials: false
+      - name: Test image and release utilities
         run: |
           npm test
           for script in scripts/*.sh; do bash -n "$script"; done
       - id: release
+        name: Resolve upstream input and build sequence
         env:
           GH_TOKEN: ${{ github.token }}
-          FORCE_BUILD: ${{ (github.event_name == 'workflow_dispatch' && inputs.force) || false }}
+          FORCE_BUILD: ${{ github.event_name == 'pull_request' || (github.event_name == 'workflow_dispatch' && inputs.force) }}
         run: ./scripts/discover-release.sh
 
   build:
@@ -49,17 +67,32 @@ jobs:
     needs: discover
     if: needs.discover.outputs.changed == 'true'
     runs-on: ubuntu-24.04
-    timeout-minutes: 60
+    timeout-minutes: 90
     env:
-      GH_TOKEN: ${{ github.token }}
       ONE_KVM_VERSION: ${{ needs.discover.outputs.one_kvm_version }}
       UPSTREAM_TAG: ${{ needs.discover.outputs.release_tag }}
       PACKAGE_URL: ${{ needs.discover.outputs.package_url }}
       PACKAGE_DIGEST: ${{ needs.discover.outputs.package_digest }}
       BUILD_TAG: ${{ needs.discover.outputs.build_tag }}
+      BUILD_NUMBER: ${{ needs.discover.outputs.build_number }}
+      BUILD_REVISION: ${{ needs.discover.outputs.build_revision }}
+      IMAGE_STEM: ${{ needs.discover.outputs.image_stem }}
+      BUILDER_COMMIT: ${{ github.sha }}
     steps:
-      - uses: actions/checkout@v7
-      - uses: actions/setup-go@v7
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7
+        with:
+          persist-credentials: false
+      - name: Set build paths
+        run: |
+          source config/base.env
+          {
+            echo "OUTPUT_DIR=$RUNNER_TEMP/ws1608-output"
+            echo "WORK_DIR=$RUNNER_TEMP/ws1608-work"
+            echo "VALIDATION_REPORT=$RUNNER_TEMP/ws1608-output/validation-report.json"
+            echo "VALIDATION_REPORT_NAME=validation-report.json"
+            echo "IMAGE_NAME=One-KVM_${IMAGE_STEM}_${BASE_FLAVOR}.burn.img"
+          } >> "$GITHUB_ENV"
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7
         with:
           go-version: "1.24.x"
           cache: false
@@ -67,92 +100,123 @@ jobs:
         run: |
           df -h "$RUNNER_TEMP"
           sudo apt-get update
-          sudo apt-get install -y e2fsprogs file jq qemu-user-static xz-utils
-      - name: Build AmlImg tool
+          sudo apt-get install -y e2fsprogs file qemu-user-static xz-utils
+      - name: Build pinned AmlImg tool
         env:
           TOOLS_DIR: ${{ runner.temp }}/ws1608-tools
         run: echo "AMLIMG_BIN=$(./scripts/build-tools.sh)" >> "$GITHUB_ENV"
-      - name: Download and verify inputs
+      - name: Download and verify immutable inputs
         run: |
           source config/base.env
           curl --fail --location --retry 5 "$BASE_IMAGE_URL" -o "$RUNNER_TEMP/$BASE_IMAGE_NAME"
           echo "$BASE_IMAGE_SHA256  $RUNNER_TEMP/$BASE_IMAGE_NAME" | sha256sum --check
           echo "BASE_IMAGE_XZ=$RUNNER_TEMP/$BASE_IMAGE_NAME" >> "$GITHUB_ENV"
           curl --fail --location --retry 5 "$PACKAGE_URL" -o "$RUNNER_TEMP/one-kvm.deb"
-          actual_package_digest=$(sha256sum "$RUNNER_TEMP/one-kvm.deb" | awk '{print $1}')
-          if [[ -n "$PACKAGE_DIGEST" ]]; then
-            echo "$PACKAGE_DIGEST  $RUNNER_TEMP/one-kvm.deb" | sha256sum --check
-          else
-            PACKAGE_DIGEST=$actual_package_digest
-          fi
-          echo "PACKAGE_DIGEST=$PACKAGE_DIGEST" >> "$GITHUB_ENV"
+          echo "$PACKAGE_DIGEST  $RUNNER_TEMP/one-kvm.deb" | sha256sum --check
           test "$(dpkg-deb -f "$RUNNER_TEMP/one-kvm.deb" Package)" = one-kvm
           test "$(dpkg-deb -f "$RUNNER_TEMP/one-kvm.deb" Version)" = "$ONE_KVM_VERSION"
           test "$(dpkg-deb -f "$RUNNER_TEMP/one-kvm.deb" Architecture)" = armhf
+          echo "ONE_KVM_DEB=$RUNNER_TEMP/one-kvm.deb" >> "$GITHUB_ENV"
       - name: Build burn image
-        env:
-          ONE_KVM_DEB: ${{ runner.temp }}/one-kvm.deb
-          OUTPUT_DIR: ${{ runner.temp }}/ws1608-output
-          WORK_DIR: ${{ runner.temp }}/ws1608-work
         run: ./scripts/build-image.sh
-      - name: Verify burn image
-        env:
-          IMAGE: ${{ runner.temp }}/ws1608-output/One-KVM_${{ needs.discover.outputs.one_kvm_version }}_Onecloud_trixie_6.12.28_HDMI-test.burn.img
-          BASE_IMAGE: ${{ runner.temp }}/ws1608-work/base.burn.img
-          VERIFY_DIR: ${{ runner.temp }}/ws1608-verify
-        run: ./scripts/verify-image.sh
-      - name: Compress and write manifest
-        env:
-          OUTPUT_DIR: ${{ runner.temp }}/ws1608-output
-          IMAGE_NAME: One-KVM_${{ needs.discover.outputs.one_kvm_version }}_Onecloud_trixie_6.12.28_HDMI-test.burn.img
+      - name: Verify burn image independently
         run: |
-          xz -T0 -9e -c "$OUTPUT_DIR/$IMAGE_NAME" > "$OUTPUT_DIR/$IMAGE_NAME.xz"
-          (cd "$OUTPUT_DIR" && sha256sum "$IMAGE_NAME" "$IMAGE_NAME.xz" > SHA256SUMS)
-          jq --arg package_url "$PACKAGE_URL" \
-             --arg package_sha256 "$PACKAGE_DIGEST" \
-             --arg base_sha256 "$(source config/base.env; echo "$BASE_IMAGE_SHA256")" \
-             --arg built_at "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
-             '. + {package_url: $package_url, package_sha256: $package_sha256, base_sha256: $base_sha256, built_at: $built_at}' \
-             "$OUTPUT_DIR/manifest.json" > "$RUNNER_TEMP/manifest.json"
-          mv "$RUNNER_TEMP/manifest.json" "$OUTPUT_DIR/manifest.json"
-      - name: Upload workflow artifact
-        uses: actions/upload-artifact@v7
+          IMAGE="$OUTPUT_DIR/$IMAGE_NAME" \
+          BASE_IMAGE="$WORK_DIR/base.burn.img" \
+          VERIFY_DIR="$RUNNER_TEMP/ws1608-verify" \
+          ./scripts/verify-image.sh
+      - name: Package release assets
+        run: ./scripts/package-release.sh
+      - name: Verify packaged release assets
+        run: ./scripts/verify-release-assets.sh
+      - id: upload
+        name: Upload verified workflow artifact
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with:
-          name: ws1608-one-kvm-${{ needs.discover.outputs.release_tag }}
+          name: ${{ needs.discover.outputs.build_tag }}
           path: ${{ runner.temp }}/ws1608-output
           if-no-files-found: error
           retention-days: 14
-      - name: Publish GitHub Release
+          compression-level: 0
+
+  release:
+    name: Publish verified immutable Release
+    needs: [discover, build]
+    if: >-
+      needs.build.result == 'success' &&
+      github.event_name != 'pull_request' &&
+      (github.event_name != 'workflow_dispatch' || inputs.publish)
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    env:
+      GH_TOKEN: ${{ github.token }}
+      ONE_KVM_VERSION: ${{ needs.discover.outputs.one_kvm_version }}
+      UPSTREAM_TAG: ${{ needs.discover.outputs.release_tag }}
+      PACKAGE_URL: ${{ needs.discover.outputs.package_url }}
+      PACKAGE_DIGEST: ${{ needs.discover.outputs.package_digest }}
+      BUILD_TAG: ${{ needs.discover.outputs.build_tag }}
+      BUILD_NUMBER: ${{ needs.discover.outputs.build_number }}
+      BUILD_REVISION: ${{ needs.discover.outputs.build_revision }}
+      IMAGE_STEM: ${{ needs.discover.outputs.image_stem }}
+      BUILDER_COMMIT: ${{ github.sha }}
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7
+        with:
+          persist-credentials: false
+      - name: Set release paths
+        run: |
+          source config/base.env
+          {
+            echo "OUTPUT_DIR=$RUNNER_TEMP/ws1608-release"
+            echo "VALIDATION_REPORT_NAME=validation-report.json"
+            echo "IMAGE_NAME=One-KVM_${IMAGE_STEM}_${BASE_FLAVOR}.burn.img"
+          } >> "$GITHUB_ENV"
+      - name: Download verified workflow artifact
+        uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7
+        with:
+          name: ${{ needs.discover.outputs.build_tag }}
+          path: ${{ runner.temp }}/ws1608-release
+      - name: Reverify downloaded release assets
+        run: ./scripts/verify-release-assets.sh
+      - name: Publish draft after all assets upload
         run: |
           cat > "$RUNNER_TEMP/release-notes.md" <<EOF
-          ## WS1608 One-KVM $ONE_KVM_VERSION
+          ## WS1608 One-KVM Rust $ONE_KVM_VERSION
 
           Upstream One-KVM release: [$UPSTREAM_TAG](https://github.com/mofeng-git/One-KVM/releases/tag/$UPSTREAM_TAG)
 
-          Base: Armbian 26.8 Trixie, kernel 6.12.28-current-meson, OneCloud/WS1608 HDMI-test image.
+          Build: $BUILD_REVISION. Base: Armbian 26.8 Trixie, kernel 6.12.28-current-meson, OneCloud/WS1608 HDMI-test image.
 
-          CI validation covers Amlogic container CRC and VERIFY SHA1, immutable boot partition comparison, armhf Deb metadata, systemd units, OTG files, and ext4 consistency. GitHub-hosted CI cannot flash a physical WS1608; hardware boot status is therefore not inferred from this job.
+          CI validation covers the Amlogic container, partition VERIFY values, unchanged boot data, ext4, armhf package metadata, systemd, OTG integration, compressed-image round-trip, manifest, and every published SHA-256. GitHub-hosted CI cannot flash a physical WS1608, so this is not a hardware boot result.
+
+          one_kvm_version=$ONE_KVM_VERSION
+          one_kvm_release=$UPSTREAM_TAG
+          package_sha256=$PACKAGE_DIGEST
+          build_number=$BUILD_NUMBER
+          build_tag=$BUILD_TAG
+          builder_commit=$BUILDER_COMMIT
           EOF
           assets=(
-            "$RUNNER_TEMP/ws1608-output/One-KVM_${ONE_KVM_VERSION}_Onecloud_trixie_6.12.28_HDMI-test.burn.img" \
-            "$RUNNER_TEMP/ws1608-output/One-KVM_${ONE_KVM_VERSION}_Onecloud_trixie_6.12.28_HDMI-test.burn.img.xz" \
-            "$RUNNER_TEMP/ws1608-output/SHA256SUMS" \
-            "$RUNNER_TEMP/ws1608-output/manifest.json"
+            "$OUTPUT_DIR/$IMAGE_NAME"
+            "$OUTPUT_DIR/$IMAGE_NAME.xz"
+            "$OUTPUT_DIR/SHA256SUMS"
+            "$OUTPUT_DIR/manifest.json"
+            "$OUTPUT_DIR/validation-report.json"
           )
-          if gh release view "$BUILD_TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
-            gh release upload "$BUILD_TAG" --repo "$GITHUB_REPOSITORY" --clobber "${assets[@]}"
-            gh release edit "$BUILD_TAG" --repo "$GITHUB_REPOSITORY" \
-              --title "WS1608 One-KVM $ONE_KVM_VERSION ($UPSTREAM_TAG)" \
-              --notes-file "$RUNNER_TEMP/release-notes.md" --latest
-          else
-            gh release create "$BUILD_TAG" --repo "$GITHUB_REPOSITORY" \
-              --title "WS1608 One-KVM $ONE_KVM_VERSION ($UPSTREAM_TAG)" \
-              --notes-file "$RUNNER_TEMP/release-notes.md" --latest "${assets[@]}"
-          fi
+          gh release create "$BUILD_TAG" \
+            --repo "$GITHUB_REPOSITORY" \
+            --target "$BUILDER_COMMIT" \
+            --title "WS1608 One-KVM Rust $ONE_KVM_VERSION ($UPSTREAM_TAG, $BUILD_REVISION)" \
+            --notes-file "$RUNNER_TEMP/release-notes.md" \
+            --draft \
+            "${assets[@]}"
+          gh release edit "$BUILD_TAG" --repo "$GITHUB_REPOSITORY" --draft=false --latest
+
   skipped:
-    name: No new One-KVM release
+    name: No new One-KVM input
     needs: discover
     if: needs.discover.outputs.changed != 'true'
     runs-on: ubuntu-24.04
     steps:
-      - run: echo "One-KVM ${{ needs.discover.outputs.release_tag }} is already published; no image build was started."
+      - run: echo "One-KVM ${{ needs.discover.outputs.release_tag }} with this Deb digest is already published; no image build was started."
