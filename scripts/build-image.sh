@@ -7,6 +7,9 @@ ONE_KVM_DEB=${ONE_KVM_DEB:?ONE_KVM_DEB is required}
 AMLIMG_BIN=${AMLIMG_BIN:?AMLIMG_BIN is required}
 ONE_KVM_VERSION=${ONE_KVM_VERSION:?ONE_KVM_VERSION is required}
 UPSTREAM_TAG=${UPSTREAM_TAG:?UPSTREAM_TAG is required}
+BUILD_STAMP=${BUILD_STAMP:?BUILD_STAMP is required}
+BUILD_TAG=${BUILD_TAG:?BUILD_TAG is required}
+IMAGE_NAME=${IMAGE_NAME:?IMAGE_NAME is required}
 OUTPUT_DIR=${OUTPUT_DIR:-$ROOT_DIR/out}
 WORK_DIR=${WORK_DIR:-$ROOT_DIR/.build}
 
@@ -17,7 +20,7 @@ ROOTFS_RAW="$WORK_DIR/rootfs.raw"
 ROUNDTRIP_RAW="$WORK_DIR/rootfs.roundtrip.raw"
 MOUNT_DIR="$WORK_DIR/rootfs.mnt"
 RESOLV_BACKUP="$WORK_DIR/resolv.conf.backup"
-OUTPUT_IMAGE="$OUTPUT_DIR/One-KVM_${ONE_KVM_VERSION}_Onecloud_trixie_6.12.28_HDMI-test.burn.img"
+OUTPUT_IMAGE="$OUTPUT_DIR/$IMAGE_NAME"
 
 as_root() {
   if [[ ${EUID:-$(id -u)} -eq 0 ]]; then
@@ -31,9 +34,19 @@ require_command() {
   command -v "$1" >/dev/null || { echo "missing command: $1" >&2; exit 1; }
 }
 
-for command in xz node sha1sum sha256sum e2fsck mount umount mountpoint chroot; do
+for command in xz node jq sha1sum sha256sum e2fsck mount umount mountpoint chroot; do
   require_command "$command"
 done
+identity_json=$(node "$ROOT_DIR/scripts/lib/release-identity.mjs" \
+  "$ONE_KVM_VERSION" "$UPSTREAM_TAG" "$BUILD_STAMP")
+[[ "$IMAGE_NAME" == "$(jq -er '.imageName' <<<"$identity_json")" ]] || {
+  echo "IMAGE_NAME does not match the release identity: $IMAGE_NAME" >&2
+  exit 1
+}
+[[ "$BUILD_TAG" == "$(jq -er '.buildTag' <<<"$identity_json")" ]] || {
+  echo "BUILD_TAG does not match the release identity: $BUILD_TAG" >&2
+  exit 1
+}
 [[ -x "$AMLIMG_BIN" ]] || { echo "AmlImg binary is not executable: $AMLIMG_BIN" >&2; exit 1; }
 [[ -f "$BASE_IMAGE_XZ" ]] || { echo "base image not found: $BASE_IMAGE_XZ" >&2; exit 1; }
 [[ -f "$ONE_KVM_DEB" ]] || { echo "One-KVM package not found: $ONE_KVM_DEB" >&2; exit 1; }
@@ -129,6 +142,8 @@ test -f "$MOUNT_DIR/etc/systemd/system/one-kvm.service.d/otg.conf"
 as_root tee "$MOUNT_DIR/etc/ws1608-one-kvm-release" >/dev/null <<EOF
 one_kvm_version=$ONE_KVM_VERSION
 one_kvm_release=$UPSTREAM_TAG
+build_tag=$BUILD_TAG
+build_stamp_utc=$BUILD_STAMP
 base=Armbian_26.8.0-trunk.413_Onecloud_trixie_6.12.28_HDMI-test
 kernel=6.12.28-current-meson
 board=ws1608
@@ -151,16 +166,18 @@ printf 'sha1sum %s' "$rootfs_sha1" > "$PACKAGE_DIR/$rootfs_verify"
 echo "Repacking Amlogic container"
 rm -f "$OUTPUT_IMAGE"
 "$AMLIMG_BIN" pack "$OUTPUT_IMAGE" "$PACKAGE_DIR"
-sha256sum "$OUTPUT_IMAGE" > "$OUTPUT_IMAGE.sha256"
+image_sha256=$(sha256sum "$OUTPUT_IMAGE" | awk '{print $1}')
 cat > "$OUTPUT_DIR/manifest.json" <<EOF
 {
   "board": "WS1608 / OneCloud",
   "base": "Armbian_26.8.0-trunk.413_Onecloud_trixie_6.12.28_HDMI-test",
   "kernel": "6.12.28-current-meson",
+  "build_tag": "$BUILD_TAG",
+  "build_stamp": "$BUILD_STAMP",
   "one_kvm_version": "$ONE_KVM_VERSION",
   "one_kvm_release": "$UPSTREAM_TAG",
   "image": "$(basename "$OUTPUT_IMAGE")",
-  "image_sha256": "$(cut -d' ' -f1 "$OUTPUT_IMAGE.sha256")"
+  "image_sha256": "$image_sha256"
 }
 EOF
 rm -f "$ROOTFS_RAW"

@@ -28,6 +28,10 @@ jobs:
       changed: ${{ steps.release.outputs.changed }}
       release_tag: ${{ steps.release.outputs.release_tag }}
       build_tag: ${{ steps.release.outputs.build_tag }}
+      build_stamp: ${{ steps.release.outputs.build_stamp }}
+      image_stem: ${{ steps.release.outputs.image_stem }}
+      image_name: ${{ steps.release.outputs.image_name }}
+      existing_build_tag: ${{ steps.release.outputs.existing_build_tag }}
       one_kvm_version: ${{ steps.release.outputs.one_kvm_version }}
       package_name: ${{ steps.release.outputs.package_name }}
       package_url: ${{ steps.release.outputs.package_url }}
@@ -49,7 +53,7 @@ jobs:
     needs: discover
     if: needs.discover.outputs.changed == 'true'
     runs-on: ubuntu-24.04
-    timeout-minutes: 60
+    timeout-minutes: 90
     env:
       GH_TOKEN: ${{ github.token }}
       ONE_KVM_VERSION: ${{ needs.discover.outputs.one_kvm_version }}
@@ -57,17 +61,34 @@ jobs:
       PACKAGE_URL: ${{ needs.discover.outputs.package_url }}
       PACKAGE_DIGEST: ${{ needs.discover.outputs.package_digest }}
       BUILD_TAG: ${{ needs.discover.outputs.build_tag }}
+      BUILD_STAMP: ${{ needs.discover.outputs.build_stamp }}
+      IMAGE_NAME: ${{ needs.discover.outputs.image_name }}
+      BUILDER_COMMIT: ${{ github.sha }}
+      GITHUB_RUN_ID_VALUE: ${{ github.run_id }}
+      GITHUB_RUN_ATTEMPT_VALUE: ${{ github.run_attempt }}
     steps:
       - uses: actions/checkout@v7
+      - name: Set complete build time
+        run: echo "BUILD_AT=$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> "$GITHUB_ENV"
       - uses: actions/setup-go@v7
         with:
           go-version: "1.24.x"
           cache: false
+      - name: Check immutable build tag is available
+        run: |
+          if gh release view "$BUILD_TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            echo "build tag already has a Release: $BUILD_TAG" >&2
+            exit 1
+          fi
+          if gh api "repos/$GITHUB_REPOSITORY/git/ref/tags/$BUILD_TAG" >/dev/null 2>&1; then
+            echo "build tag already exists: $BUILD_TAG" >&2
+            exit 1
+          fi
       - name: Install image build dependencies
         run: |
           df -h "$RUNNER_TEMP"
           sudo apt-get update
-          sudo apt-get install -y e2fsprogs file jq qemu-user-static xz-utils
+          sudo apt-get install -y binutils e2fsprogs file jq qemu-user-static xz-utils
       - name: Build AmlImg tool
         env:
           TOOLS_DIR: ${{ runner.temp }}/ws1608-tools
@@ -78,6 +99,11 @@ jobs:
           curl --fail --location --retry 5 "$BASE_IMAGE_URL" -o "$RUNNER_TEMP/$BASE_IMAGE_NAME"
           echo "$BASE_IMAGE_SHA256  $RUNNER_TEMP/$BASE_IMAGE_NAME" | sha256sum --check
           echo "BASE_IMAGE_XZ=$RUNNER_TEMP/$BASE_IMAGE_NAME" >> "$GITHUB_ENV"
+          echo "BASE_IMAGE_URL=$BASE_IMAGE_URL" >> "$GITHUB_ENV"
+          echo "BASE_IMAGE_SHA256=$BASE_IMAGE_SHA256" >> "$GITHUB_ENV"
+          source config/tool-versions.env
+          echo "AMLIMG_REPOSITORY=$AMLIMG_REPOSITORY" >> "$GITHUB_ENV"
+          echo "AMLIMG_COMMIT=$AMLIMG_COMMIT" >> "$GITHUB_ENV"
           curl --fail --location --retry 5 "$PACKAGE_URL" -o "$RUNNER_TEMP/one-kvm.deb"
           actual_package_digest=$(sha256sum "$RUNNER_TEMP/one-kvm.deb" | awk '{print $1}')
           if [[ -n "$PACKAGE_DIGEST" ]]; then
@@ -94,61 +120,103 @@ jobs:
           ONE_KVM_DEB: ${{ runner.temp }}/one-kvm.deb
           OUTPUT_DIR: ${{ runner.temp }}/ws1608-output
           WORK_DIR: ${{ runner.temp }}/ws1608-work
+          BUILD_TAG: ${{ needs.discover.outputs.build_tag }}
+          BUILD_STAMP: ${{ needs.discover.outputs.build_stamp }}
+          IMAGE_NAME: ${{ needs.discover.outputs.image_name }}
         run: ./scripts/build-image.sh
       - name: Verify burn image
         env:
-          IMAGE: ${{ runner.temp }}/ws1608-output/One-KVM_${{ needs.discover.outputs.one_kvm_version }}_Onecloud_trixie_6.12.28_HDMI-test.burn.img
+          IMAGE: ${{ runner.temp }}/ws1608-output/${{ needs.discover.outputs.image_name }}
           BASE_IMAGE: ${{ runner.temp }}/ws1608-work/base.burn.img
           VERIFY_DIR: ${{ runner.temp }}/ws1608-verify
         run: ./scripts/verify-image.sh
       - name: Compress and write manifest
         env:
           OUTPUT_DIR: ${{ runner.temp }}/ws1608-output
-          IMAGE_NAME: One-KVM_${{ needs.discover.outputs.one_kvm_version }}_Onecloud_trixie_6.12.28_HDMI-test.burn.img
+          IMAGE_NAME: ${{ needs.discover.outputs.image_name }}
         run: |
           xz -T0 -9e -c "$OUTPUT_DIR/$IMAGE_NAME" > "$OUTPUT_DIR/$IMAGE_NAME.xz"
           (cd "$OUTPUT_DIR" && sha256sum "$IMAGE_NAME" "$IMAGE_NAME.xz" > SHA256SUMS)
           jq --arg package_url "$PACKAGE_URL" \
              --arg package_sha256 "$PACKAGE_DIGEST" \
-             --arg base_sha256 "$(source config/base.env; echo "$BASE_IMAGE_SHA256")" \
-             --arg built_at "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
-             '. + {package_url: $package_url, package_sha256: $package_sha256, base_sha256: $base_sha256, built_at: $built_at}' \
+             --arg base_image_url "$BASE_IMAGE_URL" \
+             --arg base_sha256 "$BASE_IMAGE_SHA256" \
+             --arg image_xz "$IMAGE_NAME.xz" \
+             --arg image_xz_sha256 "$(sha256sum "$OUTPUT_DIR/$IMAGE_NAME.xz" | awk '{print $1}')" \
+             --arg built_at "$BUILD_AT" \
+             --arg builder_commit "$BUILDER_COMMIT" \
+             --arg github_run_id "$GITHUB_RUN_ID_VALUE" \
+             --arg github_run_attempt "$GITHUB_RUN_ATTEMPT_VALUE" \
+             --arg amlimg_repository "$AMLIMG_REPOSITORY" \
+             --arg amlimg_commit "$AMLIMG_COMMIT" \
+             '. + {package_url: $package_url, package_sha256: $package_sha256, base_image_url: $base_image_url, base_sha256: $base_sha256, image_xz: $image_xz, image_xz_sha256: $image_xz_sha256, built_at: $built_at, builder_commit: $builder_commit, github_run_id: $github_run_id, github_run_attempt: $github_run_attempt, amlimg_repository: $amlimg_repository, amlimg_commit: $amlimg_commit}' \
              "$OUTPUT_DIR/manifest.json" > "$RUNNER_TEMP/manifest.json"
           mv "$RUNNER_TEMP/manifest.json" "$OUTPUT_DIR/manifest.json"
+          expected_manifest=$(jq -cn \
+            --arg board "WS1608 / OneCloud" \
+            --arg base "Armbian_26.8.0-trunk.413_Onecloud_trixie_6.12.28_HDMI-test" \
+            --arg kernel "6.12.28-current-meson" \
+            --arg build_tag "$BUILD_TAG" \
+            --arg build_stamp "$BUILD_STAMP" \
+            --arg one_kvm_version "$ONE_KVM_VERSION" \
+            --arg one_kvm_release "$UPSTREAM_TAG" \
+            --arg package_url "$PACKAGE_URL" \
+            --arg package_sha256 "$PACKAGE_DIGEST" \
+            --arg base_image_url "$BASE_IMAGE_URL" \
+            --arg base_sha256 "$BASE_IMAGE_SHA256" \
+            --arg built_at "$BUILD_AT" \
+            --arg builder_commit "$BUILDER_COMMIT" \
+            --arg github_run_id "$GITHUB_RUN_ID_VALUE" \
+            --arg github_run_attempt "$GITHUB_RUN_ATTEMPT_VALUE" \
+            --arg amlimg_repository "$AMLIMG_REPOSITORY" \
+            --arg amlimg_commit "$AMLIMG_COMMIT" \
+            '{board: $board, base: $base, kernel: $kernel, build_tag: $build_tag, build_stamp: $build_stamp, one_kvm_version: $one_kvm_version, one_kvm_release: $one_kvm_release, package_url: $package_url, package_sha256: $package_sha256, base_image_url: $base_image_url, base_sha256: $base_sha256, built_at: $built_at, builder_commit: $builder_commit, github_run_id: $github_run_id, github_run_attempt: $github_run_attempt, amlimg_repository: $amlimg_repository, amlimg_commit: $amlimg_commit}')
+          echo "EXPECTED_MANIFEST_JSON=$expected_manifest" >> "$GITHUB_ENV"
+      - name: Verify packaged artifact
+        env:
+          OUTPUT_DIR: ${{ runner.temp }}/ws1608-output
+          IMAGE_NAME: ${{ needs.discover.outputs.image_name }}
+        run: node scripts/verify-artifacts.mjs "$OUTPUT_DIR" "$IMAGE_NAME" "$EXPECTED_MANIFEST_JSON"
       - name: Upload workflow artifact
         uses: actions/upload-artifact@v7
         with:
-          name: ws1608-one-kvm-${{ needs.discover.outputs.release_tag }}
+          name: ${{ needs.discover.outputs.build_tag }}
           path: ${{ runner.temp }}/ws1608-output
           if-no-files-found: error
           retention-days: 14
-      - name: Publish GitHub Release
+      - name: Download artifact for independent verification
+        uses: actions/download-artifact@v7
+        with:
+          name: ${{ needs.discover.outputs.build_tag }}
+          path: ${{ runner.temp }}/ws1608-downloaded
+      - name: Verify downloaded artifact
+        env:
+          ARTIFACT_DIR: ${{ runner.temp }}/ws1608-downloaded
+          IMAGE_NAME: ${{ needs.discover.outputs.image_name }}
+        run: node scripts/verify-artifacts.mjs "$ARTIFACT_DIR" "$IMAGE_NAME" "$EXPECTED_MANIFEST_JSON"
+      - name: Re-verify downloaded burn image
+        env:
+          IMAGE: ${{ runner.temp }}/ws1608-downloaded/${{ needs.discover.outputs.image_name }}
+          BASE_IMAGE: ${{ runner.temp }}/ws1608-work/base.burn.img
+          VERIFY_DIR: ${{ runner.temp }}/ws1608-downloaded-verify
+        run: ./scripts/verify-image.sh
+      - name: Publish verified GitHub Release
+        env:
+          ARTIFACT_DIR: ${{ runner.temp }}/ws1608-downloaded
+          RELEASE_NOTES_FILE: ${{ runner.temp }}/release-notes.md
         run: |
-          cat > "$RUNNER_TEMP/release-notes.md" <<EOF
+          cat > "$RELEASE_NOTES_FILE" <<EOF
           ## WS1608 One-KVM $ONE_KVM_VERSION
 
           Upstream One-KVM release: [$UPSTREAM_TAG](https://github.com/mofeng-git/One-KVM/releases/tag/$UPSTREAM_TAG)
 
+          Build tag: $BUILD_TAG
+
           Base: Armbian 26.8 Trixie, kernel 6.12.28-current-meson, OneCloud/WS1608 HDMI-test image.
 
-          CI validation covers Amlogic container CRC and VERIFY SHA1, immutable boot partition comparison, armhf Deb metadata, systemd units, OTG files, and ext4 consistency. GitHub-hosted CI cannot flash a physical WS1608; hardware boot status is therefore not inferred from this job.
+          CI gates cover input digests, Amlogic container CRC and VERIFY SHA1, immutable boot partition comparison, armhf Deb metadata, rootfs consistency, systemd/OTG files, artifact round-trip, and remote GitHub asset digests. GitHub-hosted CI cannot flash a physical WS1608; hardware boot status is not inferred from this job.
           EOF
-          assets=(
-            "$RUNNER_TEMP/ws1608-output/One-KVM_${ONE_KVM_VERSION}_Onecloud_trixie_6.12.28_HDMI-test.burn.img" \
-            "$RUNNER_TEMP/ws1608-output/One-KVM_${ONE_KVM_VERSION}_Onecloud_trixie_6.12.28_HDMI-test.burn.img.xz" \
-            "$RUNNER_TEMP/ws1608-output/SHA256SUMS" \
-            "$RUNNER_TEMP/ws1608-output/manifest.json"
-          )
-          if gh release view "$BUILD_TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
-            gh release upload "$BUILD_TAG" --repo "$GITHUB_REPOSITORY" --clobber "${assets[@]}"
-            gh release edit "$BUILD_TAG" --repo "$GITHUB_REPOSITORY" \
-              --title "WS1608 One-KVM $ONE_KVM_VERSION ($UPSTREAM_TAG)" \
-              --notes-file "$RUNNER_TEMP/release-notes.md" --latest
-          else
-            gh release create "$BUILD_TAG" --repo "$GITHUB_REPOSITORY" \
-              --title "WS1608 One-KVM $ONE_KVM_VERSION ($UPSTREAM_TAG)" \
-              --notes-file "$RUNNER_TEMP/release-notes.md" --latest "${assets[@]}"
-          fi
+          ./scripts/publish-release.sh
   skipped:
     name: No new One-KVM release
     needs: discover
