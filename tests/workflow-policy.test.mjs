@@ -10,6 +10,7 @@ test('checks upstream once every seven days and validates pull requests', () => 
   assert.match(workflow, /cron: "17 2 \* \* 0"/);
   assert.match(workflow, /^  pull_request:/m);
   assert.match(workflow, /^      publish:/m);
+  assert.match(workflow, /^      prerelease:/m);
   assert.match(workflow, /github\.event_name == 'pull_request'/);
 });
 
@@ -26,7 +27,9 @@ test('uses read-only permission until the isolated release job', () => {
   assert.match(workflow, /needs: \[discover, build\]/);
   assert.match(workflow, /github\.event_name != 'pull_request'/);
   assert.match(workflow, /github\.ref == format\('refs\/heads\/\{0\}', github\.event\.repository\.default_branch\)/);
+  assert.match(workflow, /github\.event_name == 'workflow_dispatch' && inputs\.prerelease/);
   assert.match(workflow, /inputs\.publish/);
+  assert.match(workflow, /RELEASE_PRERELEASE: \$\{\{ github\.event_name == 'workflow_dispatch' && inputs\.prerelease \}\}/);
 });
 
 test('runs every image and release-asset gate before artifact upload', () => {

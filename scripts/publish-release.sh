@@ -12,6 +12,7 @@ IMAGE_NAME=${IMAGE_NAME:?IMAGE_NAME is required}
 ARTIFACT_DIR=${ARTIFACT_DIR:?ARTIFACT_DIR is required}
 RELEASE_NOTES_FILE=${RELEASE_NOTES_FILE:?RELEASE_NOTES_FILE is required}
 GITHUB_REPOSITORY=${GITHUB_REPOSITORY:?GITHUB_REPOSITORY is required}
+RELEASE_PRERELEASE=${RELEASE_PRERELEASE:-false}
 
 for command in awk cp gh grep jq mktemp sha256sum; do
   command -v "$command" >/dev/null || { echo "missing command: $command" >&2; exit 1; }
@@ -22,6 +23,10 @@ done
 }
 [[ "$BUILDER_COMMIT" =~ ^[0-9a-f]{40}$ ]] || { echo 'invalid builder commit' >&2; exit 1; }
 [[ "$PACKAGE_DIGEST" =~ ^[0-9a-f]{64}$ ]] || { echo 'invalid package digest' >&2; exit 1; }
+[[ "$RELEASE_PRERELEASE" == true || "$RELEASE_PRERELEASE" == false ]] || {
+  echo 'RELEASE_PRERELEASE must be true or false' >&2
+  exit 1
+}
 [[ -d "$ARTIFACT_DIR" && ! -L "$ARTIFACT_DIR" ]] || { echo 'invalid artifact directory' >&2; exit 1; }
 [[ -f "$RELEASE_NOTES_FILE" && ! -L "$RELEASE_NOTES_FILE" ]] || { echo 'invalid release notes file' >&2; exit 1; }
 
@@ -111,7 +116,7 @@ release_json=$(gh api --method POST "repos/$GITHUB_REPOSITORY/releases" \
   --raw-field "name=$release_title" \
   --raw-field "body=$(<"$notes_file")" \
   -F draft=true \
-  -F prerelease=false)
+  -F prerelease="$RELEASE_PRERELEASE")
 release_created=true
 release_id=$(jq -er '.id' <<<"$release_json")
 gh release upload "$BUILD_TAG" --repo "$GITHUB_REPOSITORY" "${assets[@]}"
@@ -122,7 +127,7 @@ verify_remote_assets() {
     --json tagName,isDraft,isPrerelease,assets,body)
   [[ $(jq -r '.tagName' <<<"$release") == "$BUILD_TAG" ]]
   [[ $(jq -r '.isDraft' <<<"$release") == "$expected_draft" ]]
-  [[ $(jq -r '.isPrerelease' <<<"$release") == false ]]
+  [[ $(jq -r '.isPrerelease' <<<"$release") == "$RELEASE_PRERELEASE" ]]
   [[ $(jq '.assets | length' <<<"$release") -eq ${#assets[@]} ]]
   local body
   body=$(jq -r '.body // ""' <<<"$release")
@@ -169,7 +174,7 @@ verify_remote_assets() {
 
 verify_remote_assets true
 gh api --method PATCH "repos/$GITHUB_REPOSITORY/releases/$release_id" \
-  -F draft=false -F prerelease=false >/dev/null
+  -F draft=false -F prerelease="$RELEASE_PRERELEASE" >/dev/null
 verify_remote_assets false
 tag_commit=$(gh api "repos/$GITHUB_REPOSITORY/git/ref/tags/$BUILD_TAG" | jq -er '.object.sha')
 [[ "$tag_commit" == "$BUILDER_COMMIT" ]] || { echo 'published tag changed commit' >&2; exit 1; }
