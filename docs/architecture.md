@@ -2,7 +2,7 @@
 
 ## 目标
 
-仓库把一个已经在 OneCloud/WS1608 上启动验证过的 Amlogic 直刷包，转换成带 One-KVM Rust 的新直刷包。启动链、内核、设备树、HDMI 配置和 Amlogic 容器结构保持来自固定基础资产；自动变化的主要内容是 rootfs 内的 One-KVM 包、WS1608 OTG 配置和可追溯的构建 metadata。
+仓库把一个经过静态检查的 Amlogic 直刷包，转换成带 One-KVM Rust 的新直刷包。启动链、内核、设备树、HDMI 配置和 Amlogic 容器结构来自固定基础资产；自动变化的主要内容是 rootfs 内的 One-KVM 包、WS1608 OTG 配置和可追溯的构建 metadata。实体 HDMI 仍需单独验收。
 
 ## 稳定通道决策
 

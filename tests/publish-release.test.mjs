@@ -23,6 +23,7 @@ function setup({
   failUpload = false,
   bodyMismatch = false,
   duplicateBody = false,
+  prerelease = false,
 } = {}) {
   const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'ws1608-publish-'));
   const bin = path.join(directory, 'bin');
@@ -71,7 +72,7 @@ function setup({
   const baseRelease = {
     tagName: buildTag,
     isDraft: true,
-    isPrerelease: false,
+    isPrerelease: prerelease,
     assets: remoteAssets,
     body,
   };
@@ -173,6 +174,7 @@ esac
       EXISTING_TAG: String(existingTag),
       FAIL_RELEASE_CREATE: String(failCreate),
       FAIL_UPLOAD: String(failUpload),
+      RELEASE_PRERELEASE: String(prerelease),
     },
   };
 }
@@ -201,6 +203,14 @@ test('publishes exactly five verified assets from an atomically reserved tag', (
   assert.match(result.log, /validation-report\.json/);
   assert.match(result.log, /api --method PATCH repos\/wuhao1477\/ws1608-one-kvm-builder\/releases\/101/);
   assert.doesNotMatch(result.log, /--clobber|--latest| --method DELETE /);
+  assert.match(result.log, /-F prerelease=false/);
+});
+
+test('publishes a hardware-validation candidate only when requested', () => {
+  const result = run({ prerelease: true });
+  assert.equal(result.result.status, 0, result.result.stderr);
+  assert.equal(result.state, 'published');
+  assert.match(result.log, /-F prerelease=true/);
 });
 
 test('removes only the created release and tag when remote verification fails', () => {

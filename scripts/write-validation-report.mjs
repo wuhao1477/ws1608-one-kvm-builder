@@ -51,6 +51,7 @@ const report = {
   amlimg_commit: env('AMLIMG_COMMIT'),
   checks: [
     'Amlogic container unpack and CRC',
+    'boot FAT and effective Linux console arguments',
     'Amlogic commands and unchanged non-rootfs partitions',
     'partition VERIFY SHA-1 values',
     'sparse round-trip and ext4 consistency',

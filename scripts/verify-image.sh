@@ -26,7 +26,7 @@ VERIFY_ROOT=${VERIFY_DIR:-$ROOT_DIR/.verify}
 export ONE_KVM_VERSION UPSTREAM_TAG PACKAGE_NAME PACKAGE_URL PACKAGE_DIGEST
 export BUILD_TAG BUILD_NUMBER BUILD_REVISION BUILDER_COMMIT GITHUB_RUN_ID GITHUB_RUN_ATTEMPT GITHUB_RUN_NUMBER
 
-for command in awk cmp diff dpkg-query e2fsck file find grep mount mountpoint node readlink readelf realpath sed sha1sum umount; do
+for command in awk cmp diff dpkg-query e2fsck file find grep mcopy mount mountpoint node readlink readelf realpath sed sha1sum umount; do
   command -v "$command" >/dev/null || { echo "missing command: $command" >&2; exit 1; }
 done
 [[ -x "$AMLIMG_BIN" ]] || { echo "AmlImg binary is not executable: $AMLIMG_BIN" >&2; exit 1; }
@@ -86,9 +86,21 @@ resolve_rootfs_path() {
   printf '%s\n' "$resolved"
 }
 
+verify_boot_console() {
+  local source_dir=$1 label=$2 boot_sparse boot_raw boot_files
+  boot_sparse=$(awk -F: '$1 == "PARTITION" && $2 == "boot" {print $4; exit}' "$source_dir/commands.txt")
+  require_basename "$boot_sparse" boot_partition
+  boot_raw="$VERIFY_WORK_DIR/$label-boot.raw"
+  boot_files="$VERIFY_WORK_DIR/$label-boot-console"
+  node "$ROOT_DIR/scripts/sparse-to-raw.mjs" "$source_dir/$boot_sparse" "$boot_raw"
+  verify "$label boot console" "$ROOT_DIR/scripts/verify-boot-console.sh" "$boot_raw" "$boot_files"
+}
+
 mkdir -p "$FINAL_DIR" "$BASE_DIR" "$MOUNT_DIR"
 "$AMLIMG_BIN" unpack "$IMAGE" "$FINAL_DIR"
 "$AMLIMG_BIN" unpack "$BASE_IMAGE" "$BASE_DIR"
+verify_boot_console "$BASE_DIR" base
+verify_boot_console "$FINAL_DIR" final
 diff -u "$ROOT_DIR/config/commands.expected" "$FINAL_DIR/commands.txt"
 diff -u "$BASE_DIR/commands.txt" "$FINAL_DIR/commands.txt"
 

@@ -10,6 +10,7 @@ test('checks upstream once every seven days and validates pull requests', () => 
   assert.match(workflow, /cron: "17 2 \* \* 0"/);
   assert.match(workflow, /^  pull_request:/m);
   assert.match(workflow, /^      publish:/m);
+  assert.match(workflow, /^      prerelease:/m);
   assert.match(workflow, /github\.event_name == 'pull_request'/);
 });
 
@@ -26,7 +27,9 @@ test('uses read-only permission until the isolated release job', () => {
   assert.match(workflow, /needs: \[discover, build\]/);
   assert.match(workflow, /github\.event_name != 'pull_request'/);
   assert.match(workflow, /github\.ref == format\('refs\/heads\/\{0\}', github\.event\.repository\.default_branch\)/);
+  assert.match(workflow, /github\.event_name == 'workflow_dispatch' && inputs\.prerelease/);
   assert.match(workflow, /inputs\.publish/);
+  assert.match(workflow, /RELEASE_PRERELEASE: \$\{\{ github\.event_name == 'workflow_dispatch' && inputs\.prerelease \}\}/);
 });
 
 test('runs every image and release-asset gate before artifact upload', () => {
@@ -40,6 +43,10 @@ test('runs every image and release-asset gate before artifact upload', () => {
   assert.match(workflow, /Re-verify uploaded burn image/);
 });
 
+test('installs the FAT image tooling required for boot-console validation', () => {
+  assert.match(workflow, /e2fsprogs file jq mtools qemu-user-static/);
+});
+
 test('downloads and reverifies the artifact before immutable publishing', () => {
   assert.match(workflow, /actions\/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131/);
   assert.match(workflow, /^      - name: Reverify downloaded release assets$/m);
@@ -47,6 +54,8 @@ test('downloads and reverifies the artifact before immutable publishing', () => 
   assert.doesNotMatch(workflow, /gh release upload|--clobber/);
   assert.match(workflow, /\.\/scripts\/publish-release\.sh/);
   assert.doesNotMatch(workflow, /gh release create/);
+  const releaseJob = workflow.slice(workflow.indexOf('\n  release:'), workflow.indexOf('\n  skipped:'));
+  assert.match(releaseJob, /echo "BASE_FLAVOR=\$BASE_FLAVOR"/);
 });
 
 test('does not expose a write token to discovery or build jobs', () => {

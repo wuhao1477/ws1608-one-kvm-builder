@@ -27,6 +27,7 @@ test('the image builder requires and embeds immutable build provenance', () => {
   assert.doesNotMatch(buildScript, /mount --bind \/dev/);
   assert.doesNotMatch(buildScript, /mount -t sysfs/);
   assert.match(buildScript, /findmnt/);
+  assert.match(buildScript, /verify-boot-console\.sh/);
   assert.match(buildScript, /cleanup_mounts\(\) \(/);
   assert.match(manifestScript, /build_tag: env\('BUILD_TAG'\)/);
   assert.match(manifestScript, /build_number: Number\(env\('BUILD_NUMBER'\)\)/);
@@ -56,6 +57,8 @@ test('the independent verifier checks exact identity and installed files', () =>
   assert.match(verifyScript, /test ! -e "\$tmp_dir\/one-kvm\.deb"/);
   assert.match(verifyScript, /test ! -e "\$usr_bin_dir\/qemu-arm-static"/);
   assert.match(verifyScript, /write-validation-report\.mjs/);
+  assert.match(verifyScript, /verify-boot-console\.sh/);
+  assert.match(verifyScript, /mcopy/);
   assert.match(verifyScript, /mktemp -d "\$VERIFY_ROOT\/ws1608-verify\.XXXXXX"/);
   assert.match(verifyScript, /cleanup\(\) \(/);
   assert.doesNotMatch(verifyScript, /rm -rf "\$VERIFY_DIR"/);

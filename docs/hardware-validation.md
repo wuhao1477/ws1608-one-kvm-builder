@@ -4,12 +4,13 @@
 
 | 项目 | 状态 | 证据/备注 |
 | --- | --- | --- |
-| 固定 Armbian 基础镜像启动 | 已验证 | WS1608 实机能启动并正常 HDMI 显示 |
-| HDMI 1080p、千兆网络、eMMC | 已验证 | 基础镜像现场测试通过 |
+| `base-20260719` 基础镜像启动 | 失败复现 | U-Boot 后无 Linux console；`armbianEnv.txt` 的引号阻止了 console 参数生成 |
+| `base-20260804-consolefix` 静态启动参数 | 已验证 | boot FAT 检查确认 `console=tty1` 与 `console=ttyAML0,115200n8` |
+| `base-20260804-consolefix` 实体启动/HDMI/网络/eMMC | 待实机验收 | 尚未在目标板重新刷写 |
 | 四核 60 秒负载 | 已验证 | 基础镜像现场测试通过 |
 | HDMI 音频 | 已知问题 | `gx-sound-card` 注册出现 error -22，当前不影响 One-KVM 的 USB 视频/HID目标 |
 | One-KVM `0.2.4` 运行 | 已验证过 | 在已启动系统中安装，systemd active，health API 返回 ok |
-| `ws1608-one-kvm-0.2.4-v260709-b016001` 实体刷写 | 待实机验收 | 完整云构建与发布已通过；GitHub runner 没有 WS1608、USB Burning Tool 或显示器 |
+| 新 consolefix One-KVM Release 实体刷写 | 待实机验收 | 完整云构建与发布通过后仍需目标板复测；GitHub runner 没有 WS1608、USB Burning Tool 或显示器 |
 | USB HDMI 采集卡 | 未验证 | 之前测试时未连接实际采集卡 |
 | 被控机 USB HID | 未验证 | 之前测试时未连接被控机 USB 线 |
 

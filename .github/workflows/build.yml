@@ -22,6 +22,11 @@ on:
         required: false
         default: true
         type: boolean
+      prerelease:
+        description: Publish as a hardware-validation candidate instead of a stable Release
+        required: false
+        default: false
+        type: boolean
   repository_dispatch:
     types: [one-kvm-release]
 
@@ -112,7 +117,7 @@ jobs:
         run: |
           df -h "$RUNNER_TEMP"
           sudo apt-get update
-          sudo apt-get install -y binutils e2fsprogs file jq qemu-user-static util-linux xz-utils
+          sudo apt-get install -y binutils e2fsprogs file jq mtools qemu-user-static util-linux xz-utils
       - name: Build pinned AmlImg tool
         env:
           TOOLS_DIR: ${{ runner.temp }}/ws1608-tools
@@ -171,7 +176,8 @@ jobs:
     if: >-
       needs.build.result == 'success' &&
       github.event_name != 'pull_request' &&
-      github.ref == format('refs/heads/{0}', github.event.repository.default_branch) &&
+      (github.ref == format('refs/heads/{0}', github.event.repository.default_branch) ||
+       (github.event_name == 'workflow_dispatch' && inputs.prerelease)) &&
       (github.event_name != 'workflow_dispatch' || inputs.publish)
     runs-on: ubuntu-24.04
     permissions:
@@ -188,6 +194,7 @@ jobs:
       BUILD_REVISION: ${{ needs.discover.outputs.build_revision }}
       IMAGE_STEM: ${{ needs.discover.outputs.image_stem }}
       BUILDER_COMMIT: ${{ github.sha }}
+      RELEASE_PRERELEASE: ${{ github.event_name == 'workflow_dispatch' && inputs.prerelease }}
     steps:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7
         with:
@@ -207,6 +214,7 @@ jobs:
             echo "BASE_IMAGE_URL=$BASE_IMAGE_URL"
             echo "BASE_IMAGE_SHA256=$BASE_IMAGE_SHA256"
             echo "BASE_ID=$BASE_ID"
+            echo "BASE_FLAVOR=$BASE_FLAVOR"
             echo "BASE_KERNEL=$BASE_KERNEL"
             echo "BASE_BOARD=$BASE_BOARD"
             echo "AMLIMG_REPOSITORY=$AMLIMG_REPOSITORY"
@@ -226,9 +234,9 @@ jobs:
 
           Upstream One-KVM release: [$UPSTREAM_TAG](https://github.com/mofeng-git/One-KVM/releases/tag/$UPSTREAM_TAG)
 
-          Build: $BUILD_REVISION. Base: Armbian 26.8 Trixie, kernel 6.12.28-current-meson, OneCloud/WS1608 HDMI-test image.
+          Build: $BUILD_REVISION. Base: Armbian 26.8 Trixie, kernel 6.12.28-current-meson, $BASE_FLAVOR.
 
-          CI validation covers the Amlogic container, partition VERIFY values, unchanged boot data, ext4, armhf package metadata, ARM loader and runtime libraries, systemd, OTG integration, compressed-image round-trip, manifest, and every published SHA-256. GitHub-hosted CI cannot flash a physical WS1608, so this is not a hardware boot result.
+          CI validation covers the Amlogic container, boot FAT and effective Linux console arguments, partition VERIFY values, unchanged boot data, ext4, armhf package metadata, ARM loader and runtime libraries, systemd, OTG integration, compressed-image round-trip, manifest, and every published SHA-256. GitHub-hosted CI cannot flash a physical WS1608, so this is not a hardware boot result.
           EOF
           ./scripts/publish-release.sh
 
