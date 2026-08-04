@@ -82,6 +82,7 @@ digest() { sha256sum "$1" | awk '{print $1}'; }
 tag_created=false
 release_created=false
 release_id=''
+tag_via_release=false
 cleanup_on_exit() {
   local status=$?
   trap - EXIT
@@ -102,12 +103,23 @@ cleanup_on_exit() {
 }
 trap cleanup_on_exit EXIT
 
-gh api --method POST "repos/$GITHUB_REPOSITORY/git/refs" \
+tag_error=$(mktemp)
+if gh api --method POST "repos/$GITHUB_REPOSITORY/git/refs" \
   --raw-field "ref=refs/tags/$BUILD_TAG" \
-  --raw-field "sha=$BUILDER_COMMIT" >/dev/null
-tag_created=true
-tag_commit=$(gh api "repos/$GITHUB_REPOSITORY/git/ref/tags/$BUILD_TAG" | jq -er '.object.sha')
-[[ "$tag_commit" == "$BUILDER_COMMIT" ]] || { echo 'reserved tag points to the wrong commit' >&2; exit 1; }
+  --raw-field "sha=$BUILDER_COMMIT" >/dev/null 2>"$tag_error"; then
+  tag_created=true
+elif grep -Fq '404' "$tag_error" || grep -Fq 'Not Found' "$tag_error"; then
+  tag_via_release=true
+else
+  cat "$tag_error" >&2
+  rm -f -- "$tag_error"
+  exit 1
+fi
+rm -f -- "$tag_error"
+if [[ "$tag_created" == true ]]; then
+  tag_commit=$(gh api "repos/$GITHUB_REPOSITORY/git/ref/tags/$BUILD_TAG" | jq -er '.object.sha')
+  [[ "$tag_commit" == "$BUILDER_COMMIT" ]] || { echo 'reserved tag points to the wrong commit' >&2; exit 1; }
+fi
 
 release_title="WS1608 One-KVM Rust $ONE_KVM_VERSION ($UPSTREAM_TAG, $BUILD_REVISION)"
 release_json=$(gh api --method POST "repos/$GITHUB_REPOSITORY/releases" \
@@ -119,6 +131,9 @@ release_json=$(gh api --method POST "repos/$GITHUB_REPOSITORY/releases" \
   -F prerelease="$RELEASE_PRERELEASE")
 release_created=true
 release_id=$(jq -er '.id' <<<"$release_json")
+tag_created=true
+tag_commit=$(gh api "repos/$GITHUB_REPOSITORY/git/ref/tags/$BUILD_TAG" | jq -er '.object.sha')
+[[ "$tag_commit" == "$BUILDER_COMMIT" ]] || { echo 'published tag points to the wrong commit' >&2; exit 1; }
 gh release upload "$BUILD_TAG" --repo "$GITHUB_REPOSITORY" "${assets[@]}"
 
 verify_remote_assets() {

@@ -24,6 +24,7 @@ function setup({
   bodyMismatch = false,
   duplicateBody = false,
   prerelease = false,
+  tagRef404 = false,
 } = {}) {
   const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'ws1608-publish-'));
   const bin = path.join(directory, 'bin');
@@ -127,6 +128,7 @@ case "$method:$endpoint" in
     ;;
   POST:*/git/refs)
     [ "$EXISTING_TAG" != true ] || exit 1
+    [ "$TAG_REF_404" != true ] || { echo 'gh: Not Found (HTTP 404)' >&2; exit 1; }
     printf '%s' tag > "$state_file"
     printf '{"object":{"sha":"%s"}}\n' "$BUILDER_COMMIT"
     ;;
@@ -175,6 +177,7 @@ esac
       FAIL_RELEASE_CREATE: String(failCreate),
       FAIL_UPLOAD: String(failUpload),
       RELEASE_PRERELEASE: String(prerelease),
+      TAG_REF_404: String(tagRef404),
     },
   };
 }
@@ -211,6 +214,14 @@ test('publishes a hardware-validation candidate only when requested', () => {
   assert.equal(result.result.status, 0, result.result.stderr);
   assert.equal(result.state, 'published');
   assert.match(result.log, /-F prerelease=true/);
+});
+
+test('falls back to release target when tag ref creation returns 404', () => {
+  const result = run({ tagRef404: true });
+  assert.equal(result.result.status, 0, result.result.stderr);
+  assert.equal(result.state, 'published');
+  assert.match(result.log, /git\/refs/);
+  assert.match(result.log, /releases/);
 });
 
 test('removes only the created release and tag when remote verification fails', () => {
