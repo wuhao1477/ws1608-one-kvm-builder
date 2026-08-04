@@ -2,15 +2,15 @@
 
 ## 当前稳定基础
 
-稳定构建使用：
+当前候选构建使用：
 
 ```text
-Armbian_26.8.0-trunk.413_Onecloud_trixie_6.12.28_HDMI-test.burn.img
+Armbian_26.8.0-trunk.413_Onecloud_trixie_6.12.28_HDMI-consolefix.burn.img
 ```
 
-该镜像已经在 OneCloud/WS1608 实机完成直刷、启动和 HDMI 显示验证。仓库把它压缩后作为不可变资产保存在 `base-20260719` Release，下载 URL 和 SHA-256 固定在 [`config/base.env`](../config/base.env)。自动构建只修改它的 rootfs；DDR、U-Boot、bootloader、boot 分区、内核、DTB、resource 和 HDMI 启动参数保持不变。
+该镜像从 `base-20260719` 派生，只修复 `/boot/armbianEnv.txt` 的 U-Boot console 引号，并作为不可变资产保存在 `base-20260804-consolefix` Release。静态检查确认有效参数包含 `console=tty1` 与 `console=ttyAML0,115200n8`；实体 WS1608 刷写仍待验收。自动构建只修改它的 rootfs；DDR、U-Boot、bootloader、内核、DTB、resource 和其它启动文件保持不变。
 
-“稳定基础已启动验证”不代表仓库生成的每个 One-KVM Release 已完成实体刷写。当前成品的验证边界见 [hardware-validation.md](hardware-validation.md)。
+基础包的静态验证不代表仓库生成的每个 One-KVM Release 已完成实体刷写。当前成品的验证边界见 [hardware-validation.md](hardware-validation.md)。
 
 ## 历史参考镜像
 

@@ -14,17 +14,17 @@ import {
 
 const identity = {
   board: 'WS1608 / OneCloud',
-  base: 'Armbian_26.8.0-trunk.413_Onecloud_trixie_6.12.28_HDMI-test',
+  base: 'Armbian_26.8.0-trunk.413_Onecloud_trixie_6.12.28_HDMI-consolefix',
   kernel: '6.12.28-current-meson',
   one_kvm_version: '0.2.4',
   one_kvm_release: 'v260709',
   package_name: 'one-kvm_0.2.4_armhf.deb',
   package_url: 'https://example.invalid/one-kvm_0.2.4_armhf.deb',
   package_sha256: 'a'.repeat(64),
-  base_release_tag: 'base-20260719',
-  base_image_name: 'Armbian_26.8.0-trunk.413_Onecloud_trixie_6.12.28_HDMI-test.burn.img.xz',
-  base_image_url: 'https://github.com/wuhao1477/ws1608-one-kvm-builder/releases/download/base-20260719/Armbian_26.8.0-trunk.413_Onecloud_trixie_6.12.28_HDMI-test.burn.img.xz',
-  base_sha256: 'f0bde03edd12022db41a53c546b1b16b7e49ddecbd39121f3e8c0086f700de82',
+  base_release_tag: 'base-20260804-consolefix',
+  base_image_name: 'Armbian_26.8.0-trunk.413_Onecloud_trixie_6.12.28_HDMI-consolefix.burn.img.xz',
+  base_image_url: 'https://github.com/wuhao1477/ws1608-one-kvm-builder/releases/download/base-20260804-consolefix/Armbian_26.8.0-trunk.413_Onecloud_trixie_6.12.28_HDMI-consolefix.burn.img.xz',
+  base_sha256: '0edb5f729be17bff40ee2949a715d5604f4c0a873d4a2deb9a294745af541d3a',
   build_tag: 'ws1608-one-kvm-0.2.4-v260709-b001',
   build_revision: 'b001',
   build_number: 1,
@@ -52,7 +52,7 @@ function partialIdentity() {
 
 async function fixture() {
   const outputDir = await fs.mkdtemp(path.join(os.tmpdir(), 'ws1608-release-'));
-  const imageName = 'One-KVM_0.2.4-v260709-b001_Onecloud_trixie_6.12.28_HDMI-test.burn.img';
+  const imageName = 'One-KVM_0.2.4-v260709-b001_Onecloud_trixie_6.12.28_HDMI-consolefix.burn.img';
   const reportName = 'validation-report.json';
   const imagePath = path.join(outputDir, imageName);
   const reportPath = path.join(outputDir, reportName);

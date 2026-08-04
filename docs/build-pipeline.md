@@ -75,6 +75,7 @@ SHA-256 = GitHub Release asset digest
 `scripts/verify-image.sh` 只读取最终成品和基础包，重新解包并检查：
 
 - AmlImg 解包及 Amlogic CRC；
+- boot FAT 中 `console=both` 未被引号包裹，且有效参数同时包含 `console=tty1` 和 `console=ttyAML0,115200n8`；
 - 12 行 `commands.txt` 和全部分区 VERIFY SHA-1；
 - boot、bootloader、resource 等非 rootfs 条目逐字节不变；
 - rootfs 已改变、sparse 可展开、ext4 `e2fsck -fn` 通过；

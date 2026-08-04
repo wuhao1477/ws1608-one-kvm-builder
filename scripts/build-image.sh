@@ -32,6 +32,8 @@ BASE_IMAGE="$WORK_DIR/base.burn.img"
 PACKAGE_DIR="$WORK_DIR/package"
 ROOTFS_RAW="$WORK_DIR/rootfs.raw"
 ROUNDTRIP_RAW="$WORK_DIR/rootfs.roundtrip.raw"
+BOOT_RAW="$WORK_DIR/boot.raw"
+BOOT_FILES="$WORK_DIR/boot-console"
 MOUNT_DIR="$WORK_DIR/rootfs.mnt"
 RESOLV_BACKUP="$WORK_DIR/resolv.conf.backup"
 METADATA_FILE="$WORK_DIR/ws1608-one-kvm-release"
@@ -108,8 +110,8 @@ require_basename "$IMAGE_NAME" IMAGE_NAME
 assert_no_mounts_under "$MOUNT_DIR"
 mkdir -p "$OUTPUT_DIR" "$WORK_DIR"
 [[ ! -L "$WORK_DIR" && ! -L "$OUTPUT_DIR" ]] || { echo 'build directories must not be symlinks' >&2; exit 1; }
-rm -f -- "$BASE_IMAGE" "$ROOTFS_RAW" "$ROUNDTRIP_RAW" "$RESOLV_BACKUP" "$METADATA_FILE"
-rm -rf -- "$PACKAGE_DIR" "$MOUNT_DIR"
+rm -f -- "$BASE_IMAGE" "$ROOTFS_RAW" "$ROUNDTRIP_RAW" "$BOOT_RAW" "$RESOLV_BACKUP" "$METADATA_FILE"
+rm -rf -- "$PACKAGE_DIR" "$BOOT_FILES" "$MOUNT_DIR"
 
 root_mounted=false
 dev_mounted=false
@@ -134,11 +136,17 @@ echo 'Decompressing base image'
 xz -dc "$BASE_IMAGE_XZ" > "$BASE_IMAGE"
 mkdir -p "$PACKAGE_DIR"
 "$AMLIMG_BIN" unpack "$BASE_IMAGE" "$PACKAGE_DIR"
+boot_sparse=$(awk -F: '$1 == "PARTITION" && $2 == "boot" {print $4; exit}' "$PACKAGE_DIR/commands.txt")
 rootfs_sparse=$(awk -F: '$1 == "PARTITION" && $2 == "rootfs" {print $4; exit}' "$PACKAGE_DIR/commands.txt")
 rootfs_verify=$(awk -F: '$1 == "VERIFY" && $2 == "rootfs" {print $4; exit}' "$PACKAGE_DIR/commands.txt")
+require_basename "$boot_sparse" boot_partition
 require_basename "$rootfs_sparse" rootfs_partition
 require_basename "$rootfs_verify" rootfs_verify
 
+node "$ROOT_DIR/scripts/sparse-to-raw.mjs" "$PACKAGE_DIR/$boot_sparse" "$BOOT_RAW"
+"$ROOT_DIR/scripts/verify-boot-console.sh" "$BOOT_RAW" "$BOOT_FILES"
+rm -f "$BOOT_RAW"
+rm -rf "$BOOT_FILES"
 node "$ROOT_DIR/scripts/sparse-to-raw.mjs" "$PACKAGE_DIR/$rootfs_sparse" "$ROOTFS_RAW"
 as_root e2fsck -fn "$ROOTFS_RAW"
 mkdir -p "$MOUNT_DIR"
@@ -229,5 +237,5 @@ rm -f "$OUTPUT_IMAGE"
 "$AMLIMG_BIN" pack "$OUTPUT_IMAGE" "$PACKAGE_DIR"
 node "$ROOT_DIR/scripts/write-image-manifest.mjs" "$OUTPUT_DIR/manifest.json" "$OUTPUT_IMAGE"
 rm -f "$ROOTFS_RAW" "$METADATA_FILE"
-rm -rf "$PACKAGE_DIR" "$MOUNT_DIR"
+rm -rf "$PACKAGE_DIR" "$BOOT_FILES" "$MOUNT_DIR"
 echo "Built $OUTPUT_IMAGE"

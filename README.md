@@ -15,11 +15,11 @@
 
 ## 基础镜像
 
-稳定构建固定使用 `config/base.env` 指向的基础资产：Armbian 26.8 Trixie、`6.12.28-current-meson`、OneCloud HDMI-test 设备树和启动链。固定启动链是为了避免未经 WS1608 实机验证的内核或设备树更新进入稳定直刷包。更换基础镜像时，先更新 URL 和 SHA-256，再单独完成 WS1608 刷写验证。
+构建固定使用 `config/base.env` 指向的基础资产：Armbian 26.8 Trixie、`6.12.28-current-meson`、OneCloud HDMI 设备树和启动链。当前候选基础修复了 U-Boot 文本环境中的引号错误；实体刷写通过前仍按候选处理。
 
 ## CI 验证
 
-构建任务会重新解包成品并检查：Amlogic v2 CRC、12 个标准条目、非 rootfs 分区字节一致性、每个分区 VERIFY SHA1、`one-kvm` armhf 包和依赖、systemd 开机链接、OneCloud OTG 配置、ext4 文件系统一致性、构建来源 metadata 和临时文件清理。
+构建任务会重新解包成品并检查：Amlogic v2 CRC、boot FAT 与有效 Linux console 参数、12 个标准条目、非 rootfs 分区字节一致性、每个分区 VERIFY SHA1、`one-kvm` armhf 包和依赖、systemd 开机链接、OneCloud OTG 配置、ext4 文件系统一致性、构建来源 metadata 和临时文件清理。
 
 GitHub 托管 runner 没有连接实体 WS1608，因此 CI 不把结构验证写成硬件启动结论。发布前会验证 xz 解压后与原始镜像摘要一致、manifest、`SHA256SUMS` 和 validation report。Release 提供未压缩 `.burn.img`、`.burn.img.xz`、`SHA256SUMS`、`manifest.json` 和 `validation-report.json`。
 
@@ -27,7 +27,7 @@ GitHub 托管 runner 没有连接实体 WS1608，因此 CI 不把结构验证写
 
 推荐直接使用 GitHub Actions 云构建，不需要在本地保存解压后的大镜像。云 runner 会安装 root 权限所需的 `qemu-user-static`、Go、Node.js、`binutils` 和 `e2fsprogs`，完成构建与验证后只保留 Release 资产。
 
-本地复现需要 Linux 主机、root 权限、`qemu-user-static`、Go、Node.js、`e2fsprogs` 和 Amlogic 基础镜像。准备 `BASE_IMAGE_XZ`、`ONE_KVM_DEB`、`AMLIMG_BIN`、`ONE_KVM_VERSION`、`UPSTREAM_TAG`、`PACKAGE_NAME`、`PACKAGE_DIGEST`、`PACKAGE_URL`、`BUILD_TAG`、`BUILD_NUMBER`、`BUILD_REVISION`、`BUILDER_COMMIT`、`GITHUB_RUN_ID`、`GITHUB_RUN_ATTEMPT`、`GITHUB_RUN_NUMBER`、`OUTPUT_DIR`、`WORK_DIR`、`IMAGE_NAME` 和 `VALIDATION_REPORT` 后执行：
+本地复现需要 Linux 主机、root 权限、`qemu-user-static`、Go、Node.js、`e2fsprogs`、`mtools` 和 Amlogic 基础镜像。准备 `BASE_IMAGE_XZ`、`ONE_KVM_DEB`、`AMLIMG_BIN`、`ONE_KVM_VERSION`、`UPSTREAM_TAG`、`PACKAGE_NAME`、`PACKAGE_DIGEST`、`PACKAGE_URL`、`BUILD_TAG`、`BUILD_NUMBER`、`BUILD_REVISION`、`BUILDER_COMMIT`、`GITHUB_RUN_ID`、`GITHUB_RUN_ATTEMPT`、`GITHUB_RUN_NUMBER`、`OUTPUT_DIR`、`WORK_DIR`、`IMAGE_NAME` 和 `VALIDATION_REPORT` 后执行：
 
 ```sh
 ./scripts/build-image.sh

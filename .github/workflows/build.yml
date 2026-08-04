@@ -112,7 +112,7 @@ jobs:
         run: |
           df -h "$RUNNER_TEMP"
           sudo apt-get update
-          sudo apt-get install -y binutils e2fsprogs file jq qemu-user-static util-linux xz-utils
+          sudo apt-get install -y binutils e2fsprogs file jq mtools qemu-user-static util-linux xz-utils
       - name: Build pinned AmlImg tool
         env:
           TOOLS_DIR: ${{ runner.temp }}/ws1608-tools
@@ -226,9 +226,9 @@ jobs:
 
           Upstream One-KVM release: [$UPSTREAM_TAG](https://github.com/mofeng-git/One-KVM/releases/tag/$UPSTREAM_TAG)
 
-          Build: $BUILD_REVISION. Base: Armbian 26.8 Trixie, kernel 6.12.28-current-meson, OneCloud/WS1608 HDMI-test image.
+          Build: $BUILD_REVISION. Base: Armbian 26.8 Trixie, kernel 6.12.28-current-meson, $BASE_FLAVOR.
 
-          CI validation covers the Amlogic container, partition VERIFY values, unchanged boot data, ext4, armhf package metadata, ARM loader and runtime libraries, systemd, OTG integration, compressed-image round-trip, manifest, and every published SHA-256. GitHub-hosted CI cannot flash a physical WS1608, so this is not a hardware boot result.
+          CI validation covers the Amlogic container, boot FAT and effective Linux console arguments, partition VERIFY values, unchanged boot data, ext4, armhf package metadata, ARM loader and runtime libraries, systemd, OTG integration, compressed-image round-trip, manifest, and every published SHA-256. GitHub-hosted CI cannot flash a physical WS1608, so this is not a hardware boot result.
           EOF
           ./scripts/publish-release.sh
 

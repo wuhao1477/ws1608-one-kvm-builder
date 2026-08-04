@@ -40,6 +40,10 @@ test('runs every image and release-asset gate before artifact upload', () => {
   assert.match(workflow, /Re-verify uploaded burn image/);
 });
 
+test('installs the FAT image tooling required for boot-console validation', () => {
+  assert.match(workflow, /e2fsprogs file jq mtools qemu-user-static/);
+});
+
 test('downloads and reverifies the artifact before immutable publishing', () => {
   assert.match(workflow, /actions\/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131/);
   assert.match(workflow, /^      - name: Reverify downloaded release assets$/m);
