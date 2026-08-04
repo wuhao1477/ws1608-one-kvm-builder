@@ -54,6 +54,8 @@ test('downloads and reverifies the artifact before immutable publishing', () => 
   assert.doesNotMatch(workflow, /gh release upload|--clobber/);
   assert.match(workflow, /\.\/scripts\/publish-release\.sh/);
   assert.doesNotMatch(workflow, /gh release create/);
+  const releaseJob = workflow.slice(workflow.indexOf('\n  release:'), workflow.indexOf('\n  skipped:'));
+  assert.match(releaseJob, /echo "BASE_FLAVOR=\$BASE_FLAVOR"/);
 });
 
 test('does not expose a write token to discovery or build jobs', () => {

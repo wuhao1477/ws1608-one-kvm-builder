@@ -214,6 +214,7 @@ jobs:
             echo "BASE_IMAGE_URL=$BASE_IMAGE_URL"
             echo "BASE_IMAGE_SHA256=$BASE_IMAGE_SHA256"
             echo "BASE_ID=$BASE_ID"
+            echo "BASE_FLAVOR=$BASE_FLAVOR"
             echo "BASE_KERNEL=$BASE_KERNEL"
             echo "BASE_BOARD=$BASE_BOARD"
             echo "AMLIMG_REPOSITORY=$AMLIMG_REPOSITORY"
