@@ -50,6 +50,12 @@ function main() {
   requireValue(values, 'KERNEL_VERSION');
   requireValue(values, 'DEBIAN_SUITE');
   requireValue(values, 'DEBIAN_ARCH');
+  for (const key of ['BULLSEYE_ARMV7_OCI_IMAGE', 'IMAGE_TOOLS_ARM64_OCI_IMAGE']) {
+    const image = requireValue(values, key);
+    if (!/^debian:[a-z0-9.-]+@sha256:[0-9a-f]{64}$/.test(image)) {
+      throw new Error(`${key} must be a digest-pinned Debian OCI image`);
+    }
+  }
   process.stdout.write(`verified ${sourceNames.length} immutable source locks\n`);
 }
 

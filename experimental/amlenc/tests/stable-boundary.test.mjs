@@ -30,4 +30,7 @@ test('accepts only immutable experimental source inputs', () => {
 
   assert.equal(result.status, 0, result.stderr || result.stdout);
   assert.match(result.stdout, /verified 4 immutable source locks/);
+  const sources = fs.readFileSync(sourcesPath, 'utf8');
+  assert.match(sources, /^BULLSEYE_ARMV7_OCI_IMAGE=debian:bullseye@sha256:[a-f0-9]{64}$/m);
+  assert.match(sources, /^IMAGE_TOOLS_ARM64_OCI_IMAGE=debian:bookworm-slim@sha256:[a-f0-9]{64}$/m);
 });
