@@ -3,6 +3,9 @@ set -euo pipefail
 
 ROOT_DIR=$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)
 mode=${1:-}
+if [[ "$mode" == libvpcodec ]]; then
+  exec "$ROOT_DIR/experimental/amlenc/scripts/verify-libvpcodec.sh"
+fi
 OUTPUT_DIR=${AMLENC_OUTPUT_DIR:-$ROOT_DIR/out/amlenc/kernel}
 SOURCE_DIR=${AMLENC_KERNEL_SOURCE:-$ROOT_DIR/.build/amlenc/kernel-source}
 BUILD_DIR=${AMLENC_KERNEL_BUILD:-$ROOT_DIR/.build/amlenc/kernel-build}
