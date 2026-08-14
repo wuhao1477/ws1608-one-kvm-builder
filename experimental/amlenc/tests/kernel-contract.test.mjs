@@ -81,6 +81,8 @@ test('builds and independently verifies traceable kernel artifacts', () => {
   assert.match(verify, /pinname = "emmc"/);
   assert.match(verify, /amlogic,meson-eth/);
   assert.match(verify, /amlogic,amhdmitx/);
+  assert.match(verify, /port-type = <0x0\+>/);
+  assert.match(verify, /port-type = <0x0\*1>/);
   assert.match(verify, /verify-kernel-source-diff\.sh/);
   assert.match(verify, /patches_sha256/);
   assert.match(verifyConfig, /FB_AMLOGIC_UMP/);

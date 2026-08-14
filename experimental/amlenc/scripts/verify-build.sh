@@ -41,8 +41,8 @@ grep -Eq "reg = <0x0+ 0x0*${encoder_cma_size#0x0}>" "$BUILD_DIR/ws1608-s805.veri
 grep -q 'pinname = "emmc"' "$BUILD_DIR/ws1608-s805.verified.dts"
 grep -q 'amlogic,meson-eth' "$BUILD_DIR/ws1608-s805.verified.dts"
 grep -q 'amlogic,amhdmitx' "$BUILD_DIR/ws1608-s805.verified.dts"
-grep -q 'port-type = <0x0>' "$BUILD_DIR/ws1608-s805.verified.dts"
-grep -q 'port-type = <0x1>' "$BUILD_DIR/ws1608-s805.verified.dts"
+grep -Eq 'port-type = <0x0+>' "$BUILD_DIR/ws1608-s805.verified.dts"
+grep -Eq 'port-type = <0x0*1>' "$BUILD_DIR/ws1608-s805.verified.dts"
 ! grep -Eq 'Hardkernel|ODROID|sx865x' "$BUILD_DIR/ws1608-s805.verified.dts"
 
 "$ROOT_DIR/experimental/amlenc/scripts/verify-kernel-config.sh" \
