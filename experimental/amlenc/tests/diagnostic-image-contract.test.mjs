@@ -17,10 +17,49 @@ const modeVerifier = 'experimental/amlenc/scripts/verify-debugfs-mode.sh';
 function copyFixture(t) {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'amlenc-diag-image-'));
   t.after(() => fs.rmSync(root, { recursive: true, force: true }));
-  for (const group of ['kernel', 'libvpcodec']) {
-    const source = path.resolve('out/amlenc', group);
-    const target = path.join(root, group);
-    fs.cpSync(source, target, { recursive: true });
+  const kernel = path.join(root, 'kernel');
+  const encoder = path.join(root, 'libvpcodec');
+  fs.mkdirSync(kernel);
+  fs.mkdirSync(encoder);
+  const kernelFiles = {
+    'zImage': 'fixture-zImage\n',
+    'ws1608-s805.dtb': 'fixture-dtb\n',
+    'modules.tar.gz': 'fixture-modules\n',
+    'kernel.config': 'CONFIG_FIXTURE=y\n',
+  };
+  for (const [name, content] of Object.entries(kernelFiles)) {
+    fs.writeFileSync(path.join(kernel, name), content);
+  }
+  fs.writeFileSync(
+    path.join(kernel, 'source-manifest.json'),
+    JSON.stringify({
+      schema: 1,
+      commit: '5aed95d35d252cafc75ce613a3a0052285662de2',
+      kernel: '3.10.107',
+    }) + '\n',
+  );
+  fs.writeFileSync(path.join(encoder, 'libvpcodec.so'), 'fixture-libvpcodec\n');
+  fs.writeFileSync(path.join(encoder, 'amlenc-m8-diag'), 'fixture-diagnostic\n');
+  fs.writeFileSync(
+    path.join(encoder, 'source-manifest.json'),
+    JSON.stringify({
+      schema: 1,
+      commit: 'bfee62dad4f7ebb6d1705df8522da871dcad861e',
+      abi: 1,
+      architecture: 'armhf',
+      redistribution: 'local-test-only',
+    }) + '\n',
+  );
+  for (const directory of [kernel, encoder]) {
+    const files = fs.readdirSync(directory)
+      .filter((name) => name !== 'SHA256SUMS' && name !== 'source-manifest.json')
+      .sort();
+    const checksums = files.map((name) => {
+      const digest = spawnSync('sha256sum', [name], { cwd: directory, encoding: 'utf8' });
+      assert.equal(digest.status, 0, digest.stderr);
+      return digest.stdout.trim();
+    });
+    fs.writeFileSync(path.join(directory, 'SHA256SUMS'), `${checksums.join('\n')}\n`);
   }
   return root;
 }
