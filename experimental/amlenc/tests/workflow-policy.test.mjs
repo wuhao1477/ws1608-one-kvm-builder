@@ -56,6 +56,7 @@ test('keeps AMLENC builds isolated from the stable image workflow', () => {
   assert.doesNotMatch(workflow, /gh release create/);
   assert.match(workflow, /local-test-only/);
   assert.match(workflow, /experimental\/amlenc\/scripts\/prepare-public-artifact\.sh/);
+  assert.match(workflow, /sudo install -d -o .*out\/amlenc-public/);
   assert.match(workflow, /path: out\/amlenc-public/);
   assert.doesNotMatch(workflow, /path: out\/amlenc\s*$/m);
   assert.match(workflow, /\.github\/workflows\/build\.yml/);

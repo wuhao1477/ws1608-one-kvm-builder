@@ -106,6 +106,7 @@ jobs:
       - name: Prepare public build metadata
         run: |
           experimental/amlenc/scripts/verify-stable-chain.sh
+          sudo install -d -o "$(id -u)" -g "$(id -g)" out/amlenc-public
           experimental/amlenc/scripts/prepare-public-artifact.sh out/amlenc out/amlenc-public
       - name: Upload experimental build metadata
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
