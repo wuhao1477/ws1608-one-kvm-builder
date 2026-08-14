@@ -23,6 +23,8 @@ test('keeps AMLENC builds isolated from the stable image workflow', () => {
   assert.match(workflow, /experimental\/amlenc\/scripts\/build-one-kvm\.sh/);
   assert.match(workflow, /AMLENC_CROSS_IMAGE: ws1608-one-kvm-armv7:\$\{\{ github\.run_id \}\}-\$\{\{ github\.run_attempt \}\}/);
   assert.match(workflow, /DOCKER_BUILDKIT[^\n]*1/);
+  assert.doesNotMatch(workflow, /apt-get install[^\n]*docker\.io/);
+  assert.match(workflow, /docker version/);
   assert.match(workflow, /experimental\/amlenc\/scripts\/verify-one-kvm\.sh/);
   assert.equal(
     workflow.match(/sudo chown -R "\$\(id -u\):\$\(id -g\)" \.build\/amlenc out\/amlenc/g)?.length,

@@ -48,7 +48,8 @@ jobs:
       - name: Install build tools
         run: |
           sudo apt-get update
-          sudo apt-get install -y curl jq qemu-user-static device-tree-compiler dpkg-dev docker.io binutils-arm-linux-gnueabihf build-essential
+          sudo apt-get install -y curl jq qemu-user-static device-tree-compiler dpkg-dev binutils-arm-linux-gnueabihf build-essential
+          docker version
           curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --default-toolchain stable
           source "$HOME/.cargo/env"
           cargo install cross --locked
