@@ -25,6 +25,8 @@ test('keeps AMLENC builds isolated from the stable image workflow', () => {
   assert.match(workflow, /DOCKER_BUILDKIT[^\n]*1/);
   assert.doesNotMatch(workflow, /apt-get install[^\n]*docker\.io/);
   assert.match(workflow, /docker version/);
+  assert.match(workflow, /g\+\+-7-arm-linux-gnueabihf/);
+  assert.match(workflow, /ln -sf.*arm-linux-gnueabihf-gcc-7.*arm-linux-gnueabihf-gcc/);
   assert.match(workflow, /experimental\/amlenc\/scripts\/verify-one-kvm\.sh/);
   assert.equal(
     workflow.match(/sudo chown -R "\$\(id -u\):\$\(id -g\)" \.build\/amlenc out\/amlenc/g)?.length,
