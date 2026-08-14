@@ -53,6 +53,8 @@ test('exposes exactly the One-KVM AMLENC ABI v1 symbols', () => {
   assert.match(exports, /local:\s*\*/);
   assert.match(verify, /readelf.*-Ws/);
   assert.match(verify, /qemu-arm/);
+  assert.match(verify, /qemu-arm-static/);
+  assert.match(verify, /command -v/);
   assert.match(readRequired(files.verifyBuild), /libvpcodec[\s\S]*verify-libvpcodec\.sh/);
 });
 

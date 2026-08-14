@@ -32,7 +32,16 @@ expected=(one_kvm_amlenc_abi_version vl_video_encoder_destory vl_video_encoder_e
   exit 1
 }
 
-qemu_arm=${QEMU_ARM:-qemu-arm}
+if [[ -n "${QEMU_ARM:-}" ]]; then
+  qemu_arm=$QEMU_ARM
+elif command -v qemu-arm >/dev/null 2>&1; then
+  qemu_arm=qemu-arm
+elif command -v qemu-arm-static >/dev/null 2>&1; then
+  qemu_arm=qemu-arm-static
+else
+  echo "qemu-arm or qemu-arm-static is required for the ABI check" >&2
+  exit 1
+fi
 sysroot=$("$CC" -print-sysroot)
 [[ -n "$sysroot" && "$sysroot" != / ]] || sysroot=/usr/arm-linux-gnueabihf
 "$qemu_arm" -L "$sysroot" "$OUTPUT_DIR/amlenc-m8-diag" \
