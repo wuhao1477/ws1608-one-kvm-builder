@@ -1,0 +1,75 @@
+diff --git a/build/cross/Dockerfile.armv7 b/build/cross/Dockerfile.armv7
+index 63ab64b..855e1c8 100644
+--- a/build/cross/Dockerfile.armv7
++++ b/build/cross/Dockerfile.armv7
+@@ -4,6 +4,7 @@
+-ARG DEBIAN_IMAGE=debian:11
++ARG DEBIAN_IMAGE=debian:11@sha256:2bd63443d521dda488543a2dac4755995cab3e999eb765cec8d800825f692964
+ FROM ${DEBIAN_IMAGE}
+ 
++ARG RUST_TOOLCHAIN=1.97.1
+ ARG CHINAMIRRO=0
+ ARG GH_PROXY=https://gh-proxy.com/
+ ARG RUSTUP_DIST_SERVER_CN=https://rsproxy.cn
+@@ -15,8 +16,9 @@ ARG LIBYUV_REV=957f295ea946cbbd13fcfc46e7066f2efa801233
+ ARG LIBVPX_VERSION=1.16.0
+ ARG X265_VERSION=3.4
+ ARG OPUS_VERSION=1.5.2
+-ARG RKMPP_BRANCH=jellyfin-mpp
+-ARG RKRGA_BRANCH=jellyfin-rga
++ARG X264_REV=c24e06c2e184345ceb33eb20a15d1024d9fd3497
++ARG RKMPP_REV=a9380ef333102ac318628f83b5f7a460d377749e
++ARG RKRGA_REV=1d330cc28551943bed3380261a5a9c6fbd58ff53
+ ARG FFMPEG_ROCKCHIP_REV=40c412daccf08164493da0de990eb99a8948116b
+ 
+ # Optionally use China mirrors for builds in China.
+@@ -24,7 +26,9 @@ RUN if [ "$CHINAMIRRO" = "1" ]; then \
+         sed -i -E \
+             -e 's|http://deb.debian.org/debian([[:space:]])|http://mirrors.tuna.tsinghua.edu.cn/debian\1|g' \
+             /etc/apt/sources.list; \
+-    fi
++    fi \
++    && printf '%s\n' 'Acquire::Retries "5";' 'Acquire::http::Timeout "30";' \
++        'Acquire::https::Timeout "30";' >/etc/apt/apt.conf.d/80-ws1608-retries
+ 
+ # Install Rust toolchain
+ RUN apt-get update && apt-get install -y --no-install-recommends \
+@@ -34,7 +38,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
+         export RUSTUP_DIST_SERVER=${RUSTUP_DIST_SERVER_CN}; \
+         export RUSTUP_UPDATE_ROOT=${RUSTUP_UPDATE_ROOT_CN}; \
+     fi \
+-    && curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --default-toolchain stable \
++    && curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --default-toolchain ${RUST_TOOLCHAIN} \
+     && if [ "$CHINAMIRRO" = "1" ]; then \
+         mkdir -p /root/.cargo; \
+         printf '%s\n' \
+@@ -163,8 +167,11 @@ RUN github_prefix="" \
+ # Build static libx264 from source (cross-compile for ARMv7)
+ RUN github_prefix="" \
+     && if [ "$CHINAMIRRO" = "1" ]; then github_prefix="${GH_PROXY%/}/"; fi \
+-    && git clone --depth 1 "${github_prefix}https://github.com/mirror/x264.git" /tmp/x264 \
++    && git init /tmp/x264 \
+     && cd /tmp/x264 \
++    && git remote add origin "${github_prefix}https://github.com/mirror/x264.git" \
++    && git fetch --depth 1 origin "${X264_REV}" \
++    && git checkout --detach FETCH_HEAD \
+     && export CC=arm-linux-gnueabihf-gcc \
+     && export AR=arm-linux-gnueabihf-ar \
+     && export RANLIB=arm-linux-gnueabihf-ranlib \
+@@ -243,8 +250,14 @@ RUN github_prefix="" \
+ RUN mkdir -p /tmp/ffmpeg-build && cd /tmp/ffmpeg-build \
+     && github_prefix="" \
+     && if [ "$CHINAMIRRO" = "1" ]; then github_prefix="${GH_PROXY%/}/"; fi \
+-    && git clone --depth 1 --branch ${RKMPP_BRANCH} "${github_prefix}https://github.com/nyanmisaka/mpp.git" rkmpp \
+-    && git clone --depth 1 --branch ${RKRGA_BRANCH} "${github_prefix}https://github.com/nyanmisaka/rk-mirrors.git" rkrga \
++    && git init rkmpp \
++    && git -C rkmpp remote add origin "${github_prefix}https://github.com/nyanmisaka/mpp.git" \
++    && git -C rkmpp fetch --depth 1 origin ${RKMPP_REV} \
++    && git -C rkmpp checkout --detach FETCH_HEAD \
++    && git init rkrga \
++    && git -C rkrga remote add origin "${github_prefix}https://github.com/nyanmisaka/rk-mirrors.git" \
++    && git -C rkrga fetch --depth 1 origin ${RKRGA_REV} \
++    && git -C rkrga checkout --detach FETCH_HEAD \
+     && git init ffmpeg-rockchip \
+     && cd ffmpeg-rockchip \
+     && git remote add origin "${github_prefix}https://github.com/nyanmisaka/ffmpeg-rockchip.git" \

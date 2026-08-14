@@ -1,0 +1,104 @@
+name: Build WS1608 AMLENC experimental candidate
+
+on:
+  pull_request:
+    paths:
+      - '.github/workflows/amlenc-experimental.yml'
+      - 'experimental/amlenc/**'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ws1608-amlenc-${{ github.event.pull_request.number || github.run_id }}-${{ github.run_attempt }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  contract:
+    name: Check experimental contracts
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7
+        with:
+          persist-credentials: false
+      - name: Install validation tools
+        run: sudo apt-get update && sudo apt-get install -y jq
+      - name: Run contract tests
+        run: |
+          experimental/amlenc/scripts/verify-stable-chain.sh
+          npm test
+          node --test experimental/amlenc/tests/*.test.mjs
+          for script in experimental/amlenc/scripts/*.sh; do bash -n "$script"; done
+      - name: Verify immutable inputs
+        run: node experimental/amlenc/scripts/verify-source-locks.mjs experimental/amlenc/config/sources.env
+      - name: Confirm stable workflow boundary
+        run: git diff --exit-code -- .github/workflows/build.yml config/base.env
+
+  build:
+    name: Build experimental source artifacts
+    needs: contract
+    if: github.event_name == 'workflow_dispatch' || github.event_name == 'pull_request'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 180
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7
+        with:
+          persist-credentials: false
+      - name: Install build tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y curl jq qemu-user-static device-tree-compiler dpkg-dev docker.io binutils-arm-linux-gnueabihf build-essential
+          curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --default-toolchain stable
+          source "$HOME/.cargo/env"
+          cargo install cross --locked
+      - name: Build kernel
+        run: |
+          docker run --rm --platform linux/amd64 \
+            -v "$GITHUB_WORKSPACE:/repo" -w /repo ubuntu:18.04 bash -lc '
+              set -euo pipefail
+              apt-get update && apt-get install -y curl git make gcc-7 g++-7 gcc-7-arm-linux-gnueabihf binutils-arm-linux-gnueabihf device-tree-compiler jq xz-utils
+              curl --fail --location https://nodejs.org/dist/v16.20.2/node-v16.20.2-linux-x64.tar.xz | tar -xJ -C /usr/local --strip-components=1
+              CROSS_COMPILE=arm-linux-gnueabihf- /repo/experimental/amlenc/scripts/build-kernel.sh
+            '
+          sudo chown -R "$(id -u):$(id -g)" .build/amlenc out/amlenc
+      - name: Verify kernel
+        run: experimental/amlenc/scripts/verify-build.sh kernel
+      - name: Build M8 encoder library
+        run: |
+          docker run --rm --platform linux/amd64 \
+            -v "$GITHUB_WORKSPACE:/repo" -w /repo ubuntu:18.04 bash -lc '
+              set -euo pipefail
+              apt-get update && apt-get install -y curl git make gcc-7 g++-7 gcc-7-arm-linux-gnueabihf binutils-arm-linux-gnueabihf jq xz-utils
+              curl --fail --location https://nodejs.org/dist/v16.20.2/node-v16.20.2-linux-x64.tar.xz | tar -xJ -C /usr/local --strip-components=1
+              CC=arm-linux-gnueabihf-gcc-7 CXX=arm-linux-gnueabihf-g++-7 AR=arm-linux-gnueabihf-ar READELF=arm-linux-gnueabihf-readelf /repo/experimental/amlenc/scripts/build-libvpcodec.sh
+            '
+          sudo chown -R "$(id -u):$(id -g)" .build/amlenc out/amlenc
+      - name: Verify encoder library
+        run: experimental/amlenc/scripts/verify-build.sh libvpcodec
+      - name: Build diagnostic USB image
+        run: experimental/amlenc/scripts/build-diagnostic-image.sh
+      - name: Build One-KVM armhf package
+        env:
+          BUILD_NUMBER: run-${{ github.run_number }}-${{ github.run_attempt }}
+          AMLENC_CROSS_IMAGE: ws1608-one-kvm-armv7:${{ github.run_id }}-${{ github.run_attempt }}
+          DOCKER_BUILDKIT: '1'
+        run: experimental/amlenc/scripts/build-one-kvm.sh
+      - name: Verify One-KVM armhf package
+        run: experimental/amlenc/scripts/verify-one-kvm.sh out/amlenc/one-kvm/one-kvm_0.2.6+ws1608amlenc.run-${{ github.run_number }}-${{ github.run_attempt }}_armhf.deb
+      - name: Enforce local-only publication boundary
+        run: |
+          jq -e '.redistribution == "local-test-only"' out/amlenc/libvpcodec/source-manifest.json
+          jq -e '.hardware_encoder_tested == false and .stable_channel_modified == false' out/amlenc/diagnostic-image/input-manifest.json
+      - name: Prepare public build metadata
+        run: |
+          experimental/amlenc/scripts/verify-stable-chain.sh
+          experimental/amlenc/scripts/prepare-public-artifact.sh out/amlenc out/amlenc-public
+      - name: Upload experimental build metadata
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: ws1608-amlenc-exp-${{ github.run_number }}-${{ github.run_attempt }}
+          path: out/amlenc-public/
+          if-no-files-found: error
+          retention-days: 14
+          compression-level: 0

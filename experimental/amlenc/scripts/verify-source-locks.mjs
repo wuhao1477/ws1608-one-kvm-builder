@@ -56,6 +56,19 @@ function main() {
       throw new Error(`${key} must be a digest-pinned Debian OCI image`);
     }
   }
+  const armv7Image = requireValue(values, 'ONE_KVM_ARMV7_OCI_IMAGE');
+  if (!/^debian:11@sha256:[0-9a-f]{64}$/.test(armv7Image)) {
+    throw new Error('ONE_KVM_ARMV7_OCI_IMAGE must be a digest-pinned Debian 11 image');
+  }
+  for (const key of ['ONE_KVM_X264_COMMIT', 'ONE_KVM_RKMPP_COMMIT', 'ONE_KVM_RKRGA_COMMIT', 'ONE_KVM_RUSTC_COMMIT']) {
+    if (!commitPattern.test(requireValue(values, key))) throw new Error(`${key} must be a pinned commit`);
+  }
+  for (const key of ['ONE_KVM_ARMV7_GCC_VERSION', 'ONE_KVM_ARMV7_BINUTILS_VERSION', 'ONE_KVM_RUST_TOOLCHAIN', 'ONE_KVM_PNPM_VERSION']) {
+    if (!/^[0-9]+\.[0-9]+(?:\.[0-9]+)?$/.test(requireValue(values, key))) throw new Error(`${key} must be a version`);
+  }
+  if (!/^[0-9]{10}$/.test(requireValue(values, 'ONE_KVM_SOURCE_DATE_EPOCH'))) {
+    throw new Error('ONE_KVM_SOURCE_DATE_EPOCH must be a ten-digit epoch');
+  }
   process.stdout.write(`verified ${sourceNames.length} immutable source locks\n`);
 }
 

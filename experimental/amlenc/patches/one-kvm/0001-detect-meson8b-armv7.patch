@@ -1,0 +1,267 @@
+diff --git a/src/video/codec/amlenc.rs b/src/video/codec/amlenc.rs
+index 99fa06b..14dc615 100644
+--- a/src/video/codec/amlenc.rs
++++ b/src/video/codec/amlenc.rs
+@@ -1,4 +1,4 @@
+-//! Native Amlogic AMLENC bindings for the S912/GXM vendor Linux 4.9 stack.
++//! Native Amlogic AMLENC bindings for supported vendor kernel stacks.
+ //!
+ //! The vendor libraries are deliberately loaded at runtime.  They must be built
+ //! with the One-KVM ABI v1 patch from the standalone `amlenc` repository;
+@@ -24,8 +24,17 @@ pub const AMLENC_H265_CODEC_NAME: &str = "hevc_amlenc";
+ pub const AMLENC_H264_DEFAULT_LIBRARY: &str = "libvpcodec.so";
+ pub const AMLENC_H265_DEFAULT_LIBRARY: &str = "libvphevcodec.so";
+ 
++#[cfg(target_arch = "arm")]
++const AMLENC_MAX_WIDTH: u32 = 1280;
++#[cfg(not(target_arch = "arm"))]
+ const AMLENC_MAX_WIDTH: u32 = 1920;
++#[cfg(target_arch = "arm")]
++const AMLENC_MAX_HEIGHT: u32 = 720;
++#[cfg(not(target_arch = "arm"))]
+ const AMLENC_MAX_HEIGHT: u32 = 1080;
++#[cfg(target_arch = "arm")]
++const AMLENC_MAX_FPS: u32 = 30;
++#[cfg(not(target_arch = "arm"))]
+ const AMLENC_MAX_FPS: u32 = 60;
+ const MIN_OUTPUT_BUFFER_SIZE: usize = 1024 * 1024;
+ const OUTPUT_STALL_TIMEOUT: Duration = Duration::from_secs(1);
+@@ -52,6 +61,21 @@ pub enum AmlencCodec {
+     H265,
+ }
+ 
++#[derive(Debug, Clone, Copy, PartialEq, Eq)]
++pub enum AmlencPlatform {
++    S912Gxm,
++    Meson8bS805,
++}
++
++impl AmlencPlatform {
++    pub fn supports_codec(self, codec: AmlencCodec) -> bool {
++        match self {
++            Self::S912Gxm => true,
++            Self::Meson8bS805 => codec == AmlencCodec::H264,
++        }
++    }
++}
++
+ impl AmlencCodec {
+     pub fn codec_name(self) -> &'static str {
+         match self {
+@@ -637,10 +661,7 @@ pub fn has_parameter_sets(codec: AmlencCodec, data: &[u8]) -> bool {
+     inspect_annex_b(codec, data).has_parameter_sets(codec)
+ }
+ 
+-#[cfg_attr(
+-    not(any(test, all(target_os = "linux", target_arch = "aarch64"))),
+-    allow(dead_code)
+-)]
++#[cfg_attr(not(any(test, all(target_os = "linux", target_arch = "aarch64"))), allow(dead_code))]
+ fn is_s912_gxm_compatible(compatible: &[u8]) -> bool {
+     let compatible = String::from_utf8_lossy(compatible).to_ascii_lowercase();
+     compatible.contains("amlogic,gxm")
+@@ -649,8 +670,15 @@ fn is_s912_gxm_compatible(compatible: &[u8]) -> bool {
+         || compatible.contains("amlogic,s912")
+ }
+ 
+-pub fn system_is_s912_gxm() -> Result<bool> {
+-    #[cfg(all(target_os = "linux", target_arch = "aarch64"))]
++fn is_meson8b_s805_compatible(compatible: &[u8]) -> bool {
++    let compatible = String::from_utf8_lossy(compatible).to_ascii_lowercase();
++    compatible.contains("amlogic,meson8b")
++        || compatible.contains("amlogic,8726_m8b")
++        || compatible.contains("m8b_m201_1g")
++}
++
++pub fn system_amlenc_platform() -> Result<Option<AmlencPlatform>> {
++    #[cfg(all(target_os = "linux", any(target_arch = "aarch64", target_arch = "arm")))]
+     {
+         let compatible = std::fs::read("/proc/device-tree/compatible").map_err(|error| {
+             AppError::VideoError(format!(
+@@ -658,10 +686,13 @@ pub fn system_is_s912_gxm() -> Result<bool> {
+                 error
+             ))
+         })?;
+-        return Ok(is_s912_gxm_compatible(&compatible));
++        #[cfg(target_arch = "aarch64")]
++        return Ok(is_s912_gxm_compatible(&compatible).then_some(AmlencPlatform::S912Gxm));
++        #[cfg(target_arch = "arm")]
++        return Ok(is_meson8b_s805_compatible(&compatible).then_some(AmlencPlatform::Meson8bS805));
+     }
+-    #[cfg(not(all(target_os = "linux", target_arch = "aarch64")))]
+-    Ok(false)
++    #[cfg(not(all(target_os = "linux", any(target_arch = "aarch64", target_arch = "arm"))))]
++    Ok(None)
+ }
+ 
+ /// Perform the destructive part of backend detection: initialize and encode one
+@@ -810,6 +841,22 @@ mod tests {
+         assert!(!is_s912_gxm_compatible(b"rockchip,rk3588"));
+     }
+ 
++    #[test]
++    fn recognizes_meson8b_compatibles_and_limits_codecs() {
++        for compatible in [
++            b"amlogic,meson8b".as_slice(),
++            b"AMLOGIC,8726_M8B".as_slice(),
++            b"amlogic,m8b_m201_1G".as_slice(),
++        ] {
++            assert!(is_meson8b_s805_compatible(compatible));
++        }
++        assert!(!is_meson8b_s805_compatible(b"amlogic,gxm"));
++        assert!(AmlencPlatform::Meson8bS805.supports_codec(AmlencCodec::H264));
++        assert!(!AmlencPlatform::Meson8bS805.supports_codec(AmlencCodec::H265));
++        assert!(AmlencPlatform::S912Gxm.supports_codec(AmlencCodec::H264));
++        assert!(AmlencPlatform::S912Gxm.supports_codec(AmlencCodec::H265));
++    }
++
+     #[test]
+     fn validates_abi_marker() {
+         let path = Path::new("libvpcodec.so");
+diff --git a/src/video/codec/registry.rs b/src/video/codec/registry.rs
+index 3baa50c..99c28a9 100644
+--- a/src/video/codec/registry.rs
++++ b/src/video/codec/registry.rs
+@@ -10,7 +10,9 @@ use std::sync::OnceLock;
+ use std::time::Duration;
+ use tracing::{debug, info, warn};
+ 
+-use super::amlenc::{self, AmlencCodec, AMLENC_H264_CODEC_NAME, AMLENC_H265_CODEC_NAME};
++use super::amlenc::{
++    self, AmlencCodec, AmlencPlatform, AMLENC_H264_CODEC_NAME, AMLENC_H265_CODEC_NAME,
++};
+ 
+ use hwcodec::common::{DataFormat, Quality, RateControl};
+ use hwcodec::ffmpeg::{resolve_pixel_format, AVPixelFormat};
+@@ -102,7 +104,7 @@ pub enum EncoderBackend {
+     Rkmpp,
+     /// V4L2 Memory-to-Memory (ARM)
+     V4l2m2m,
+-    /// Amlogic S912/GXM vendor AMLENC
++    /// Amlogic vendor AMLENC
+     Amlogic,
+     /// Software encoding (libx264, libx265, libvpx)
+     Software,
+@@ -287,20 +289,20 @@ impl EncoderRegistry {
+     }
+ 
+     fn detect_amlenc(&mut self) {
+-        match amlenc::system_is_s912_gxm() {
+-            Ok(true) => {}
+-            Ok(false) => {
+-                debug!("AMLENC skipped: host is not Linux/aarch64 S912/GXM");
++        let platform = match amlenc::system_amlenc_platform() {
++            Ok(Some(platform)) => platform,
++            Ok(None) => {
++                debug!("AMLENC skipped: host is not a supported Amlogic platform");
+                 return;
+             }
+             Err(error) => {
+                 warn!("AMLENC skipped: {}", error);
+                 return;
+             }
+-        }
++        };
+ 
+         self.detect_amlenc_candidates(
+-            true,
++            Some(platform),
+             |codec| std::path::Path::new(codec.device_node()).exists(),
+             amlenc::smoke_test,
+         );
+@@ -308,16 +310,16 @@ impl EncoderRegistry {
+ 
+     fn detect_amlenc_candidates<NodeExists, SmokeTest>(
+         &mut self,
+-        compatible: bool,
++        platform: Option<AmlencPlatform>,
+         mut node_exists: NodeExists,
+         mut smoke_test: SmokeTest,
+     ) where
+         NodeExists: FnMut(AmlencCodec) -> bool,
+         SmokeTest: FnMut(AmlencCodec) -> crate::error::Result<()>,
+     {
+-        if !compatible {
++        let Some(platform) = platform else {
+             return;
+-        }
++        };
+ 
+         for (codec, format, codec_name) in [
+             (
+@@ -331,6 +333,9 @@ impl EncoderRegistry {
+                 AMLENC_H265_CODEC_NAME,
+             ),
+         ] {
++            if !platform.supports_codec(codec) {
++                continue;
++            }
+             let node = codec.device_node();
+             if !node_exists(codec) {
+                 warn!(
+@@ -662,34 +667,34 @@ mod tests {
+         let ok = |_codec| Ok(());
+ 
+         let mut incompatible = EncoderRegistry::new();
+-        incompatible.detect_amlenc_candidates(false, |_| true, ok);
++        incompatible.detect_amlenc_candidates(None, |_| true, ok);
+         assert!(incompatible.encoders.is_empty());
+ 
+         let mut no_nodes = EncoderRegistry::new();
+-        no_nodes.detect_amlenc_candidates(true, |_| false, ok);
++        no_nodes.detect_amlenc_candidates(Some(AmlencPlatform::S912Gxm), |_| false, ok);
+         assert!(no_nodes.encoders.is_empty());
+ 
+         for reason in ["library missing", "ABI marker missing"] {
+             let mut rejected = EncoderRegistry::new();
+             rejected.detect_amlenc_candidates(
+-                true,
++                Some(AmlencPlatform::S912Gxm),
+                 |_| true,
+                 |_| Err(crate::error::AppError::VideoError(reason.to_string())),
+             );
+             assert!(rejected.encoders.is_empty());
+         }
+ 
+-        let mut h264_only = EncoderRegistry::new();
+-        h264_only.detect_amlenc_candidates(true, |codec| codec == AmlencCodec::H264, ok);
+-        assert!(h264_only
++        let mut meson8b = EncoderRegistry::new();
++        meson8b.detect_amlenc_candidates(Some(AmlencPlatform::Meson8bS805), |_| true, ok);
++        assert!(meson8b
+             .encoder_with_backend(VideoEncoderType::H264, EncoderBackend::Amlogic)
+             .is_some());
+-        assert!(h264_only
++        assert!(meson8b
+             .encoder_with_backend(VideoEncoderType::H265, EncoderBackend::Amlogic)
+             .is_none());
+ 
+         let mut both = EncoderRegistry::new();
+-        both.detect_amlenc_candidates(true, |_| true, ok);
++        both.detect_amlenc_candidates(Some(AmlencPlatform::S912Gxm), |_| true, ok);
+         assert!(both
+             .encoder_with_backend(VideoEncoderType::H264, EncoderBackend::Amlogic)
+             .is_some());
+diff --git a/src/video/pipeline/shared.rs b/src/video/pipeline/shared.rs
+index 8101229..af15523 100644
+--- a/src/video/pipeline/shared.rs
++++ b/src/video/pipeline/shared.rs
+@@ -30,6 +30,9 @@ use super::encoder_state::{build_encoder_state, should_parallel_decode_mjpeg, En
+ 
+ /// Grace period before auto-stopping pipeline when no subscribers (in seconds)
+ const AUTO_STOP_GRACE_PERIOD_SECS: u64 = 3;
++#[cfg(target_arch = "arm")]
++const AMLENC_MAX_FPS: u32 = 30;
++#[cfg(not(target_arch = "arm"))]
+ const AMLENC_MAX_FPS: u32 = 60;
+ /// After this many consecutive timeouts, log a prominent warning.
+ const CAPTURE_TIMEOUT_RESTART_THRESHOLD: u32 = 5;
+@@ -558,7 +561,7 @@ impl SharedVideoPipeline {
+             let stable_fps = amlenc_supported_fps(config.fps);
+             if stable_fps != config.fps {
+                 warn!(
+-                    "Limiting S912 AMLENC capture at {}x{} from {} to {} fps (hardware limit)",
++                    "Limiting AMLENC capture at {}x{} from {} to {} fps (hardware limit)",
+                     config.resolution.width, config.resolution.height, config.fps, stable_fps
+                 );
+                 config.fps = stable_fps;
