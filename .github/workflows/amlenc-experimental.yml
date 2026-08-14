@@ -85,7 +85,12 @@ jobs:
           CC: arm-linux-gnueabihf-gcc
         run: experimental/amlenc/scripts/verify-build.sh libvpcodec
       - name: Build diagnostic USB image
-        run: experimental/amlenc/scripts/build-diagnostic-image.sh --build
+        run: |
+          umask 077
+          key_file="$RUNNER_TEMP/ws1608-amlenc-build-key"
+          ssh-keygen -q -t ed25519 -N '' -f "$key_file"
+          AMLENC_SSH_PUBLIC_KEY="$(<"$key_file.pub")" \
+            experimental/amlenc/scripts/build-diagnostic-image.sh --build
       - name: Build One-KVM armhf package
         env:
           BUILD_NUMBER: run-${{ github.run_number }}-${{ github.run_attempt }}
