@@ -28,7 +28,11 @@ test('keeps AMLENC builds isolated from the stable image workflow', () => {
   assert.match(workflow, /g\+\+-7-arm-linux-gnueabihf/);
   assert.match(workflow, /ln -sf.*arm-linux-gnueabihf-gcc-7.*arm-linux-gnueabihf-gcc/);
   assert.equal(workflow.match(/ln -sf.*command -v gcc-7.*\/usr\/local\/bin\/gcc/g)?.length, 2);
-  assert.equal(workflow.match(/apt-get install -y bc curl git lzop/g)?.length, 2);
+  assert.equal(
+    workflow.match(/apt-get install -y bc curl file git lzop/g)?.length,
+    2,
+    'both legacy build containers must install the file utility used by artifact verification',
+  );
   assert.match(workflow, /experimental\/amlenc\/scripts\/verify-one-kvm\.sh/);
   assert.equal(
     workflow.match(/sudo chown -R "\$\(id -u\):\$\(id -g\)" \.build\/amlenc out\/amlenc/g)?.length,
