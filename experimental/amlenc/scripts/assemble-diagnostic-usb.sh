@@ -64,6 +64,7 @@ docker run --rm --platform linux/arm64 \
     apt-install e2fsprogs dosfstools fdisk mtools u-boot-tools >/dev/null
     mkdir /rootfs-tree
     tar --numeric-owner --xattrs --acls -xpf /work/rootfs.tar -C /rootfs-tree
+    ln -s /proc/mounts /rootfs-tree/etc/mtab
     tar -xzf /kernel/modules.tar.gz -C /rootfs-tree
     /repo/scripts/install-file.sh 0755 /encoder/amlenc-m8-diag \
       /rootfs-tree/usr/local/libexec/ws1608-amlenc/amlenc-m8-diag
