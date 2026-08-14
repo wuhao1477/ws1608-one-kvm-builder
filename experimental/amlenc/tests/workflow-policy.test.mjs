@@ -20,6 +20,7 @@ test('keeps AMLENC builds isolated from the stable image workflow', () => {
   );
   assert.match(workflow, /experimental\/amlenc\/scripts\/build-kernel\.sh/);
   assert.match(workflow, /experimental\/amlenc\/scripts\/build-libvpcodec\.sh/);
+  assert.match(workflow, /experimental\/amlenc\/scripts\/build-diagnostic-image\.sh --build/);
   assert.match(workflow, /experimental\/amlenc\/scripts\/build-one-kvm\.sh/);
   assert.match(workflow, /AMLENC_CROSS_IMAGE: ws1608-one-kvm-armv7:\$\{\{ github\.run_id \}\}-\$\{\{ github\.run_attempt \}\}/);
   assert.match(workflow, /DOCKER_BUILDKIT[^\n]*1/);

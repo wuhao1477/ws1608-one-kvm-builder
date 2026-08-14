@@ -85,7 +85,7 @@ jobs:
           CC: arm-linux-gnueabihf-gcc
         run: experimental/amlenc/scripts/verify-build.sh libvpcodec
       - name: Build diagnostic USB image
-        run: experimental/amlenc/scripts/build-diagnostic-image.sh
+        run: experimental/amlenc/scripts/build-diagnostic-image.sh --build
       - name: Build One-KVM armhf package
         env:
           BUILD_NUMBER: run-${{ github.run_number }}-${{ github.run_attempt }}
