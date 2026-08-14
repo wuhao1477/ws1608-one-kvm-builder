@@ -58,7 +58,7 @@ jobs:
           docker run --rm --platform linux/amd64 \
             -v "$GITHUB_WORKSPACE:/repo" -w /repo ubuntu:18.04 bash -lc '
               set -euo pipefail
-              apt-get update && apt-get install -y bc curl git make gcc-7 g++-7 gcc-7-arm-linux-gnueabihf g++-7-arm-linux-gnueabihf binutils-arm-linux-gnueabihf device-tree-compiler jq xz-utils
+              apt-get update && apt-get install -y bc curl git lzop make gcc-7 g++-7 gcc-7-arm-linux-gnueabihf g++-7-arm-linux-gnueabihf binutils-arm-linux-gnueabihf device-tree-compiler jq xz-utils
               ln -sf "$(command -v gcc-7)" /usr/local/bin/gcc
               ln -sf "$(command -v g++-7)" /usr/local/bin/g++
               ln -sf "$(command -v arm-linux-gnueabihf-gcc-7)" /usr/local/bin/arm-linux-gnueabihf-gcc
@@ -73,7 +73,7 @@ jobs:
           docker run --rm --platform linux/amd64 \
             -v "$GITHUB_WORKSPACE:/repo" -w /repo ubuntu:18.04 bash -lc '
               set -euo pipefail
-              apt-get update && apt-get install -y bc curl git make gcc-7 g++-7 gcc-7-arm-linux-gnueabihf g++-7-arm-linux-gnueabihf binutils-arm-linux-gnueabihf jq xz-utils
+              apt-get update && apt-get install -y bc curl git lzop make gcc-7 g++-7 gcc-7-arm-linux-gnueabihf g++-7-arm-linux-gnueabihf binutils-arm-linux-gnueabihf jq xz-utils
               ln -sf "$(command -v gcc-7)" /usr/local/bin/gcc
               ln -sf "$(command -v g++-7)" /usr/local/bin/g++
               curl --fail --location https://nodejs.org/dist/v16.20.2/node-v16.20.2-linux-x64.tar.xz | tar -xJ -C /usr/local --strip-components=1
