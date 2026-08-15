@@ -45,7 +45,7 @@ mkdir -p "$BOOT_FILES"
 docker run --rm --platform linux/arm/v7 \
   -v "$WORK_DIR:/work" \
   "${one_kvm_mount[@]}" \
-  -v "$ROOT_DIR/config/systemctl-build-stub:/usr/local/sbin/systemctl:ro" \
+  -v "$ROOT_DIR/config/systemctl-build-stub:/usr/bin/systemctl:ro" \
   -v "$ROOT_DIR/experimental/amlenc/scripts/apt-install.sh:/build-tools/apt-install:ro" \
   -v "$ROOT_DIR/experimental/amlenc/scripts/write-package-manifest.sh:/build-tools/write-package-manifest:ro" \
   -v "$ROOT_DIR/experimental/amlenc/scripts/archive-rootfs.sh:/build-tools/archive-rootfs:ro" \

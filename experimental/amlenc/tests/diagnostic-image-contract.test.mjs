@@ -224,7 +224,7 @@ test('configures APT retries for metadata and package downloads', (t) => {
 
 test('reuses the stable systemctl stub while configuring packages in the armhf rootfs', () => {
   const source = fs.readFileSync(assembler, 'utf8');
-  assert.match(source, /config\/systemctl-build-stub:\/usr\/local\/sbin\/systemctl:ro/);
+  assert.match(source, /config\/systemctl-build-stub:\/usr\/bin\/systemctl:ro/);
 });
 
 test('accepts debugfs permission output without a file-type prefix', () => {
