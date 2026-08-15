@@ -13,6 +13,7 @@ const packageManifestWriter = 'experimental/amlenc/scripts/write-package-manifes
 const rootfsArchiver = 'experimental/amlenc/scripts/archive-rootfs.sh';
 const aptInstaller = 'experimental/amlenc/scripts/apt-install.sh';
 const modeVerifier = 'experimental/amlenc/scripts/verify-debugfs-mode.sh';
+const assembler = 'experimental/amlenc/scripts/assemble-diagnostic-usb.sh';
 
 function copyFixture(t) {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'amlenc-diag-image-'));
@@ -219,6 +220,11 @@ test('configures APT retries for metadata and package downloads', (t) => {
     '-o Acquire::Retries=5 install -y --no-install-recommends jq e2fsprogs',
     '',
   ].join('\n'));
+});
+
+test('reuses the stable systemctl stub while configuring packages in the armhf rootfs', () => {
+  const source = fs.readFileSync(assembler, 'utf8');
+  assert.match(source, /config\/systemctl-build-stub:\/usr\/local\/sbin\/systemctl:ro/);
 });
 
 test('accepts debugfs permission output without a file-type prefix', () => {
