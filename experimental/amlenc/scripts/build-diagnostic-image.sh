@@ -7,6 +7,7 @@ KERNEL_DIR=${AMLENC_KERNEL_OUTPUT_DIR:-$ROOT_DIR/out/amlenc/kernel}
 ENCODER_DIR=${AMLENC_LIBVPCODEC_OUTPUT_DIR:-$ROOT_DIR/out/amlenc/libvpcodec}
 OUTPUT_DIR=${AMLENC_DIAGNOSTIC_IMAGE_OUTPUT_DIR:-$ROOT_DIR/out/amlenc/diagnostic-image}
 BUILD_REVISION=${AMLENC_BUILD_REVISION:-local001}
+ONE_KVM_DEB=${AMLENC_ONE_KVM_DEB:-}
 
 fail() {
   echo "diagnostic image input audit failed: $*" >&2
@@ -44,12 +45,17 @@ write_input_manifest() {
   local encoder_manifest=$ENCODER_DIR/source-manifest.json
   local image_name="WS1608-AMLENC-Diagnostic_k3.10.107_bullseye_${BUILD_REVISION}.usb.img"
   local kernel_commit encoder_commit kernel_version encoder_abi redistribution
+  local one_kvm_version= one_kvm_sha256=
 
   kernel_commit=$(jq -er '.commit' "$kernel_manifest")
   kernel_version=$(jq -er '.kernel' "$kernel_manifest")
   encoder_commit=$(jq -er '.commit' "$encoder_manifest")
   encoder_abi=$(jq -er '.abi' "$encoder_manifest")
   redistribution=$(jq -er '.redistribution' "$encoder_manifest")
+  if [[ -n "$ONE_KVM_DEB" ]]; then
+    one_kvm_version=$(dpkg-deb -f "$ONE_KVM_DEB" Version)
+    one_kvm_sha256=$(sha256sum "$ONE_KVM_DEB" | awk '{print $1}')
+  fi
 
   jq -n \
     --arg image_name "$image_name" --arg revision "$BUILD_REVISION" \
@@ -61,7 +67,9 @@ write_input_manifest() {
     --arg modules "$(sha256sum "$KERNEL_DIR/modules.tar.gz" | awk '{print $1}')" \
     --arg kernel_config "$(sha256sum "$KERNEL_DIR/kernel.config" | awk '{print $1}')" \
     --arg library "$(sha256sum "$ENCODER_DIR/libvpcodec.so" | awk '{print $1}')" \
-    --arg diagnostic "$(sha256sum "$ENCODER_DIR/amlenc-m8-diag" | awk '{print $1}')" '
+    --arg diagnostic "$(sha256sum "$ENCODER_DIR/amlenc-m8-diag" | awk '{print $1}')" \
+    --arg one_kvm_included "$([[ -n "$ONE_KVM_DEB" ]] && printf true || printf false)" \
+    --arg one_kvm_version "$one_kvm_version" --arg one_kvm_sha256 "$one_kvm_sha256" '
     {
       schema: 1,
       kind: "ws1608-amlenc-diagnostic-usb-image",
@@ -85,7 +93,10 @@ write_input_manifest() {
         diagnostic: $diagnostic
       },
       hardware_encoder_tested: false,
-      one_kvm_included: false,
+      one_kvm_included: ($one_kvm_included == "true"),
+      one_kvm: (if $one_kvm_included == "true" then
+        {version: $one_kvm_version, sha256: $one_kvm_sha256}
+      else null end),
       stable_channel_modified: false
     }
   ' >"$OUTPUT_DIR/input-manifest.json"
@@ -101,6 +112,12 @@ audit_inputs() {
   for file in libvpcodec.so amlenc-m8-diag source-manifest.json; do
     require_regular_file "$ENCODER_DIR/$file" "encoder artifact $file"
   done
+  if [[ -n "$ONE_KVM_DEB" ]]; then
+    require_regular_file "$ONE_KVM_DEB" "One-KVM package"
+    command -v dpkg-deb >/dev/null || fail "dpkg-deb is required for One-KVM integration"
+    [[ "$(dpkg-deb -f "$ONE_KVM_DEB" Package)" == one-kvm ]] || fail "unexpected One-KVM package name"
+    [[ "$(dpkg-deb -f "$ONE_KVM_DEB" Architecture)" == armhf ]] || fail "unexpected One-KVM package architecture"
+  fi
   verify_checksums "$KERNEL_DIR" kernel
   verify_checksums "$ENCODER_DIR" encoder
 

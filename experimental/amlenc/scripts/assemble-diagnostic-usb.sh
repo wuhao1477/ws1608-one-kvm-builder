@@ -9,6 +9,7 @@ OUTPUT_DIR=${AMLENC_DIAGNOSTIC_IMAGE_OUTPUT_DIR:-$ROOT_DIR/out/amlenc/diagnostic
 WORK_DIR=${AMLENC_DIAGNOSTIC_IMAGE_WORK_DIR:-$ROOT_DIR/.build/amlenc/diagnostic-image}
 BUILD_REVISION=${AMLENC_BUILD_REVISION:-local001}
 PUBLIC_KEY=${AMLENC_SSH_PUBLIC_KEY:-}
+ONE_KVM_DEB=${AMLENC_ONE_KVM_DEB:-}
 ROOTFS_UUID=7c59bb76-d17e-4a9c-9ff8-031b35133010
 ROOTFS_BYTES=1400897536
 BOOT_BYTES=268435456
@@ -29,6 +30,13 @@ BOOT_FILES="$WORK_DIR/boot-files"
   exit 1
 }
 for command in docker jq sha256sum truncate; do command -v "$command" >/dev/null; done
+if [[ -n "$ONE_KVM_DEB" ]]; then
+  [[ -f "$ONE_KVM_DEB" && ! -L "$ONE_KVM_DEB" ]] || { echo "AMLENC_ONE_KVM_DEB is invalid" >&2; exit 1; }
+fi
+one_kvm_mount=()
+if [[ -n "$ONE_KVM_DEB" ]]; then
+  one_kvm_mount=(-v "$ONE_KVM_DEB:/work/one-kvm.deb:ro")
+fi
 [[ ! -L "$WORK_DIR" && "$WORK_DIR" != / && "$WORK_DIR" != "$ROOT_DIR" ]] || exit 1
 mkdir -p "$WORK_DIR"
 find "$WORK_DIR" -mindepth 1 -delete
@@ -36,6 +44,7 @@ mkdir -p "$BOOT_FILES"
 
 docker run --rm --platform linux/arm/v7 \
   -v "$WORK_DIR:/work" \
+  "${one_kvm_mount[@]}" \
   -v "$ROOT_DIR/experimental/amlenc/scripts/apt-install.sh:/build-tools/apt-install:ro" \
   -v "$ROOT_DIR/experimental/amlenc/scripts/write-package-manifest.sh:/build-tools/write-package-manifest:ro" \
   -v "$ROOT_DIR/experimental/amlenc/scripts/archive-rootfs.sh:/build-tools/archive-rootfs:ro" \
@@ -43,6 +52,11 @@ docker run --rm --platform linux/arm/v7 \
     export DEBIAN_FRONTEND=noninteractive
     /build-tools/apt-install sysvinit-core initscripts udev kmod \
       ifupdown isc-dhcp-client openssh-server ca-certificates ffmpeg jq iproute2 procps
+    if [ -f /work/one-kvm.deb ]; then
+      /build-tools/apt-install /work/one-kvm.deb
+      mkdir -p /etc/systemd/system/multi-user.target.wants
+      ln -sfn /lib/systemd/system/one-kvm.service /etc/systemd/system/multi-user.target.wants/one-kvm.service
+    fi
     passwd -l root
     rm -f /etc/ssh/ssh_host_* /etc/machine-id
     : >/etc/machine-id
@@ -77,6 +91,32 @@ docker run --rm --platform linux/arm64 \
     /repo/scripts/install-file.sh 0644 /output/input-manifest.json \
       /rootfs-tree/etc/ws1608-amlenc-release.json
     /repo/scripts/configure-diagnostic-rootfs.sh /rootfs-tree
+    if [ -x /rootfs-tree/usr/bin/one-kvm ]; then
+      cat >/rootfs-tree/etc/init.d/one-kvm <<"EOF"
+#!/bin/sh
+### BEGIN INIT INFO
+# Provides:          one-kvm
+# Required-Start:    $network $remote_fs
+# Required-Stop:     $network $remote_fs
+# Default-Start:     2 3 4 5
+# Default-Stop:      0 1 6
+# Short-Description: Start One-KVM
+### END INIT INFO
+set -eu
+pidfile=/run/one-kvm.pid
+case "${1:-}" in
+  start) ONE_KVM_AMLENC_H264_LIB=/usr/lib/one-kvm/libvpcodec.so start-stop-daemon --start --background --make-pidfile --pidfile "$pidfile" --startas /usr/bin/one-kvm --chdir / --exec /usr/bin/one-kvm ;;
+  stop) start-stop-daemon --stop --retry TERM/10/KILL/5 --pidfile "$pidfile" --remove-pidfile || true ;;
+  restart|force-reload) "$0" stop; "$0" start ;;
+  status) start-stop-daemon --status --pidfile "$pidfile" ;;
+  *) echo "usage: $0 {start|stop|restart|status}" >&2; exit 2 ;;
+esac
+EOF
+      chmod 0755 /rootfs-tree/etc/init.d/one-kvm
+      for runlevel in 2 3 4 5; do
+        ln -s ../init.d/one-kvm "/rootfs-tree/etc/rc${runlevel}.d/S99one-kvm"
+      done
+    fi
     printf "proc /proc proc defaults 0 0\nsysfs /sys sysfs defaults 0 0\ntmpfs /run tmpfs mode=0755,nosuid,nodev 0 0\n" \
       >/rootfs-tree/etc/fstab
     truncate -s '"$ROOTFS_BYTES"' /work/rootfs.ext4

@@ -55,7 +55,7 @@ docker run --rm --platform linux/arm64 \
     debugfs -R "stat /sbin/init" /work/rootfs.ext4 2>/dev/null | verify-debugfs-mode 0755
     debugfs -R "stat /lib/modules/3.10.107" /work/rootfs.ext4 2>/dev/null | grep -q "Type: directory"
     debugfs -R "cat /etc/ssh/sshd_config.d/ws1608-amlenc.conf" /work/rootfs.ext4 2>/dev/null | grep -Fqx "PasswordAuthentication no"
-    debugfs -R "cat /etc/ws1608-amlenc-release.json" /work/rootfs.ext4 2>/dev/null | jq -e ".hardware_encoder_tested == false and .one_kvm_included == false" >/dev/null
+    debugfs -R "cat /etc/ws1608-amlenc-release.json" /work/rootfs.ext4 2>/dev/null | jq -e ".hardware_encoder_tested == false" >/dev/null
     debugfs -R "cat /etc/shadow" /work/rootfs.ext4 2>/dev/null | grep -Eq "^root:[!*]"
     for package in libc6 openssh-server ffmpeg sysvinit-core; do
       debugfs -R "cat /usr/share/ws1608-amlenc-packages.txt" /work/rootfs.ext4 2>/dev/null \
@@ -66,6 +66,12 @@ docker run --rm --platform linux/arm64 \
       debugfs -R "dump $file_path $target" /work/rootfs.ext4 >/dev/null 2>&1
       file "$target" | grep -Eq "ELF 32-bit LSB.*ARM.*EABI5.*dynamically linked"
     done
+    if debugfs -R "stat /usr/bin/one-kvm" /work/rootfs.ext4 2>/dev/null | grep -q "Type: regular"; then
+      debugfs -R "stat /etc/init.d/one-kvm" /work/rootfs.ext4 2>/dev/null | verify-debugfs-mode 0755
+      debugfs -R "stat /etc/rc2.d/S99one-kvm" /work/rootfs.ext4 2>/dev/null | grep -q "Type: symlink"
+      debugfs -R "dump /usr/bin/one-kvm /work/one-kvm" /work/rootfs.ext4 >/dev/null 2>&1
+      file /work/one-kvm | grep -Eq "ELF 32-bit LSB.*ARM.*EABI5.*dynamically linked"
+    fi
   '
 docker run --rm --platform linux/arm/v7 -v "$WORK_DIR:/work:ro" \
   "$BULLSEYE_ARMV7_OCI_IMAGE" sh -euxc \
