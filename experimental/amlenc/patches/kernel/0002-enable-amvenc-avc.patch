@@ -1,0 +1,35 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: WS1608 One-KVM Builder <noreply@github.com>
+Date: Thu, 13 Aug 2026 15:24:14 +0000
+Subject: [PATCH 2/2] ARM: dts: reserve one 18 MiB S805 encoder instance
+
+---
+ arch/arm/boot/dts/meson8b_odroidc.dts | 8 ++++----
+ 1 file changed, 4 insertions(+), 4 deletions(-)
+
+diff --git a/arch/arm/boot/dts/meson8b_odroidc.dts b/arch/arm/boot/dts/meson8b_odroidc.dts
+index 4e8795b..5a94bd3 100755
+--- a/arch/arm/boot/dts/meson8b_odroidc.dts
++++ b/arch/arm/boot/dts/meson8b_odroidc.dts
+@@ -63,9 +63,9 @@
+         #address-cells = <1>;
+         #size-cells = <1>;
+ 
+-        cma_0:region@0 {
+-           region_name = "cma_0";
+-           reg = <0 0x02a00000>;
++        cma_encoder:region@0 {
++           region_name = "cma_encoder";
++           reg = <0x0 0x01200000>;
+            linux,contiguous-region;
+         };
+         };
+@@ -130,7 +130,7 @@
+                 compatible = "amlogic,amvenc_avc";
+                 dev_name = "amvenc_avc.0";
+                 status = "okay";
+-                linux,contiguous-region = <&cma_0>;
++                linux,contiguous-region = <&cma_encoder>;
+                 reserve-iomap = "true";
+         };
+ 

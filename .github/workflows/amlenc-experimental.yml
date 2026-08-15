@@ -1,0 +1,262 @@
+name: Build WS1608 AMLENC experimental candidate
+
+on:
+  pull_request:
+    paths:
+      - '.github/workflows/amlenc-experimental.yml'
+      - 'experimental/amlenc/**'
+  workflow_dispatch:
+    inputs:
+      publish:
+        description: Publish the verified image as an immutable experimental prerelease
+        required: true
+        type: boolean
+        default: false
+      acknowledge_experimental:
+        description: Acknowledge that hardware boot and encoding were not tested
+        required: true
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ws1608-amlenc-${{ github.event.pull_request.number || github.run_id }}-${{ github.run_attempt }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  contract:
+    name: Check experimental contracts
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7
+        with:
+          persist-credentials: false
+      - name: Install validation tools
+        run: sudo apt-get update && sudo apt-get install -y jq
+      - name: Run contract tests
+        run: |
+          experimental/amlenc/scripts/verify-stable-chain.sh
+          npm test
+          node --test experimental/amlenc/tests/*.test.mjs
+          for script in experimental/amlenc/scripts/*.sh; do bash -n "$script"; done
+      - name: Verify immutable inputs
+        run: node experimental/amlenc/scripts/verify-source-locks.mjs experimental/amlenc/config/sources.env
+      - name: Confirm stable workflow boundary
+        run: git diff --exit-code -- .github/workflows/build.yml config/base.env
+
+  build:
+    name: Build experimental source artifacts
+    needs: contract
+    if: github.event_name == 'workflow_dispatch' || github.event_name == 'pull_request'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 180
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7
+        with:
+          persist-credentials: false
+      - name: Install build tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y curl jq qemu-user-static device-tree-compiler dpkg-dev gcc-arm-linux-gnueabihf binutils-arm-linux-gnueabihf build-essential e2fsprogs file mtools u-boot-tools xz-utils
+          docker version
+          curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --default-toolchain stable
+          source "$HOME/.cargo/env"
+          cargo install cross --locked
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7
+        with:
+          go-version: "1.24.x"
+          cache: false
+      - name: Build pinned AmlImg tool
+        env:
+          TOOLS_DIR: ${{ github.workspace }}/.tools
+        run: echo "AMLIMG_BIN=$(./scripts/build-tools.sh)" >> "$GITHUB_ENV"
+      - name: Build kernel
+        run: |
+          docker run --rm --platform linux/amd64 \
+            -v "$GITHUB_WORKSPACE:/repo" -w /repo ubuntu:18.04 bash -lc '
+              set -euo pipefail
+              apt-get update && apt-get install -y bc curl file git lzop make gcc-7 g++-7 gcc-7-arm-linux-gnueabihf g++-7-arm-linux-gnueabihf binutils-arm-linux-gnueabihf device-tree-compiler jq xz-utils
+              ln -sf "$(command -v gcc-7)" /usr/local/bin/gcc
+              ln -sf "$(command -v g++-7)" /usr/local/bin/g++
+              ln -sf "$(command -v arm-linux-gnueabihf-gcc-7)" /usr/local/bin/arm-linux-gnueabihf-gcc
+              curl --fail --location https://nodejs.org/dist/v16.20.2/node-v16.20.2-linux-x64.tar.xz | tar -xJ -C /usr/local --strip-components=1
+              CROSS_COMPILE=arm-linux-gnueabihf- /repo/experimental/amlenc/scripts/build-kernel.sh
+            '
+          sudo chown -R "$(id -u):$(id -g)" .build/amlenc out/amlenc
+      - name: Verify kernel
+        run: experimental/amlenc/scripts/verify-build.sh kernel
+      - name: Build M8 encoder library
+        run: |
+          docker run --rm --platform linux/amd64 \
+            -v "$GITHUB_WORKSPACE:/repo" -w /repo ubuntu:18.04 bash -lc '
+              set -euo pipefail
+              apt-get update && apt-get install -y bc curl file git lzop make qemu-user-static gcc-7 g++-7 gcc-7-arm-linux-gnueabihf g++-7-arm-linux-gnueabihf binutils-arm-linux-gnueabihf jq xz-utils
+              ln -sf "$(command -v gcc-7)" /usr/local/bin/gcc
+              ln -sf "$(command -v g++-7)" /usr/local/bin/g++
+              curl --fail --location https://nodejs.org/dist/v16.20.2/node-v16.20.2-linux-x64.tar.xz | tar -xJ -C /usr/local --strip-components=1
+              CC=arm-linux-gnueabihf-gcc-7 CXX=arm-linux-gnueabihf-g++-7 AR=arm-linux-gnueabihf-ar READELF=arm-linux-gnueabihf-readelf /repo/experimental/amlenc/scripts/build-libvpcodec.sh
+            '
+          sudo chown -R "$(id -u):$(id -g)" .build/amlenc out/amlenc
+      - name: Verify encoder library
+        env:
+          CC: arm-linux-gnueabihf-gcc
+        run: experimental/amlenc/scripts/verify-build.sh libvpcodec
+      - name: Build One-KVM armhf package
+        env:
+          BUILD_NUMBER: run-${{ github.run_number }}-${{ github.run_attempt }}
+          AMLENC_CROSS_IMAGE: ws1608-one-kvm-armv7:${{ github.run_id }}-${{ github.run_attempt }}
+          DOCKER_BUILDKIT: '1'
+        run: experimental/amlenc/scripts/build-one-kvm.sh
+      - name: Verify One-KVM armhf package
+        run: experimental/amlenc/scripts/verify-one-kvm.sh out/amlenc/one-kvm/one-kvm_0.2.6+ws1608amlenc.run-${{ github.run_number }}-${{ github.run_attempt }}_armhf.deb
+      - name: Build diagnostic USB image with One-KVM
+        env:
+          AMLENC_ONE_KVM_DEB: ${{ github.workspace }}/out/amlenc/one-kvm/one-kvm_0.2.6+ws1608amlenc.run-${{ github.run_number }}-${{ github.run_attempt }}_armhf.deb
+        run: |
+          umask 077
+          key_file="$RUNNER_TEMP/ws1608-amlenc-build-key"
+          ssh-keygen -q -t ed25519 -N '' -f "$key_file"
+          AMLENC_SSH_PUBLIC_KEY="$(<"$key_file.pub")" \
+            experimental/amlenc/scripts/build-diagnostic-image.sh --build
+      - name: Build experimental burn image
+        env:
+          BASE_IMAGE_XZ: ${{ runner.temp }}/ws1608-base-placeholder
+          DIAGNOSTIC_IMAGE: ${{ github.workspace }}/out/amlenc/diagnostic-image/WS1608-AMLENC-Diagnostic_k3.10.107_bullseye_local001.usb.img
+          DIAGNOSTIC_MANIFEST: ${{ github.workspace }}/out/amlenc/diagnostic-image/manifest.json
+          AMLIMG_BIN: ${{ github.workspace }}/.tools/AmlImg
+          BUILD_REVISION: run-${{ github.run_number }}-${{ github.run_attempt }}
+          IMAGE_NAME: WS1608-AMLENC_0.2.6+ws1608amlenc.run-${{ github.run_number }}-${{ github.run_attempt }}_Onecloud_bullseye_3.10.107.burn.img
+          OUTPUT_DIR: ${{ github.workspace }}/out/amlenc/burn
+          WORK_DIR: ${{ github.workspace }}/.build/amlenc/burn
+        run: |
+          source config/base.env
+          curl --fail --location --retry 5 "$BASE_IMAGE_URL" -o "$RUNNER_TEMP/base.burn.img.xz"
+          echo "$BASE_IMAGE_SHA256  $RUNNER_TEMP/base.burn.img.xz" | sha256sum --check
+          BASE_IMAGE_XZ="$RUNNER_TEMP/base.burn.img.xz" \
+            experimental/amlenc/scripts/build-burn-image.sh
+      - name: Verify experimental burn image
+        env:
+          BASE_IMAGE: ${{ runner.temp }}/base.burn.img
+          IMAGE: ${{ github.workspace }}/out/amlenc/burn/WS1608-AMLENC_0.2.6+ws1608amlenc.run-${{ github.run_number }}-${{ github.run_attempt }}_Onecloud_bullseye_3.10.107.burn.img
+          MANIFEST: ${{ github.workspace }}/out/amlenc/burn/manifest.json
+          AMLIMG_BIN: ${{ github.workspace }}/.tools/AmlImg
+          VERIFY_DIR: ${{ github.workspace }}/.build/amlenc/burn-verify
+        run: |
+          xz -dc "$RUNNER_TEMP/base.burn.img.xz" >"$BASE_IMAGE"
+          experimental/amlenc/scripts/verify-burn-image.sh
+      - name: Package experimental burn metadata
+        env:
+          OUTPUT_DIR: ${{ github.workspace }}/out/amlenc/burn
+          IMAGE_NAME: WS1608-AMLENC_0.2.6+ws1608amlenc.run-${{ github.run_number }}-${{ github.run_attempt }}_Onecloud_bullseye_3.10.107.burn.img
+        run: experimental/amlenc/scripts/package-burn-release.sh
+      - name: Record untested experimental status
+        run: |
+          jq -e '.hardware_encoder_tested == false and .one_kvm_included == true and .stable_channel_modified == false' out/amlenc/diagnostic-image/manifest.json
+          jq -e '.hardware_encoder_tested == false and .hardware_boot_tested == false and .one_kvm_included == true' out/amlenc/burn/manifest.json
+      - name: Verify packaged experimental release
+        run: |
+          experimental/amlenc/scripts/verify-stable-chain.sh
+          experimental/amlenc/scripts/verify-burn-release.sh out/amlenc/burn
+      - name: Upload experimental release artifact
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: ws1608-amlenc-exp-release-${{ github.run_number }}-${{ github.run_attempt }}
+          path: out/amlenc/burn/
+          if-no-files-found: error
+          retention-days: 14
+          compression-level: 0
+
+  release:
+    name: Publish immutable experimental prerelease
+    needs: [contract, build]
+    if: >-
+      github.event_name == 'workflow_dispatch' && inputs.publish && inputs.acknowledge_experimental &&
+      github.ref == format('refs/heads/{0}', github.event.repository.default_branch)
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7
+        with:
+          persist-credentials: false
+      - name: Install release verification tools
+        run: sudo apt-get update && sudo apt-get install -y curl e2fsprogs file jq mtools u-boot-tools xz-utils
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7
+        with:
+          go-version: "1.24.x"
+          cache: false
+      - name: Build pinned AmlImg tool
+        env:
+          TOOLS_DIR: ${{ github.workspace }}/.tools
+        run: echo "AMLIMG_BIN=$(./scripts/build-tools.sh)" >> "$GITHUB_ENV"
+      - name: Download verified workflow artifact
+        uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7
+        with:
+          name: ws1608-amlenc-exp-release-${{ github.run_number }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/release
+      - name: Prepare immutable release identity
+        id: release_identity
+        env:
+          RUN_NUMBER: ${{ github.run_number }}
+          RUN_ATTEMPT: ${{ github.run_attempt }}
+        run: |
+          build_number=$((RUN_NUMBER * 1000 + RUN_ATTEMPT))
+          build_revision=$(printf 'b%06d' "$build_number")
+          image_name="WS1608-AMLENC_0.2.6+ws1608amlenc.run-${RUN_NUMBER}-${RUN_ATTEMPT}_Onecloud_bullseye_3.10.107.burn.img"
+          {
+            echo "BUILD_NUMBER=$build_number"
+            echo "BUILD_REVISION=$build_revision"
+            echo "BUILD_TAG=ws1608-amlenc-exp-0.2.6-v260802-k3.10.107-$build_revision"
+            echo "IMAGE_NAME=$image_name"
+          } >> "$GITHUB_ENV"
+          {
+            echo "build_number=$build_number"
+            echo "build_revision=$build_revision"
+            echo "build_tag=ws1608-amlenc-exp-0.2.6-v260802-k3.10.107-$build_revision"
+            echo "image_name=$image_name"
+          } >> "$GITHUB_OUTPUT"
+      - name: Reverify downloaded experimental release
+        env:
+          BASE_IMAGE: ${{ runner.temp }}/base.burn.img
+          IMAGE: ${{ runner.temp }}/release/${{ steps.release_identity.outputs.image_name }}
+          MANIFEST: ${{ runner.temp }}/release/manifest.json
+          AMLIMG_BIN: ${{ github.workspace }}/.tools/AmlImg
+          VERIFY_DIR: ${{ runner.temp }}/burn-verify
+        run: |
+          source config/base.env
+          curl --fail --location --retry 5 "$BASE_IMAGE_URL" -o "$RUNNER_TEMP/base.burn.img.xz"
+          echo "$BASE_IMAGE_SHA256  $RUNNER_TEMP/base.burn.img.xz" | sha256sum --check
+          xz -dc "$RUNNER_TEMP/base.burn.img.xz" >"$BASE_IMAGE"
+          experimental/amlenc/scripts/verify-burn-release.sh "$RUNNER_TEMP/release"
+          experimental/amlenc/scripts/verify-burn-image.sh
+      - name: Write experimental release notes
+        run: |
+          cat >"$RUNNER_TEMP/release-notes.md" <<EOF
+          Experimental WS1608/S805 image with One-KVM Rust 0.2.6 and the Meson8b AMLENC H.264 integration.
+
+          This image passed the hosted build, Amlogic container, filesystem, package, checksum and downloaded-artifact checks. Physical flashing, boot and hardware encoding were not tested for this build.
+
+          One-KVM package: 0.2.6+ws1608amlenc.run-${GITHUB_RUN_NUMBER}-${GITHUB_RUN_ATTEMPT}
+          Kernel: 3.10.107
+          Channel: experimental prerelease
+          EOF
+      - name: Publish experimental prerelease
+        env:
+          GH_TOKEN: ${{ github.token }}
+          BUILD_TAG: ${{ steps.release_identity.outputs.build_tag }}
+          BUILD_NUMBER: ${{ steps.release_identity.outputs.build_number }}
+          BUILD_REVISION: ${{ steps.release_identity.outputs.build_revision }}
+          BUILDER_COMMIT: ${{ github.sha }}
+          ONE_KVM_VERSION: 0.2.6
+          UPSTREAM_TAG: v260802
+          IMAGE_NAME: ${{ steps.release_identity.outputs.image_name }}
+          ARTIFACT_DIR: ${{ runner.temp }}/release
+          RELEASE_NOTES_FILE: ${{ runner.temp }}/release-notes.md
+          GITHUB_REPOSITORY: ${{ github.repository }}
+          RELEASE_PRERELEASE: 'true'
+        run: |
+          PACKAGE_DIGEST=$(jq -er '.one_kvm.sha256' "$ARTIFACT_DIR/manifest.json")
+          export PACKAGE_DIGEST
+          scripts/publish-release.sh

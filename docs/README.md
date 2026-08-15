@@ -12,6 +12,8 @@
 - [maintenance.md](maintenance.md)：日常更新、基础镜像更换、强制重建和 Release 维护。
 - [troubleshooting.md](troubleshooting.md)：已发生故障、症状、原因和修复方法。
 - [hardware-validation.md](hardware-validation.md)：WS1608 实机刷写、One-KVM、视频采集和 HID 验收表。
+- [S805 AMLENC 实验版本开发计划](superpowers/plans/2026-08-13-ws1608-s805-amlenc-experimental-plan.md)：保留稳定链路，分阶段验证 H.264 硬件编码、One-KVM 和 USB Gadget。
+- [S805 AMLENC 下一版本执行计划](superpowers/plans/2026-08-14-ws1608-amlenc-next-version-plan.md)：从当前实验分支继续，固定稳定链路并完成 Deb、实机编码、USB Gadget、直刷镜像和 prerelease 门禁。
 - [adr/0001-pinned-base-weekly-check.md](adr/0001-pinned-base-weekly-check.md)：固定稳定基础镜像并每周检查上游的决策记录。
 - [adr/0002-immutable-versioned-rebuilds.md](adr/0002-immutable-versioned-rebuilds.md)：不可变 `bRRRAAA` Release、摘要判定和发布门禁。
 

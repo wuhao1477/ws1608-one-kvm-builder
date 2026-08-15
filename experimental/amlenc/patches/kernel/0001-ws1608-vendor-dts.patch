@@ -1,0 +1,173 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: WS1608 One-KVM Builder <noreply@github.com>
+Date: Thu, 13 Aug 2026 15:24:14 +0000
+Subject: [PATCH 1/2] ARM: dts: adapt Meson8b board description for WS1608
+
+---
+ arch/arm/boot/dts/meson8b_odroidc.dts | 95 +++------------------------
+ 1 file changed, 10 insertions(+), 85 deletions(-)
+
+diff --git a/arch/arm/boot/dts/meson8b_odroidc.dts b/arch/arm/boot/dts/meson8b_odroidc.dts
+index 0609574..4e8795b 100755
+--- a/arch/arm/boot/dts/meson8b_odroidc.dts
++++ b/arch/arm/boot/dts/meson8b_odroidc.dts
+@@ -1,7 +1,8 @@
+ /dts-v1/;
+ /{
+-        compatible = "AMLOGIC,8726_M8B";
+-        model = "AMLOGIC";
++        amlogic-dt-id = "m8b_m201_1G";
++        compatible = "thunder,onecloud", "amlogic,meson8b", "AMLOGIC,8726_M8B";
++        model = "WS1608 OneCloud";
+         interrupt-parent = <&gic>;
+         #address-cells = <1>;
+         #size-cells = <1>;
+@@ -301,23 +302,6 @@
+                 use_pio = <0>;
+                 master_i2c_speed = <100000>;
+ 
+-		/* Hardkernel I2C 3.5" Touchscreen */
+-		/* drivers/input/sx865x.c */
+-		sx865x: sx865x@49	{
+-			status = "okay";
+-			compatible = "semtech,sx8650";
+-			reg = <0x49>;
+-			#clock-cells = <0>;
+-
+-			/* H/W Pin control setup */
+-			gpio-pendown = "GPIOX_1";
+-			gpio-reset = "GPIOX_2";
+-
+-			/* platform data setup */
+-			invert-x = <0>;
+-			invert-y = <1>;
+-			swap-xy = <1>;
+-		};
+         };
+ 
+     i2c@c11087e0{ /*I2C-C*/
+@@ -446,7 +430,6 @@
+                         port-config = <0>; /** 0: default */
+                         port-dma = <0>; /** 0: default, 1: single, 2: incr, 3: incr4, 4: incr8, 5: incr16, 6: disable*/
+                         port-id-mode = <1>; /** 0: hardware, 1: sw_host, 2: sw_slave*/
+-                        gpio-hub-rst = "GPIOAO_4";
+                         status = "okay";
+                 };
+ 
+@@ -460,7 +443,6 @@
+                         port-config = <0>; /** 0: default */
+                         port-dma = <0>; /** 0: default, 1: single, 2: incr, 3: incr4, 4: incr8, 5: incr16, 6: disable*/
+                         port-id-mode = <0>; /** 0: hardware, 1: sw_host, 2: sw_slave*/
+-                        gpio-vbus-power = "GPIOAO_5";
+                         gpio-work-mask  = <1>; /**0: work on pulldown,1:work on pullup*/
+                         status = "okay";
+                 };
+@@ -503,35 +485,13 @@
+         status = "okay";
+     };
+ 
+-    pcm5102{
+-        compatible = "hardkernel,pcm5102";
+-        dev_name = "pcm5102.0";
+-        status = "okay";
+-    };
+-
+     aml_m8_sound_card{
+         compatible = "sound_card, aml_snd_m8";
+-        aml,sound_card = "ODROID-HDMI";
++        aml,sound_card = "WS1608-HDMI";
+         sleep_time = <130>;
+         status = "okay";
+     };
+ 
+-    odroid_sound_card{
+-        compatible = "sound_card, odroid_snd";
+-        aml,sound_card = "ODROID-DAC";
+-        pinctrl-names = "odroid_i2s";
+-        pinctrl-0 = <&audio_pins>;
+-        status = "okay";
+-    };
+-
+-    odroid_hifi2{
+-        compatible = "sound_card, odroid_dac2";
+-        aml,sound_card = "ODROID-DAC2";
+-        pinctrl-names = "odroid_i2s";
+-        pinctrl-0 = <&audio_pins>;
+-        status = "okay";
+-    };
+-
+         saradc{
+                 compatible = "amlogic,saradc";
+                 status = "okay";
+@@ -698,10 +658,10 @@
+         pwr-ctrl = <&pwr_ctrl>;
+ 
+         vend_data: vend_data{
+-            vendor_name = "Hardkernel";           /* Max Chars: 8     */
++            vendor_name = "Xunlei";               /* Max Chars: 8     */
+             vendor_id = <0x000000>;                 /* Refer to http://standards.ieee.org/develop/regauth/oui/oui.txt   */
+-            product_desc = "ODROID-C1";        /* Max Chars: 16    */
+-            cec_osd_string = "ODROID-C1";        /* Max Chars: 14    */
++            product_desc = "WS1608 OneCloud";     /* Max Chars: 16    */
++            cec_osd_string = "OneCloud";          /* Max Chars: 14    */
+             ao_cec = <0x000001>;
+         };
+ 
+@@ -1018,21 +978,6 @@
+ 			amlogic,pins="GPIODV_9";
+ 		};
+ 
+-		odroid_pwm0:odroid_pwm0{
+-            amlogic,setmask=<2 0x00000008>;     /*GPIOX_11 PWM_B Reg2[3]*/
+-            amlogic,clrmask=<3 0x00100000
+-                             7 0x40000000>;     
+-            amlogic,pins="GPIOX_11";
+-		};
+-		odroid_pwm1:odroid_pwm1{
+-            amlogic,setmask=<2 0x00000008       /*GPIOX_11 PWM_B Reg2[3]*/
+-                             9 0x00080000>;     /*GPIOX_10 PWM_E Reg9[19]*/
+-            amlogic,clrmask=<3 0x00500100
+-                             4 0x00800000
+-                             6 0x00020000
+-                             7 0xc0000000>;
+-            amlogic,pins="GPIOX_11","GPIOX_10";
+-		};
+     };
+     meson-eth{
+                 compatible = "amlogic,meson-eth";
+@@ -1043,32 +988,12 @@
+                 savepowermode = <0>;
+                 phy_interface = <0>;
+                 new_maclogic = <1>;
+-                reset_pin_enable = <0>;
+-                reset_pin = "GPI0H_4";
+-                reset_delay = <100>;
++                reset_pin_enable = <1>;
++                reset_pin = "GPIOH_4";
++                reset_delay = <80>;
+                 disable_phyrefclk;
+         };
+ 
+-    leds {
+-        compatible = "gpio-leds";
+-        /* Blue LED */
+-        hearbeat {
+-            label = "blue:heartbeat";
+-            gpios = "GPIOAO_13";
+-            default-state = "off";
+-            linux,default-trigger = "heartbeat";
+-        };
+-    };
+-
+-    pwm{
+-        compatible = "amlogic, odroid-pwm";
+-        dev_name = "meson_pwm";
+-        status = "ok";
+-        pinctrl-names = "odroid_pwm0","odroid_pwm1";
+-        pinctrl-0 = <&odroid_pwm0>;
+-        pinctrl-1 = <&odroid_pwm1>;
+-    };
+-
+     pwm-ctrl {
+         compatible = "amlogic, pwm-ctrl";
+         dev_name = "pwm-ctrl";

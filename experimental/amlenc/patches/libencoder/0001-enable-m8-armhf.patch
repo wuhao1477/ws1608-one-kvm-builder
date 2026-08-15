@@ -1,0 +1,502 @@
+diff --git a/amvenc_264/bjunion_enc/Makefile b/amvenc_264/bjunion_enc/Makefile
+index 0654c9e..78d11fc 100644
+--- a/amvenc_264/bjunion_enc/Makefile
++++ b/amvenc_264/bjunion_enc/Makefile
+@@ -3,27 +3,35 @@
+ #export CXX=$(CROSS_CC_PREFIX)g++
+ #export AR=$(CROSS_CC_PREFIX)ar
+ 
+-CFLAGS +=-O2 -fPIC
+-CFLAGS += -g
+-#LDLIBS +=  -L./h264bitstream/.libs -lh264bitstream -lm -lrt -shared
+-LDLIBS += -lh264bitstream -lm -lrt -shared
++CFLAGS += -O2 -g -fPIC -pthread -marm -march=armv7-a -mfpu=neon -mfloat-abi=hard
++LDLIBS += -lm -lrt -pthread -shared
+ 
+ SUFFIXES += .d
+ NODEPS := clean distclean
+ 
+-C_SRCS := $(wildcard *.c) $(wildcard enc/gx_enc_fast/*.c)
++C_SRCS := h264bitstream.c
+ 
+ C_OBJS := $(C_SRCS:%.c=%.o)
+ 
+-CXX_SRCS := $(wildcard *.cpp) $(wildcard enc/gx_enc_fast/*.cpp)
++CXX_SRCS := libvpcodec.cpp AML_HWEncoder.cpp enc_api.cpp \
++	enc/m8_enc/dump.cpp \
++	enc/common/fill_buffer.cpp \
++	enc/intra_search/pred.cpp \
++	enc/m8_enc/m8venclib.cpp \
++	enc/m8_enc/noise_reduction.cpp \
++	enc/m8_enc/rate_control_m8.cpp \
++	enc/m8_enc_fast/m8venclib_fast.cpp \
++	enc/m8_enc_fast/rate_control_m8_fast.cpp
+ CXX_OBJS := $(CXX_SRCS:%.cpp=%.o)
++ASM_SRCS := enc/intra_search/pred_neon_asm.s
++ASM_OBJS := $(ASM_SRCS:%.s=%.o)
+ 
+ DEPFILES := $(patsubst %c,%d,$(C_SRCS))
+ DEPFILES += $(patsubst %cpp,%d,$(CXX_SRCS))
+ 
+ 
+-INC = -I./include -I./enc/gx_enc_fast -I. -Ih264bitstream
+-TARGET = libamvenc_264.so
++INC = -I./linux_compat -I./include -I./enc/m8_enc -I./enc/m8_enc_fast -I.
++TARGET = libvpcodec.so
+ 
+ all: $(TARGET)
+ 
+@@ -32,7 +40,7 @@ ifeq "$(findstring $(MAKECMDGOALS),$(NODEPS))"  ""
+ endif
+ 
+ 
+-$(TARGET): $(C_OBJS) $(CXX_OBJS)
++$(TARGET): $(C_OBJS) $(CXX_OBJS) $(ASM_OBJS)
+ 	@echo " [LINK] $@"
+ 	$(CXX) $(LDLIBS) -Wl,-soname,$(TARGET) -o $@ $^
+ 
+@@ -44,6 +52,10 @@ $(TARGET): $(C_OBJS) $(CXX_OBJS)
+ 	@echo " [CXX] $<"
+ 	@$(CXX) -c $(CFLAGS) $(INC) $< -o $@
+ 
++%.o: %.s
++	@echo " [ASM] $<"
++	@$(CC) -c $(CFLAGS) $< -o $@
++
+ %.d: %.cpp
+ 	@echo " [DEP] $<"
+ 	@$(CXX) $(CFLAGS) $(INC) -MM -MT "$(patsubst %.cpp,%.o,$<)" $< -MF $@
+@@ -54,5 +66,5 @@ $(TARGET): $(C_OBJS) $(CXX_OBJS)
+ 
+ clean:
+ 	@rm -f $(DEPFILES)
+-	@rm -f $(C_OBJS) $(CXX_OBJS)
++	@rm -f $(C_OBJS) $(CXX_OBJS) $(ASM_OBJS)
+ 	@rm -f $(TARGET)
+diff --git a/amvenc_264/bjunion_enc/enc/m8_enc/m8venclib.cpp b/amvenc_264/bjunion_enc/enc/m8_enc/m8venclib.cpp
+index 02434cc..b37de6a 100644
+--- a/amvenc_264/bjunion_enc/enc/m8_enc/m8venclib.cpp
++++ b/amvenc_264/bjunion_enc/enc/m8_enc/m8venclib.cpp
+@@ -54,6 +54,8 @@
+ #define USE_MULTI_THREAD_FOR_DCT
+ #define DISABLE_CPU_AFFINITY
+ 
++typedef unsigned int uint_t;
++
+ const unsigned char p_head[] = {
+         0x5a, 0xa5, 0x55, 0xaa, 0x00, 0x00, 0x00, 0x00,
+         0x13, 0x88, 0x10, 0x80, 0x11, 0x18, 0x12, 0x20,
+@@ -2715,7 +2717,7 @@ static AMVEnc_Status start_ime_half(m8venc_drv_t* p, unsigned char* outptr, int*
+ 
+     dump_encode_data(p, ENCODER_BUFFER_INPUT, addr_info[2]);
+ 
+-    if (encode_poll(p->fd, -1) <= 0) {
++    if (encode_poll(p->fd, ENCODE_DONE_TIMEOUT) <= 0) {
+         ALOGD("start_ime_half: poll fail. fd:%d", p->fd);
+         return AMVENC_TIMEOUT;
+     }
+@@ -2844,7 +2846,7 @@ static AMVEnc_Status start_intra_half(m8venc_drv_t* p, unsigned char* outptr, in
+     }
+     dump_encode_data(p, ENCODER_BUFFER_INPUT, addr_info[2]);
+ 
+-    if (encode_poll(p->fd, -1) <= 0) {
++    if (encode_poll(p->fd, ENCODE_DONE_TIMEOUT) <= 0) {
+         ALOGD("start_intra_half: poll fail. fd:%d", p->fd);
+         return AMVENC_TIMEOUT;
+     }
+@@ -3345,7 +3347,7 @@ static AMVEnc_Status start_ime_full(m8venc_drv_t* p, unsigned char* outptr, int*
+         }
+     }
+ 
+-    if (encode_poll(p->fd, -1) <= 0) {
++    if (encode_poll(p->fd, ENCODE_DONE_TIMEOUT) <= 0) {
+         ALOGE("start_ime_full: poll fail. fd:%d", p->fd);
+         return AMVENC_TIMEOUT;
+     }
+@@ -3421,7 +3423,7 @@ static AMVEnc_Status start_intra_full(m8venc_drv_t* p, unsigned char* outptr, in
+     if ((pre_encode) && (p->control.i16_searchmode == 0))
+         start_search_thread(p, SearchMode_I16);
+ 
+-    if (encode_poll(p->fd, -1) <= 0) {
++    if (encode_poll(p->fd, ENCODE_DONE_TIMEOUT) <= 0) {
+         ALOGE("start_intra_full: poll fail. fd:%d", p->fd);
+         return AMVENC_TIMEOUT;
+     }
+@@ -3905,7 +3907,7 @@ AMVEnc_Status M8VEncodeSPS_PPS(void* dev, unsigned char* outptr, int* datalen) {
+     control_info[4] = 0; // never timeout
+     ioctl(p->fd, M8VENC_AVC_IOC_NEW_CMD, &control_info[0]);
+ 
+-    if (encode_poll(p->fd, -1) <= 0) {
++    if (encode_poll(p->fd, ENCODE_DONE_TIMEOUT) <= 0) {
+         ALOGE("sps pps: poll fail. fd:%d", p->fd);
+         return AMVENC_TIMEOUT;
+     }
+@@ -4079,4 +4081,3 @@ void UnInitM8VEncode(void* dev) {
+     free(p);
+     return;
+ }
+-
+diff --git a/amvenc_264/bjunion_enc/enc/m8_enc_fast/m8venclib_fast.cpp b/amvenc_264/bjunion_enc/enc/m8_enc_fast/m8venclib_fast.cpp
+index 910a796..8528ba7 100644
+--- a/amvenc_264/bjunion_enc/enc/m8_enc_fast/m8venclib_fast.cpp
++++ b/amvenc_264/bjunion_enc/enc/m8_enc_fast/m8venclib_fast.cpp
+@@ -274,7 +274,7 @@ static AMVEnc_Status start_ime(fast_enc_drv_t* p, unsigned char* outptr, int* da
+     control_info[8] = ENCODE_DONE_TIMEOUT; // timeout op;
+     ioctl(p->fd, FASTENC_AVC_IOC_NEW_CMD, &control_info[0]);
+ 
+-    if (encode_poll(p->fd, -1) <= 0) {
++    if (encode_poll(p->fd, ENCODE_DONE_TIMEOUT) <= 0) {
+         ALOGE("start_ime: poll fail, fd:%d", p->fd);
+         return AMVENC_TIMEOUT;
+     }
+@@ -327,7 +327,7 @@ static AMVEnc_Status start_intra(fast_enc_drv_t* p, unsigned char* outptr, int*
+     control_info[8] = ENCODE_DONE_TIMEOUT; // timeout op;
+     ioctl(p->fd, FASTENC_AVC_IOC_NEW_CMD, &control_info[0]);
+ 
+-    if (encode_poll(p->fd, -1) <= 0) {
++    if (encode_poll(p->fd, ENCODE_DONE_TIMEOUT) <= 0) {
+         ALOGE("start_intra: poll fail, fd:%d", p->fd);
+         return AMVENC_TIMEOUT;
+     }
+@@ -539,7 +539,7 @@ AMVEnc_Status FastEncodeSPS_PPS(void* dev, unsigned char* outptr, int* datalen)
+     control_info[4] = 0; // never timeout
+     ioctl(p->fd, FASTENC_AVC_IOC_NEW_CMD, &control_info[0]);
+ 
+-    if (encode_poll(p->fd, -1) <= 0) {
++    if (encode_poll(p->fd, ENCODE_DONE_TIMEOUT) <= 0) {
+         ALOGE("sps pps: poll fail, fd:%d", p->fd);
+         return AMVENC_TIMEOUT;
+     }
+@@ -606,4 +606,3 @@ void UnInitFastEncode(void* dev) {
+     free(p);
+     return;
+ }
+-
+diff --git a/amvenc_264/bjunion_enc/enc_api.cpp b/amvenc_264/bjunion_enc/enc_api.cpp
+index 94dfed4..81775a0 100644
+--- a/amvenc_264/bjunion_enc/enc_api.cpp
++++ b/amvenc_264/bjunion_enc/enc_api.cpp
+@@ -16,14 +16,10 @@
+ 
+ #include "enc_api.h"
+ //#include <cutils/properties.h>
+-//#if !defined(__aarch64__)
+-//#include "enc/m8_enc_fast/m8venclib_fast.h"
+-//#include "enc/m8_enc_fast/rate_control_m8_fast.h"
+-//#include "enc/m8_enc/m8venclib.h"
+-//#include "enc/m8_enc/rate_control_m8.h"
+-//#endif
+-#include "enc/gx_enc_fast/gxvenclib_fast.h"
+-#include "enc/gx_enc_fast/rate_control_gx_fast.h"
++#include "enc/m8_enc_fast/m8venclib_fast.h"
++#include "enc/m8_enc_fast/rate_control_m8_fast.h"
++#include "enc/m8_enc/m8venclib.h"
++#include "enc/m8_enc/rate_control_m8.h"
+ 
+ #define ENCODER_PATH       "/dev/amvenc_avc"
+ 
+@@ -35,35 +31,51 @@
+ #define AMVENC_AVC_IOC_MAGIC  'E'
+ #define AMVENC_AVC_IOC_GET_DEVINFO              _IOW(AMVENC_AVC_IOC_MAGIC, 0xf0, unsigned int)
+ 
+-const AMVencHWFuncPtr gx_fast_dev = {
+-    GxInitFastEncode,
+-    GxFastEncodeInitFrame,
+-    GxFastEncodeSPS_PPS,
+-    GxFastEncodeSlice,
+-    GxFastGetAvgQp,
+-    GxFastEncodeCommit,
+-    GxUnInitFastEncode,
++const AMVencHWFuncPtr m8_fast_dev = {
++    InitFastEncode,
++    FastEncodeInitFrame,
++    FastEncodeSPS_PPS,
++    FastEncodeSlice,
++    NULL,
++    FastEncodeCommit,
++    UnInitFastEncode,
++};
++
++const AMVencHWFuncPtr m8_dev = {
++    InitM8VEncode,
++    M8VEncodeInitFrame,
++    M8VEncodeSPS_PPS,
++    M8VEncodeSlice,
++    NULL,
++    M8VEncodeCommit,
++    UnInitM8VEncode,
++};
++
++const AMVencRCFuncPtr m8_fast_rc = {
++    FastInitRateControlModule,
++    FastRCUpdateBuffer,
++    FastRCUpdateFrame,
++    FastRCInitFrameQP,
++    FastCleanupRateControlModule,
+ };
+ 
+-const AMVencRCFuncPtr gx_fast_rc = {
+-    GxFastInitRateControlModule,
+-    GxFastRCUpdateBuffer,
+-    GxFastRCUpdateFrame,
+-    GxFastRCInitFrameQP,
+-    GxFastCleanupRateControlModule,
++const AMVencRCFuncPtr m8_rc = {
++    M8InitRateControlModule,
++    M8RCUpdateBuffer,
++    M8RCUpdateFrame,
++    M8RCInitFrameQP,
++    M8CleanupRateControlModule,
+ };
+ 
+ const AMVencHWFuncPtr *gdev[] = {
+-	NULL,
+-	NULL,
+-    &gx_fast_dev,
++    &m8_fast_dev,
++    &m8_dev,
+     NULL,
+ };
+ 
+ const AMVencRCFuncPtr *grc[] = {
+-	NULL,
+-	NULL,
+-    &gx_fast_rc,
++    &m8_fast_rc,
++    &m8_rc,
+     NULL,
+ };
+ 
+@@ -111,18 +123,18 @@ AMVEnc_Status AMPostRateControl(amvenc_hw_t *hw_info, bool IDR, int *skip_num, i
+     return ret;
+ }
+ 
+-
+-AMVEnc_Status AMVGetAvgQp(amvenc_hw_t *hw_info, float *avgQp)
+-{
+-    AMVEnc_Status ret = AMVENC_FAIL;
+-    if (!hw_info)
+-        return AMVENC_MEMORY_FAIL;
+-    if ((hw_info->dev_id <= NO_DEFINE) || (hw_info->dev_id >= MAX_DEV) || (hw_info->dev_fd < 0) || (!hw_info->dev_data))
+-        return AMVENC_FAIL;
+-    if (gdev[hw_info->dev_id]->GetAvgQp != NULL)
+-        ret = gdev[hw_info->dev_id]->GetAvgQp(hw_info->dev_data, avgQp);
+-    return ret;
+-}
++
++AMVEnc_Status AMVGetAvgQp(amvenc_hw_t *hw_info, float *avgQp)
++{
++    AMVEnc_Status ret = AMVENC_FAIL;
++    if (!hw_info)
++        return AMVENC_MEMORY_FAIL;
++    if ((hw_info->dev_id <= NO_DEFINE) || (hw_info->dev_id >= MAX_DEV) || (hw_info->dev_fd < 0) || (!hw_info->dev_data))
++        return AMVENC_FAIL;
++    if (gdev[hw_info->dev_id]->GetAvgQp != NULL)
++        ret = gdev[hw_info->dev_id]->GetAvgQp(hw_info->dev_data, avgQp);
++    return ret;
++}
+ 
+ AMVEnc_Status AMRCInitFrameQP(amvenc_hw_t *hw_info, bool IDR, int bitrate, float frame_rate)
+ {
+@@ -141,7 +153,7 @@ void AMCleanupRateControlModule(amvenc_hw_t *hw_info)
+     if (!hw_info)
+         return;
+ 
+-    if ((!hw_info->rc_data) && (hw_info->dev_id>NO_DEFINE) && (hw_info->dev_id<MAX_DEV))
++    if ((hw_info->rc_data) && (hw_info->dev_id>NO_DEFINE) && (hw_info->dev_id<MAX_DEV))
+         grc[hw_info->dev_id]->Release(hw_info->rc_data);
+     hw_info->rc_data = NULL;
+     return;
+@@ -173,7 +185,7 @@ AMVEnc_Status InitAMVEncode(amvenc_hw_t *hw_info, int force_mode)
+         hw_info->dev_id = M8_FAST;
+     }else if ((strcmp(dev_info, (char *)AMVENC_DEVINFO_M8) == 0)
+       ||(strcmp(dev_info, (char *)AMVENC_DEVINFO_G9) == 0)){
+-        VLOG(DEBUG,"shitty m8");
++        VLOG(DEBUG,"M8 encoder driver detected");
+         hw_info->dev_id = M8_FAST;
+     }else if(strcmp(dev_info, (char *)AMVENC_DEVINFO_GXBB) == 0){
+         VLOG(DEBUG,"gxbb");
+diff --git a/amvenc_264/bjunion_enc/libvpcodec.cpp b/amvenc_264/bjunion_enc/libvpcodec.cpp
+index 45575e3..c8a2399 100644
+--- a/amvenc_264/bjunion_enc/libvpcodec.cpp
++++ b/amvenc_264/bjunion_enc/libvpcodec.cpp
+@@ -9,12 +9,7 @@
+ #include <errno.h>
+ #include "include/AML_HWEncoder.h"
+ #include "include/enc_define.h"
+-#ifdef __ANDROID__
+ #include "h264bitstream.h"
+-#endif
+-#ifndef __ANDROID__
+-#include <h264bitstream/h264_stream.h>
+-#endif
+ 
+ #define LOG_LINE() printf("[%s:%d]\n", __FUNCTION__, __LINE__)
+ const char version[] = "Amlogic libvpcodec version 1.0";
+@@ -542,7 +537,7 @@ int vl_video_encode_header(vl_codec_handle_t codec_handle, vl_vui_params_t vui,
+                 handle->mSPSPPSDataSize = in_size;
+                 memcpy(handle->mSPSPPSData, (unsigned char *)out, handle->mSPSPPSDataSize);
+                 VLOG(NONE,"get mSPSPPSData size= %d at line %d \n", handle->mSPSPPSDataSize, __LINE__);
+-#ifndef __ANDROID__
++#if 0
+                 size_t merge_size = sizeof(sps_t) + sizeof(pps_t) + 5 + 5;
+ 				uint8_t *merge_buf = (uint8_t *) malloc(merge_size);
+ 				size_t merge_pos = 0;
+@@ -633,18 +628,18 @@ int vl_video_encode_header(vl_codec_handle_t codec_handle, vl_vui_params_t vui,
+ }
+ 
+ vl_enc_result_e vl_video_encoder_getavgqp(vl_codec_handle_t codec_handle, float *avg_qp) {
+-    AMVEnc_Status ret;
+-    AMVEncHandle *handle = (AMVEncHandle *)codec_handle;
+-    float avgqp;
+-
+-    ret = AML_HWGetAvgQp(handle, &avgqp);
+-    if (ret == AMVENC_SUCCESS) {
+-        *avg_qp = avgqp;
+-    } else {
+-        VLOG(ERR,"get avgqp fail! ret = %d at line %d", ret, __LINE__);
+-    }
+-    return ENC_SUCCESS;
+-}
++    AMVEnc_Status ret;
++    AMVEncHandle *handle = (AMVEncHandle *)codec_handle;
++    float avgqp;
++
++    ret = AML_HWGetAvgQp(handle, &avgqp);
++    if (ret == AMVENC_SUCCESS) {
++        *avg_qp = avgqp;
++    } else {
++        VLOG(ERR,"get avgqp fail! ret = %d at line %d", ret, __LINE__);
++    }
++    return ENC_SUCCESS;
++}
+ 
+ int vl_video_encoder_encode(vl_codec_handle_t codec_handle, vl_frame_type_t frame_type, unsigned char *in, int in_size, unsigned char *out, int format)
+ {
+@@ -668,7 +663,7 @@ int vl_video_encoder_encode(vl_codec_handle_t codec_handle, vl_frame_type_t fram
+                 handle->mSPSPPSDataSize = in_size;
+                 memcpy(handle->mSPSPPSData, (unsigned char *)out, handle->mSPSPPSDataSize);
+                 VLOG(NONE,"get mSPSPPSData size= %d at line %d \n", handle->mSPSPPSDataSize, __LINE__);
+-#ifndef __ANDROID__
++#if 0
+                 size_t merge_size = sizeof(sps_t) + sizeof(pps_t) + 5 + 5;
+ 				uint8_t *merge_buf = (uint8_t *) malloc(merge_size);
+ 				size_t merge_pos = 0;
+@@ -817,7 +812,7 @@ int vl_video_encoder_encode(vl_codec_handle_t codec_handle, vl_frame_type_t fram
+             if (handle->fd_in >= 0) {
+                 io_ret = write(handle->fd_in, in, rawdata_size);
+                 if (io_ret == -1) {
+-                    printf("write raw frame failed: %s\n", errno);
++                    printf("write raw frame failed: %s\n", strerror(errno));
+                 } else if (io_ret < rawdata_size) {
+                     printf("write raw frame: short write %zu vs %zd\n", rawdata_size, io_ret);
+                 }
+@@ -844,7 +839,7 @@ int vl_video_encoder_encode(vl_codec_handle_t codec_handle, vl_frame_type_t fram
+             if (handle->fd_out >= 0) {
+ 				io_ret = write(handle->fd_out, (void *)out, dataLength);
+                 if (io_ret == -1) {
+-                    printf("write h264 packet failed: %s\n", errno);
++                    printf("write h264 packet failed: %s\n", strerror(errno));
+                 } else if (io_ret < dataLength) {
+                 printf("write raw h264 packet: short write %zu vs %zd\n", dataLength, io_ret);
+                 }
+@@ -904,7 +899,7 @@ vl_enc_result_e vl_video_encoder_encode_frame(vl_codec_handle_t codec_handle, vl
+                 handle->mSPSPPSDataSize = (*out_size);
+                 memcpy(handle->mSPSPPSData, (unsigned char *)out, handle->mSPSPPSDataSize);
+                 VLOG(DEBUG,"get mSPSPPSData size= %d at line %d\n", handle->mSPSPPSDataSize, __LINE__);
+-#ifndef __ANDROID__
++#if 0
+                 size_t merge_size = sizeof(sps_t) + sizeof(pps_t) + 5 + 5;
+ 				uint8_t *merge_buf = (uint8_t *) malloc(merge_size);
+ 				size_t merge_pos = 0;
+@@ -1075,7 +1070,7 @@ vl_enc_result_e vl_video_encoder_encode_frame(vl_codec_handle_t codec_handle, vl
+             if (handle->fd_in >= 0) {
+                 io_ret = write(handle->fd_in, (void *)frame_info.YCbCr[0], rawdata_size);
+                 if (io_ret == -1) {
+-                    printf("write raw frame failed: %s\n", errno);
++                    printf("write raw frame failed: %s\n", strerror(errno));
+                 } else if (io_ret < rawdata_size) {
+                     printf("write raw frame: short write %zu vs %zd\n", rawdata_size, io_ret);
+                 }
+@@ -1103,7 +1098,7 @@ vl_enc_result_e vl_video_encoder_encode_frame(vl_codec_handle_t codec_handle, vl
+             if (handle->fd_out >= 0) {
+                 io_ret = write(handle->fd_out, (void *)out, dataLength);
+                 if (io_ret == -1) {
+-                    printf("write h264 packet failed: %s\n", errno);
++                    printf("write h264 packet failed: %s\n", strerror(errno));
+                 } else if (io_ret < dataLength) {
+                 printf("write raw h264 packet: short write %zu vs %zd\n", dataLength, io_ret);
+                 }
+@@ -1152,6 +1147,9 @@ int vl_video_encoder_destroy(vl_codec_handle_t codec_handle)
+ {
+     AMVEncHandle *handle = (AMVEncHandle *)codec_handle;
+ 
++    if (!handle)
++        return 0;
++
+     if (handle->fd_in >= 0) {
+         fsync(handle->fd_in);
+         close(handle->fd_in);
+@@ -1164,12 +1162,11 @@ int vl_video_encoder_destroy(vl_codec_handle_t codec_handle)
+     AML_HWEncRelease(handle);
+     if (handle->mSPSPPSData)
+         free(handle->mSPSPPSData);
+-    if (handle)
+-        delete handle;
+-
+ #if ES_DUMP_ENABLE
+     close(handle->esDumpFd);
+ #endif
+ 
++    delete handle;
++
+     return 1;
+ }
+diff --git a/amvenc_264/bjunion_enc/linux_compat/cutils/properties.h b/amvenc_264/bjunion_enc/linux_compat/cutils/properties.h
+new file mode 100644
+index 0000000..63a71c9
+--- /dev/null
++++ b/amvenc_264/bjunion_enc/linux_compat/cutils/properties.h
+@@ -0,0 +1,14 @@
++#ifndef AMLENC_LINUX_CUTILS_PROPERTIES_H
++#define AMLENC_LINUX_CUTILS_PROPERTIES_H
++
++#define PROPERTY_VALUE_MAX 92
++
++static inline int property_get(const char *, char *value, const char *default_value)
++{
++    if (value != 0)
++        value[0] = '\0';
++    (void)default_value;
++    return 0;
++}
++
++#endif
+diff --git a/amvenc_264/bjunion_enc/linux_compat/utils/Log.h b/amvenc_264/bjunion_enc/linux_compat/utils/Log.h
+new file mode 100644
+index 0000000..765c957
+--- /dev/null
++++ b/amvenc_264/bjunion_enc/linux_compat/utils/Log.h
+@@ -0,0 +1,12 @@
++#ifndef AMLENC_LINUX_UTILS_LOG_H
++#define AMLENC_LINUX_UTILS_LOG_H
++
++#include <stdio.h>
++
++#define ALOGD(...) do { fprintf(stderr, __VA_ARGS__); fputc('\n', stderr); } while (0)
++#define ALOGE(...) do { fprintf(stderr, __VA_ARGS__); fputc('\n', stderr); } while (0)
++#define ALOGI(...) do { fprintf(stderr, __VA_ARGS__); fputc('\n', stderr); } while (0)
++#define ALOGW(...) do { fprintf(stderr, __VA_ARGS__); fputc('\n', stderr); } while (0)
++#define ALOGV(...) do { } while (0)
++
++#endif
+diff --git a/amvenc_264/bjunion_enc/linux_compat/utils/threads.h b/amvenc_264/bjunion_enc/linux_compat/utils/threads.h
+new file mode 100644
+index 0000000..22c9791
+--- /dev/null
++++ b/amvenc_264/bjunion_enc/linux_compat/utils/threads.h
+@@ -0,0 +1,3 @@
++#ifndef AMLENC_LINUX_UTILS_THREADS_H
++#define AMLENC_LINUX_UTILS_THREADS_H
++#endif
+

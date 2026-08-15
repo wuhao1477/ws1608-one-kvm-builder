@@ -1,0 +1,9 @@
+ONE_KVM_AMLENC_1 {
+    global:
+        one_kvm_amlenc_abi_version;
+        vl_video_encoder_init;
+        vl_video_encoder_encode;
+        vl_video_encoder_destory;
+    local:
+        *;
+};

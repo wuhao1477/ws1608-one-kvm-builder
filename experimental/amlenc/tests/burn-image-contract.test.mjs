@@ -1,0 +1,111 @@
+import assert from 'node:assert/strict';
+import { spawnSync } from 'node:child_process';
+import fs from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
+import test from 'node:test';
+
+const builderPath = 'experimental/amlenc/scripts/build-burn-image.sh';
+const verifierPath = 'experimental/amlenc/scripts/verify-burn-image.sh';
+const packagerPath = 'experimental/amlenc/scripts/package-burn-release.sh';
+const releaseVerifierPath = 'experimental/amlenc/scripts/verify-burn-release.sh';
+const workflowPath = '.github/workflows/amlenc-experimental.yml';
+
+function read(path) {
+  return fs.readFileSync(path, 'utf8');
+}
+
+test('defines an isolated burn image build and verification chain', () => {
+  assert.equal(fs.existsSync(builderPath), true, 'burn image builder is required');
+  assert.equal(fs.existsSync(verifierPath), true, 'burn image verifier is required');
+  assert.equal(fs.existsSync(packagerPath), true, 'burn release packager is required');
+  const builder = read(builderPath);
+  const verifier = read(verifierPath);
+  const packager = read(packagerPath);
+  assert.match(builder, /AmlImg/);
+  assert.match(builder, /raw-to-sparse\.mjs/);
+  assert.match(builder, /one_kvm/);
+  assert.match(builder, /hardware_encoder_tested/);
+  assert.match(verifier, /AmlImg.*unpack|unpack.*AmlImg/s);
+  assert.match(verifier, /sha1sum/);
+  assert.match(verifier, /e2fsck/);
+  assert.match(verifier, /one[-_]kvm/);
+  assert.match(verifier, /hardware_encoder_tested/);
+  assert.match(packager, /xz/);
+  assert.match(packager, /SHA256SUMS/);
+});
+
+test('runs burn image gates before metadata upload and keeps hardware gate explicit', () => {
+  const workflow = read(workflowPath);
+  assert.match(workflow, /Build experimental burn image/);
+  assert.match(workflow, /Verify experimental burn image/);
+  assert.match(workflow, /Package experimental burn metadata/);
+  assert.match(workflow, /hardware_encoder_tested.*false|hardware_encoder_tested.*true/s);
+  const buildIndex = workflow.indexOf('Build experimental burn image');
+  const verifyIndex = workflow.indexOf('Verify experimental burn image');
+  const uploadIndex = workflow.indexOf('Upload experimental release artifact');
+  assert.ok(buildIndex >= 0 && verifyIndex > buildIndex && uploadIndex > verifyIndex);
+});
+
+test('keeps untested hardware status explicit in the experimental prerelease', () => {
+  const workflow = read(workflowPath);
+  assert.match(workflow, /RELEASE_PRERELEASE: 'true'/);
+  assert.match(workflow, /hardware_encoder_tested.*false/s);
+  assert.match(workflow, /hardware_boot_tested.*false/s);
+});
+
+test('verifies exactly five packaged burn release assets', (t) => {
+  assert.equal(fs.existsSync(releaseVerifierPath), true, 'burn release verifier is required');
+  const fixture = fs.mkdtempSync(path.join(os.tmpdir(), 'ws1608-burn-release-'));
+  t.after(() => fs.rmSync(fixture, { recursive: true, force: true }));
+  const imageName = 'WS1608-AMLENC_0.2.6+ws1608amlenc.run-1-1_Onecloud_bullseye_3.10.107.burn.img';
+  const image = path.join(fixture, imageName);
+  fs.writeFileSync(image, 'burn-image-fixture');
+  assert.equal(spawnSync('xz', ['-k', image], { encoding: 'utf8' }).status, 0);
+  const digest = (file) => spawnSync('sha256sum', [file], { encoding: 'utf8' }).stdout.split(/\s+/)[0];
+  const manifest = {
+    schema: 1,
+    kind: 'ws1608-amlenc-burn-image',
+    image_name: imageName,
+    image_sha256: digest(image),
+    one_kvm: { version: '0.2.6+ws1608amlenc.run-1-1', sha256: 'a'.repeat(64) },
+    hardware_boot_tested: false,
+    hardware_encoder_tested: false,
+    one_kvm_included: true,
+    stable_channel_modified: false,
+  };
+  fs.writeFileSync(path.join(fixture, 'manifest.json'), `${JSON.stringify(manifest)}\n`);
+  const report = {
+    schema: 1,
+    result: 'pending',
+    hardware_boot_tested: false,
+    hardware_encoder_tested: false,
+    assets: {
+      image: { name: imageName, sha256: digest(image) },
+      compressed_image: { name: `${imageName}.xz`, sha256: digest(`${image}.xz`) },
+      manifest: { name: 'manifest.json', sha256: digest(path.join(fixture, 'manifest.json')) },
+    },
+  };
+  fs.writeFileSync(path.join(fixture, 'validation-report.json'), `${JSON.stringify(report)}\n`);
+  const checksumFiles = [imageName, `${imageName}.xz`, 'manifest.json', 'validation-report.json'];
+  fs.writeFileSync(
+    path.join(fixture, 'SHA256SUMS'),
+    checksumFiles.map((name) => `${digest(path.join(fixture, name))}  ${name}`).join('\n') + '\n',
+  );
+
+  const result = spawnSync('bash', [releaseVerifierPath, fixture], { encoding: 'utf8' });
+
+  assert.equal(result.status, 0, result.stderr || result.stdout);
+  assert.match(result.stdout, /verified experimental burn release assets/);
+
+  fs.writeFileSync(path.join(fixture, 'unexpected.txt'), 'unexpected');
+  const rejected = spawnSync('bash', [releaseVerifierPath, fixture], { encoding: 'utf8' });
+  assert.notEqual(rejected.status, 0);
+  assert.match(rejected.stderr, /exactly five/i);
+
+  fs.rmSync(path.join(fixture, 'unexpected.txt'));
+  fs.writeFileSync(path.join(fixture, '.hidden'), 'unexpected');
+  const hiddenRejected = spawnSync('bash', [releaseVerifierPath, fixture], { encoding: 'utf8' });
+  assert.notEqual(hiddenRejected.status, 0);
+  assert.match(hiddenRejected.stderr, /exactly five/i);
+});
