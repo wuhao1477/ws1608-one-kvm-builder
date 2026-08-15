@@ -14,6 +14,7 @@ const rootfsArchiver = 'experimental/amlenc/scripts/archive-rootfs.sh';
 const aptInstaller = 'experimental/amlenc/scripts/apt-install.sh';
 const modeVerifier = 'experimental/amlenc/scripts/verify-debugfs-mode.sh';
 const assembler = 'experimental/amlenc/scripts/assemble-diagnostic-usb.sh';
+const diagnosticVerifier = 'experimental/amlenc/scripts/verify-diagnostic-usb.sh';
 
 function copyFixture(t) {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'amlenc-diag-image-'));
@@ -225,6 +226,11 @@ test('configures APT retries for metadata and package downloads', (t) => {
 test('reuses the stable systemctl stub while configuring packages in the armhf rootfs', () => {
   const source = fs.readFileSync(assembler, 'utf8');
   assert.match(source, /config\/systemctl-build-stub:\/usr\/bin\/systemctl:ro/);
+});
+
+test('requires the integrated One-KVM package in the diagnostic image verifier', () => {
+  const source = fs.readFileSync(diagnosticVerifier, 'utf8');
+  assert.match(source, /\.one_kvm_included == true/);
 });
 
 test('accepts debugfs permission output without a file-type prefix', () => {

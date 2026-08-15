@@ -16,7 +16,7 @@ ROOTFS_UUID=$(jq -er '.rootfs_uuid' "$MANIFEST")
 (cd "$OUTPUT_DIR" && sha256sum --check --strict SHA256SUMS)
 jq -e --arg bullseye "$BULLSEYE_ARMV7_OCI_IMAGE" --arg tools "$IMAGE_TOOLS_ARM64_OCI_IMAGE" '
   .kind == "ws1608-amlenc-diagnostic-usb-image" and
-  .hardware_encoder_tested == false and .one_kvm_included == false and
+  .hardware_encoder_tested == false and .one_kvm_included == true and
   .stable_channel_modified == false and .bullseye_oci_image == $bullseye and
   .image_tools_oci_image == $tools
 ' "$MANIFEST" >/dev/null
