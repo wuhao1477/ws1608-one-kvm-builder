@@ -54,10 +54,29 @@ test('keeps AMLENC builds isolated from the stable image workflow', () => {
   assert.match(workflow, /stable_channel_modified.*false|stable_channel_modified=false/);
   assert.match(workflow, /ws1608-amlenc-exp-/);
   assert.doesNotMatch(workflow, /gh release create/);
-  assert.match(workflow, /local-test-only/);
-  assert.match(workflow, /experimental\/amlenc\/scripts\/prepare-public-artifact\.sh/);
-  assert.match(workflow, /sudo install -d -o .*out\/amlenc-public/);
-  assert.match(workflow, /path: out\/amlenc-public/);
-  assert.doesNotMatch(workflow, /path: out\/amlenc\s*$/m);
+  assert.match(workflow, /experimental\/amlenc\/scripts\/verify-burn-release\.sh/);
+  assert.match(workflow, /path: out\/amlenc\/burn\//);
   assert.match(workflow, /\.github\/workflows\/build\.yml/);
+});
+
+test('publishes an explicitly acknowledged immutable experimental prerelease', () => {
+  const workflow = fs.readFileSync(workflowPath, 'utf8');
+  const buildJob = workflow.slice(workflow.indexOf('\n  build:'), workflow.indexOf('\n  release:'));
+  const releaseJob = workflow.slice(workflow.indexOf('\n  release:'));
+
+  assert.match(workflow, /^      publish:\n        description:/m);
+  assert.equal(workflow.match(/^        default: false$/gm)?.length, 2);
+  assert.match(workflow, /^      acknowledge_experimental:\n        description:/m);
+  assert.match(workflow, /inputs\.publish && inputs\.acknowledge_experimental/);
+  assert.match(workflow, /github\.ref == format\('refs\/heads\/\{0\}', github\.event\.repository\.default_branch\)/);
+  assert.match(releaseJob, /^    permissions:\n      contents: write$/m);
+  assert.match(releaseJob, /needs: \[contract, build\]/);
+  assert.match(buildJob, /path: out\/amlenc\/burn\//);
+  assert.match(releaseJob, /actions\/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131/);
+  assert.match(releaseJob, /experimental\/amlenc\/scripts\/verify-burn-release\.sh/);
+  assert.match(releaseJob, /experimental\/amlenc\/scripts\/verify-burn-image\.sh/);
+  assert.match(releaseJob, /scripts\/publish-release\.sh/);
+  assert.match(releaseJob, /RELEASE_PRERELEASE: 'true'/);
+  assert.match(releaseJob, /ws1608-amlenc-exp-0\.2\.6-v260802-k3\.10\.107-\$build_revision/);
+  assert.doesNotMatch(releaseJob, /--clobber|--latest/);
 });

@@ -6,6 +6,17 @@ on:
       - '.github/workflows/amlenc-experimental.yml'
       - 'experimental/amlenc/**'
   workflow_dispatch:
+    inputs:
+      publish:
+        description: Publish the verified image as an immutable experimental prerelease
+        required: true
+        type: boolean
+        default: false
+      acknowledge_experimental:
+        description: Acknowledge that hardware boot and encoding were not tested
+        required: true
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -140,24 +151,112 @@ jobs:
           OUTPUT_DIR: ${{ github.workspace }}/out/amlenc/burn
           IMAGE_NAME: WS1608-AMLENC_0.2.6+ws1608amlenc.run-${{ github.run_number }}-${{ github.run_attempt }}_Onecloud_bullseye_3.10.107.burn.img
         run: experimental/amlenc/scripts/package-burn-release.sh
-      - name: Enforce local-only publication boundary
+      - name: Record untested experimental status
         run: |
-          jq -e '.redistribution == "local-test-only"' out/amlenc/libvpcodec/source-manifest.json
           jq -e '.hardware_encoder_tested == false and .one_kvm_included == true and .stable_channel_modified == false' out/amlenc/diagnostic-image/manifest.json
           jq -e '.hardware_encoder_tested == false and .hardware_boot_tested == false and .one_kvm_included == true' out/amlenc/burn/manifest.json
-      - name: Prepare public build metadata
+      - name: Verify packaged experimental release
         run: |
           experimental/amlenc/scripts/verify-stable-chain.sh
-          sudo install -d -o "$(id -u)" -g "$(id -g)" out/amlenc-public
-          experimental/amlenc/scripts/prepare-public-artifact.sh out/amlenc out/amlenc-public
-          cp out/amlenc/burn/manifest.json out/amlenc-public/burn-manifest.json
-          cp out/amlenc/burn/validation-report.json out/amlenc-public/burn-validation-report.json
-          cp out/amlenc/burn/SHA256SUMS out/amlenc-public/burn-SHA256SUMS
-      - name: Upload experimental build metadata
+          experimental/amlenc/scripts/verify-burn-release.sh out/amlenc/burn
+      - name: Upload experimental release artifact
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with:
-          name: ws1608-amlenc-exp-${{ github.run_number }}-${{ github.run_attempt }}
-          path: out/amlenc-public/
+          name: ws1608-amlenc-exp-release-${{ github.run_number }}-${{ github.run_attempt }}
+          path: out/amlenc/burn/
           if-no-files-found: error
           retention-days: 14
           compression-level: 0
+
+  release:
+    name: Publish immutable experimental prerelease
+    needs: [contract, build]
+    if: >-
+      github.event_name == 'workflow_dispatch' && inputs.publish && inputs.acknowledge_experimental &&
+      github.ref == format('refs/heads/{0}', github.event.repository.default_branch)
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7
+        with:
+          persist-credentials: false
+      - name: Install release verification tools
+        run: sudo apt-get update && sudo apt-get install -y curl e2fsprogs file jq mtools u-boot-tools xz-utils
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7
+        with:
+          go-version: "1.24.x"
+          cache: false
+      - name: Build pinned AmlImg tool
+        env:
+          TOOLS_DIR: ${{ github.workspace }}/.tools
+        run: echo "AMLIMG_BIN=$(./scripts/build-tools.sh)" >> "$GITHUB_ENV"
+      - name: Download verified workflow artifact
+        uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7
+        with:
+          name: ws1608-amlenc-exp-release-${{ github.run_number }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/release
+      - name: Prepare immutable release identity
+        id: release_identity
+        env:
+          RUN_NUMBER: ${{ github.run_number }}
+          RUN_ATTEMPT: ${{ github.run_attempt }}
+        run: |
+          build_number=$((RUN_NUMBER * 1000 + RUN_ATTEMPT))
+          build_revision=$(printf 'b%06d' "$build_number")
+          image_name="WS1608-AMLENC_0.2.6+ws1608amlenc.run-${RUN_NUMBER}-${RUN_ATTEMPT}_Onecloud_bullseye_3.10.107.burn.img"
+          {
+            echo "BUILD_NUMBER=$build_number"
+            echo "BUILD_REVISION=$build_revision"
+            echo "BUILD_TAG=ws1608-amlenc-exp-0.2.6-v260802-k3.10.107-$build_revision"
+            echo "IMAGE_NAME=$image_name"
+          } >> "$GITHUB_ENV"
+          {
+            echo "build_number=$build_number"
+            echo "build_revision=$build_revision"
+            echo "build_tag=ws1608-amlenc-exp-0.2.6-v260802-k3.10.107-$build_revision"
+            echo "image_name=$image_name"
+          } >> "$GITHUB_OUTPUT"
+      - name: Reverify downloaded experimental release
+        env:
+          BASE_IMAGE: ${{ runner.temp }}/base.burn.img
+          IMAGE: ${{ runner.temp }}/release/${{ steps.release_identity.outputs.image_name }}
+          MANIFEST: ${{ runner.temp }}/release/manifest.json
+          AMLIMG_BIN: ${{ github.workspace }}/.tools/AmlImg
+          VERIFY_DIR: ${{ runner.temp }}/burn-verify
+        run: |
+          source config/base.env
+          curl --fail --location --retry 5 "$BASE_IMAGE_URL" -o "$RUNNER_TEMP/base.burn.img.xz"
+          echo "$BASE_IMAGE_SHA256  $RUNNER_TEMP/base.burn.img.xz" | sha256sum --check
+          xz -dc "$RUNNER_TEMP/base.burn.img.xz" >"$BASE_IMAGE"
+          experimental/amlenc/scripts/verify-burn-release.sh "$RUNNER_TEMP/release"
+          experimental/amlenc/scripts/verify-burn-image.sh
+      - name: Write experimental release notes
+        run: |
+          cat >"$RUNNER_TEMP/release-notes.md" <<EOF
+          Experimental WS1608/S805 image with One-KVM Rust 0.2.6 and the Meson8b AMLENC H.264 integration.
+
+          This image passed the hosted build, Amlogic container, filesystem, package, checksum and downloaded-artifact checks. Physical flashing, boot and hardware encoding were not tested for this build.
+
+          One-KVM package: 0.2.6+ws1608amlenc.run-${GITHUB_RUN_NUMBER}-${GITHUB_RUN_ATTEMPT}
+          Kernel: 3.10.107
+          Channel: experimental prerelease
+          EOF
+      - name: Publish experimental prerelease
+        env:
+          GH_TOKEN: ${{ github.token }}
+          BUILD_TAG: ${{ steps.release_identity.outputs.build_tag }}
+          BUILD_NUMBER: ${{ steps.release_identity.outputs.build_number }}
+          BUILD_REVISION: ${{ steps.release_identity.outputs.build_revision }}
+          BUILDER_COMMIT: ${{ github.sha }}
+          ONE_KVM_VERSION: 0.2.6
+          UPSTREAM_TAG: v260802
+          IMAGE_NAME: ${{ steps.release_identity.outputs.image_name }}
+          ARTIFACT_DIR: ${{ runner.temp }}/release
+          RELEASE_NOTES_FILE: ${{ runner.temp }}/release-notes.md
+          GITHUB_REPOSITORY: ${{ github.repository }}
+          RELEASE_PRERELEASE: 'true'
+        run: |
+          PACKAGE_DIGEST=$(jq -er '.one_kvm.sha256' "$ARTIFACT_DIR/manifest.json")
+          export PACKAGE_DIGEST
+          scripts/publish-release.sh
