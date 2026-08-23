@@ -41,6 +41,8 @@ test('builds the flashable experiment from the verified stable boot chain', () =
   const workflow = read(workflowPath);
 
   assert.match(builder, /ONE_KVM_DEB/);
+  assert.match(builder, /package_prefix=.*ONE_KVM_VERSION.*ws1608amlenc/);
+  assert.match(builder, /package_build=.*package_version#/);
   assert.doesNotMatch(builder, /DIAGNOSTIC_IMAGE|DIAGNOSTIC_MANIFEST|BOOT_RAW/);
   assert.doesNotMatch(builder, /3\.10\.107/);
   assert.match(builder, /stable_base_preserved/);
@@ -66,9 +68,10 @@ test('runs burn image gates before metadata upload and keeps hardware gate expli
   assert.match(workflow, /Package experimental burn metadata/);
   assert.match(workflow, /hardware_encoder_tested.*false|hardware_encoder_tested.*true/s);
   const buildIndex = workflow.indexOf('Build experimental burn image');
+  const diagnosticIndex = workflow.indexOf('Build diagnostic USB image with One-KVM');
   const verifyIndex = workflow.indexOf('Verify experimental burn image');
   const uploadIndex = workflow.indexOf('Upload experimental release artifact');
-  assert.ok(buildIndex >= 0 && verifyIndex > buildIndex && uploadIndex > verifyIndex);
+  assert.ok(buildIndex >= 0 && diagnosticIndex > buildIndex && verifyIndex > buildIndex && uploadIndex > verifyIndex);
 });
 
 test('keeps untested hardware status explicit in the experimental prerelease', () => {

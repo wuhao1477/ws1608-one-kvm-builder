@@ -126,15 +126,6 @@ jobs:
             echo "EXPERIMENTAL_BUILD_TAG=ws1608-amlenc-exp-0.2.6-v260802-k6.12.28-$build_revision"
             echo "AMLENC_IMAGE_NAME=WS1608-AMLENC_${package_version}_Onecloud_trixie_6.12.28.burn.img"
           } >>"$GITHUB_ENV"
-      - name: Build diagnostic USB image with One-KVM
-        env:
-          AMLENC_ONE_KVM_DEB: ${{ github.workspace }}/out/amlenc/one-kvm/one-kvm_0.2.6+ws1608amlenc.run-${{ github.run_number }}-${{ github.run_attempt }}_armhf.deb
-        run: |
-          umask 077
-          key_file="$RUNNER_TEMP/ws1608-amlenc-build-key"
-          ssh-keygen -q -t ed25519 -N '' -f "$key_file"
-          AMLENC_SSH_PUBLIC_KEY="$(<"$key_file.pub")" \
-            experimental/amlenc/scripts/build-diagnostic-image.sh --build
       - name: Build experimental burn image
         env:
           BASE_IMAGE_XZ: ${{ runner.temp }}/ws1608-base-placeholder
@@ -163,6 +154,15 @@ jobs:
         env:
           OUTPUT_DIR: ${{ github.workspace }}/out/amlenc/burn
         run: IMAGE_NAME="$AMLENC_IMAGE_NAME" experimental/amlenc/scripts/package-burn-release.sh
+      - name: Build diagnostic USB image with One-KVM
+        env:
+          AMLENC_ONE_KVM_DEB: ${{ github.workspace }}/out/amlenc/one-kvm/one-kvm_0.2.6+ws1608amlenc.run-${{ github.run_number }}-${{ github.run_attempt }}_armhf.deb
+        run: |
+          umask 077
+          key_file="$RUNNER_TEMP/ws1608-amlenc-build-key"
+          ssh-keygen -q -t ed25519 -N '' -f "$key_file"
+          AMLENC_SSH_PUBLIC_KEY="$(<"$key_file.pub")" \
+            experimental/amlenc/scripts/build-diagnostic-image.sh --build
       - name: Record untested experimental status
         run: |
           jq -e '.hardware_encoder_tested == false and .one_kvm_included == true and .stable_channel_modified == false' out/amlenc/diagnostic-image/manifest.json

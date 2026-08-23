@@ -54,7 +54,10 @@ package_file=${ONE_KVM_DEB##*/}
 package_sha256=$(sha256sum "$ONE_KVM_DEB" | awk '{print $1}')
 [[ "$package_name" == one-kvm ]] || fail "unexpected package: $package_name"
 [[ "$package_arch" == armhf ]] || fail "unexpected package architecture: $package_arch"
-[[ "$package_version" =~ ^${ONE_KVM_VERSION//./\\.}\\+ws1608amlenc\\.[A-Za-z0-9][A-Za-z0-9.-]{0,31}$ ]] || fail "unexpected package version: $package_version"
+package_prefix="${ONE_KVM_VERSION}+ws1608amlenc."
+[[ "$package_version" == "$package_prefix"* ]] || fail "unexpected package version: $package_version"
+package_build=${package_version#"$package_prefix"}
+[[ "$package_build" =~ ^[A-Za-z0-9][A-Za-z0-9.-]{0,31}$ ]] || fail "unsafe package build identity: $package_build"
 [[ "$IMAGE_NAME" == *"${package_version}"* && "$IMAGE_NAME" == *'_Onecloud_trixie_6.12.28.burn.img' ]] || fail "image name must identify the One-KVM and stable kernel versions"
 
 internal_tag="ws1608-one-kvm-$EXPERIMENTAL_BUILD_TAG"
