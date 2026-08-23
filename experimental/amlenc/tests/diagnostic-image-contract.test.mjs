@@ -264,7 +264,7 @@ test('renders a no-initrd legacy boot flow for the diagnostic rootfs', (t) => {
   assert.match(command, /root=\$\{rootdev\} rootfstype=ext4 rootwait rw/);
   assert.match(environment, new RegExp(`^rootdev=UUID=${uuid}$`, 'm'));
   assert.match(environment, /^console=both$/m);
-  assert.match(environment, /^extraargs=panic=10$/m);
+  assert.match(environment, /^extraargs=panic=0 loglevel=8 ignore_loglevel$/m);
 });
 
 test('configures a passwordless diagnostic rootfs with DHCP and first-boot SSH keys', (t) => {

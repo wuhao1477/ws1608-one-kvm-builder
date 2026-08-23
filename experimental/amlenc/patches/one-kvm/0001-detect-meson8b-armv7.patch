@@ -142,7 +142,7 @@ index 3baa50c..99c28a9 100644
      Amlogic,
      /// Software encoding (libx264, libx265, libvpx)
      Software,
-@@ -287,20 +289,20 @@ impl EncoderRegistry {
+@@ -287,20 +289,27 @@ impl EncoderRegistry {
      }
  
      fn detect_amlenc(&mut self) {
@@ -163,11 +163,19 @@ index 3baa50c..99c28a9 100644
 -        }
 +        };
  
++        let smoke_test_enabled = std::env::var_os("ONE_KVM_AMLENC_SMOKE_TEST").is_some();
          self.detect_amlenc_candidates(
 -            true,
 +            Some(platform),
              |codec| std::path::Path::new(codec.device_node()).exists(),
-             amlenc::smoke_test,
+-            amlenc::smoke_test,
++            |codec| {
++                if smoke_test_enabled {
++                    amlenc::smoke_test(codec)
++                } else {
++                    Ok(())
++                }
++            },
          );
 @@ -308,16 +310,16 @@ impl EncoderRegistry {
  

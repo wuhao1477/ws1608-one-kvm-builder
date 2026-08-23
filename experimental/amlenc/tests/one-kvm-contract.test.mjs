@@ -62,6 +62,7 @@ test('adds a separate Meson8b ARMv7 H.264 capability', () => {
   assert.match(patch, /AmlencCodec::H264/);
   assert.match(patch, /supports_codec/);
   assert.match(patch, /amlenc::smoke_test/);
+  assert.match(patch, /ONE_KVM_AMLENC_SMOKE_TEST/);
   assert.match(patch, /allow\(dead_code\)[\s\S]*is_s912_gxm_compatible/);
   assert.match(patch, /src\/video\/pipeline\/shared\.rs/);
   assert.match(patch, /target_arch = "arm"[\s\S]*AMLENC_MAX_FPS: u32 = 30/);
@@ -128,6 +129,8 @@ test('builds a pinned and traceable armhf Debian package', () => {
 test('independently verifies package identity, interpreter and metadata', () => {
   const verify = readRequired(files.verify);
 
+  assert.match(verify, /One-KVM package verification failed/);
+  assert.match(verify, /ELF interpreter/);
   for (const field of ['Package', 'Version', 'Architecture']) {
     assert.match(verify, new RegExp(`dpkg-deb -f .* ${field}`));
   }

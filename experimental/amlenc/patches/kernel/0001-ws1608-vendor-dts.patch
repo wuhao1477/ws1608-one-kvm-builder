@@ -1,11 +1,11 @@
 From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
 From: WS1608 One-KVM Builder <noreply@github.com>
 Date: Thu, 13 Aug 2026 15:24:14 +0000
-Subject: [PATCH 1/2] ARM: dts: adapt Meson8b board description for WS1608
+Subject: [PATCH 1/2] ARM: dts: adapt Meson8b board and storage for WS1608
 
 ---
- arch/arm/boot/dts/meson8b_odroidc.dts | 95 +++------------------------
- 1 file changed, 10 insertions(+), 85 deletions(-)
+ arch/arm/boot/dts/meson8b_odroidc.dts | 129 +++-------------------------------
+ 1 file changed, 10 insertions(+), 119 deletions(-)
 
 diff --git a/arch/arm/boot/dts/meson8b_odroidc.dts b/arch/arm/boot/dts/meson8b_odroidc.dts
 index 0609574..4e8795b 100755
@@ -22,7 +22,55 @@ index 0609574..4e8795b 100755
          interrupt-parent = <&gic>;
          #address-cells = <1>;
          #size-cells = <1>;
-@@ -301,23 +302,6 @@
+@@ -192,21 +192,6 @@
+         pinctrl-5 = <&sdio_all_pins>;
+         pinctrl-6 = <&sd_1bit_pins>;
+ 
+-        emmc{
+-            status = "okay";
+-            port = <2>;          /**0:sdio_a, 1:sdio_b, 2:sdio_c, 3:sdhc_a, 4:sdhc_b, 5:sdhc_c */
+-            pinname = "emmc";
+-            ocr_avail = <0x200000>;          /**VDD voltage 3.3 ~ 3.4 */
+-            caps = "MMC_CAP_4_BIT_DATA","MMC_CAP_MMC_HIGHSPEED","MMC_CAP_SD_HIGHSPEED", "MMC_CAP_NONREMOVABLE","MMC_CAP_ERASE", "MMC_CAP_HW_RESET"; // MMC_CAP_NEEDS_POLL -- for detect, MMC_CAP_NONREMOVABLE -- for eMMC/TSD
+-            caps2 = "MMC_CAP2_BOOTPART_NOACC";
+-            f_min = <300000>;
+-            f_max = <50000000>;
+-            f_max_w = <50000000>;
+-            max_req_size = <0x20000>;          /**128KB*/
+-            gpio_dat3 = "BOOT_3";
+-            card_type = <1>; /* 0:unknown, 1:mmc card(include eMMC), 2:sd card(include tSD), 3:sdio device(ie:sdio-wifi), 4:SD combo (IO+mem) card, 5:NON sdio device(means sd/mmc card), other:reserved */
+-        };
+-
+         sd{
+             status = "okay";
+             port = <1>;          /**0:sdio_a, 1:sdio_b, 2:sdio_c, 3:sdhc_a, 4:sdhc_b, 5:sdhc_c */
+@@ -240,25 +226,6 @@
+         pinctrl-5 = <&sdhc_sdio_all_pins>;
+         //pinctrl-6 = <&sd_1bit_pins>;
+ 
+-         sd{
+-             status = "okay";
+-             port = <4>;          /**0:sdhc_a, 1:sdio_b, 2:sdio_c, 3:sdhc_a, 4:sdhc_b, 5:sdhc_c */
+-             pinname = "sd";
+-             ocr_avail = <0x00200080>; // 3.3:0x200000, 1.8+3.3:0x00200080
+-             caps = "MMC_CAP_4_BIT_DATA","MMC_CAP_MMC_HIGHSPEED","MMC_CAP_SD_HIGHSPEED","MMC_CAP_UHS_SDR12","MMC_CAP_UHS_SDR25","MMC_CAP_UHS_SDR50","MMC_CAP_UHS_SDR104";
+-             f_min = <300000>;
+-             f_max = <100000000>;
+-             max_req_size = <0x20000>;          /**128KB*/
+-             gpio_dat3 = "CARD_4";
+-             //jtag_pin = "CARD_0";
+-             gpio_cd = "CARD_6";
+-             //gpio_ro = "GPIOZ_0";
+-             gpio_volsw = "GPIOAO_3";
+-             irq_in = <3>;
+-             irq_out = <5>;
+-             card_type = <5>; /* 0:unknown, 1:mmc card(include eMMC), 2:sd card(include tSD), 3:sdio device(ie:sdio-wifi), 4:SD combo (IO+mem) card, 5:NON sdio device(means sd/mmc card), other:reserved */
+-         };
+-
+         emmc{
+             status = "okay";
+             port = <5>;          /**0:sdio_a, 1:sdio_b, 2:sdio_c, 3:sdhc_a, 4:sdhc_b, 5:sdhc_c */
+@@ -301,23 +268,6 @@
                  use_pio = <0>;
                  master_i2c_speed = <100000>;
  
