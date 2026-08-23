@@ -15,7 +15,12 @@ image="$OUTPUT_DIR/$IMAGE_NAME"
 manifest="$OUTPUT_DIR/$MANIFEST_NAME"
 report="$OUTPUT_DIR/$REPORT_NAME"
 [[ -s "$image" && -s "$manifest" ]] || exit 1
-jq -e '.hardware_encoder_tested == false and .hardware_boot_tested == false and .one_kvm_included == true' "$manifest" >/dev/null
+jq -e '
+  .stable_base_preserved == true and .kernel.source == "stable-base" and
+  (.build_tag | test("^ws1608-amlenc-exp-0\\.2\\.6-v[0-9]+-k6\\.12\\.28-b[0-9]{6}$")) and
+  .hardware_encoder_tested == false and .hardware_boot_tested == false and
+  .one_kvm_included == true
+' "$manifest" >/dev/null
 xz -T0 -9e -c "$image" >"$image.xz.tmp"
 mv "$image.xz.tmp" "$image.xz"
 image_sha256=$(sha256sum "$image" | awk '{print $1}')

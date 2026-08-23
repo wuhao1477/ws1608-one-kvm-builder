@@ -38,6 +38,7 @@ jobs:
       - name: Run contract tests
         run: |
           experimental/amlenc/scripts/verify-stable-chain.sh
+          experimental/amlenc/scripts/verify-stable-kernel-boundary.sh
           npm test
           node --test experimental/amlenc/tests/*.test.mjs
           for script in experimental/amlenc/scripts/*.sh; do bash -n "$script"; done
@@ -114,6 +115,45 @@ jobs:
         run: experimental/amlenc/scripts/build-one-kvm.sh
       - name: Verify One-KVM armhf package
         run: experimental/amlenc/scripts/verify-one-kvm.sh out/amlenc/one-kvm/one-kvm_0.2.6+ws1608amlenc.run-${{ github.run_number }}-${{ github.run_attempt }}_armhf.deb
+      - name: Prepare experimental image identity
+        run: |
+          build_number=$((GITHUB_RUN_NUMBER * 1000 + GITHUB_RUN_ATTEMPT))
+          build_revision=$(printf 'b%06d' "$build_number")
+          package_version="0.2.6+ws1608amlenc.run-${GITHUB_RUN_NUMBER}-${GITHUB_RUN_ATTEMPT}"
+          {
+            echo "BUILD_NUMBER=$build_number"
+            echo "BUILD_REVISION=$build_revision"
+            echo "EXPERIMENTAL_BUILD_TAG=ws1608-amlenc-exp-0.2.6-v260802-k6.12.28-$build_revision"
+            echo "AMLENC_IMAGE_NAME=WS1608-AMLENC_${package_version}_Onecloud_trixie_6.12.28.burn.img"
+          } >>"$GITHUB_ENV"
+      - name: Build experimental burn image
+        env:
+          BASE_IMAGE_XZ: ${{ runner.temp }}/ws1608-base-placeholder
+          ONE_KVM_DEB: ${{ github.workspace }}/out/amlenc/one-kvm/one-kvm_0.2.6+ws1608amlenc.run-${{ github.run_number }}-${{ github.run_attempt }}_armhf.deb
+          AMLIMG_BIN: ${{ github.workspace }}/.tools/AmlImg
+          BUILDER_COMMIT: ${{ github.sha }}
+          OUTPUT_DIR: ${{ github.workspace }}/out/amlenc/burn
+          WORK_DIR: ${{ github.workspace }}/.build/amlenc/burn
+        run: |
+          source config/base.env
+          curl --fail --location --retry 5 "$BASE_IMAGE_URL" -o "$RUNNER_TEMP/base.burn.img.xz"
+          echo "$BASE_IMAGE_SHA256  $RUNNER_TEMP/base.burn.img.xz" | sha256sum --check
+          IMAGE_NAME="$AMLENC_IMAGE_NAME" BASE_IMAGE_XZ="$RUNNER_TEMP/base.burn.img.xz" \
+            experimental/amlenc/scripts/build-burn-image.sh
+      - name: Verify experimental burn image
+        env:
+          BASE_IMAGE: ${{ runner.temp }}/base.burn.img
+          MANIFEST: ${{ github.workspace }}/out/amlenc/burn/manifest.json
+          AMLIMG_BIN: ${{ github.workspace }}/.tools/AmlImg
+          VERIFY_DIR: ${{ github.workspace }}/.build/amlenc/burn-verify
+        run: |
+          xz -dc "$RUNNER_TEMP/base.burn.img.xz" >"$BASE_IMAGE"
+          export IMAGE="$GITHUB_WORKSPACE/out/amlenc/burn/$AMLENC_IMAGE_NAME"
+          experimental/amlenc/scripts/verify-burn-image.sh
+      - name: Package experimental burn metadata
+        env:
+          OUTPUT_DIR: ${{ github.workspace }}/out/amlenc/burn
+        run: IMAGE_NAME="$AMLENC_IMAGE_NAME" experimental/amlenc/scripts/package-burn-release.sh
       - name: Build diagnostic USB image with One-KVM
         env:
           AMLENC_ONE_KVM_DEB: ${{ github.workspace }}/out/amlenc/one-kvm/one-kvm_0.2.6+ws1608amlenc.run-${{ github.run_number }}-${{ github.run_attempt }}_armhf.deb
@@ -123,45 +163,24 @@ jobs:
           ssh-keygen -q -t ed25519 -N '' -f "$key_file"
           AMLENC_SSH_PUBLIC_KEY="$(<"$key_file.pub")" \
             experimental/amlenc/scripts/build-diagnostic-image.sh --build
-      - name: Build experimental burn image
-        env:
-          BASE_IMAGE_XZ: ${{ runner.temp }}/ws1608-base-placeholder
-          DIAGNOSTIC_IMAGE: ${{ github.workspace }}/out/amlenc/diagnostic-image/WS1608-AMLENC-Diagnostic_k3.10.107_bullseye_local001.usb.img
-          DIAGNOSTIC_MANIFEST: ${{ github.workspace }}/out/amlenc/diagnostic-image/manifest.json
-          AMLIMG_BIN: ${{ github.workspace }}/.tools/AmlImg
-          BUILD_REVISION: run-${{ github.run_number }}-${{ github.run_attempt }}
-          IMAGE_NAME: WS1608-AMLENC_0.2.6+ws1608amlenc.run-${{ github.run_number }}-${{ github.run_attempt }}_Onecloud_bullseye_3.10.107.burn.img
-          OUTPUT_DIR: ${{ github.workspace }}/out/amlenc/burn
-          WORK_DIR: ${{ github.workspace }}/.build/amlenc/burn
-        run: |
-          source config/base.env
-          curl --fail --location --retry 5 "$BASE_IMAGE_URL" -o "$RUNNER_TEMP/base.burn.img.xz"
-          echo "$BASE_IMAGE_SHA256  $RUNNER_TEMP/base.burn.img.xz" | sha256sum --check
-          BASE_IMAGE_XZ="$RUNNER_TEMP/base.burn.img.xz" \
-            experimental/amlenc/scripts/build-burn-image.sh
-      - name: Verify experimental burn image
-        env:
-          BASE_IMAGE: ${{ runner.temp }}/base.burn.img
-          IMAGE: ${{ github.workspace }}/out/amlenc/burn/WS1608-AMLENC_0.2.6+ws1608amlenc.run-${{ github.run_number }}-${{ github.run_attempt }}_Onecloud_bullseye_3.10.107.burn.img
-          MANIFEST: ${{ github.workspace }}/out/amlenc/burn/manifest.json
-          AMLIMG_BIN: ${{ github.workspace }}/.tools/AmlImg
-          VERIFY_DIR: ${{ github.workspace }}/.build/amlenc/burn-verify
-        run: |
-          xz -dc "$RUNNER_TEMP/base.burn.img.xz" >"$BASE_IMAGE"
-          experimental/amlenc/scripts/verify-burn-image.sh
-      - name: Package experimental burn metadata
-        env:
-          OUTPUT_DIR: ${{ github.workspace }}/out/amlenc/burn
-          IMAGE_NAME: WS1608-AMLENC_0.2.6+ws1608amlenc.run-${{ github.run_number }}-${{ github.run_attempt }}_Onecloud_bullseye_3.10.107.burn.img
-        run: experimental/amlenc/scripts/package-burn-release.sh
       - name: Record untested experimental status
         run: |
           jq -e '.hardware_encoder_tested == false and .one_kvm_included == true and .stable_channel_modified == false' out/amlenc/diagnostic-image/manifest.json
-          jq -e '.hardware_encoder_tested == false and .hardware_boot_tested == false and .one_kvm_included == true' out/amlenc/burn/manifest.json
+          jq -e --arg tag "$EXPERIMENTAL_BUILD_TAG" '.build_tag == $tag and .stable_base_preserved == true and .kernel.version == "6.12.28-current-meson" and .hardware_encoder_tested == false and .hardware_boot_tested == false and .one_kvm_included == true' out/amlenc/burn/manifest.json
       - name: Verify packaged experimental release
         run: |
           experimental/amlenc/scripts/verify-stable-chain.sh
           experimental/amlenc/scripts/verify-burn-release.sh out/amlenc/burn
+      - name: Upload legacy research artifacts
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: ws1608-amlenc-legacy-research-${{ github.run_number }}-${{ github.run_attempt }}
+          path: |
+            out/amlenc/kernel/
+            out/amlenc/libvpcodec/
+            out/amlenc/diagnostic-image/
+          if-no-files-found: error
+          retention-days: 14
       - name: Upload experimental release artifact
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with:
@@ -207,17 +226,17 @@ jobs:
         run: |
           build_number=$((RUN_NUMBER * 1000 + RUN_ATTEMPT))
           build_revision=$(printf 'b%06d' "$build_number")
-          image_name="WS1608-AMLENC_0.2.6+ws1608amlenc.run-${RUN_NUMBER}-${RUN_ATTEMPT}_Onecloud_bullseye_3.10.107.burn.img"
+          image_name="WS1608-AMLENC_0.2.6+ws1608amlenc.run-${RUN_NUMBER}-${RUN_ATTEMPT}_Onecloud_trixie_6.12.28.burn.img"
           {
             echo "BUILD_NUMBER=$build_number"
             echo "BUILD_REVISION=$build_revision"
-            echo "BUILD_TAG=ws1608-amlenc-exp-0.2.6-v260802-k3.10.107-$build_revision"
+            echo "BUILD_TAG=ws1608-amlenc-exp-0.2.6-v260802-k6.12.28-$build_revision"
             echo "IMAGE_NAME=$image_name"
           } >> "$GITHUB_ENV"
           {
             echo "build_number=$build_number"
             echo "build_revision=$build_revision"
-            echo "build_tag=ws1608-amlenc-exp-0.2.6-v260802-k3.10.107-$build_revision"
+            echo "build_tag=ws1608-amlenc-exp-0.2.6-v260802-k6.12.28-$build_revision"
             echo "image_name=$image_name"
           } >> "$GITHUB_OUTPUT"
       - name: Reverify downloaded experimental release
@@ -234,6 +253,7 @@ jobs:
           xz -dc "$RUNNER_TEMP/base.burn.img.xz" >"$BASE_IMAGE"
           experimental/amlenc/scripts/verify-burn-release.sh "$RUNNER_TEMP/release"
           experimental/amlenc/scripts/verify-burn-image.sh
+          jq -e --arg tag "$BUILD_TAG" '.build_tag == $tag' "$MANIFEST"
       - name: Write experimental release notes
         run: |
           cat >"$RUNNER_TEMP/release-notes.md" <<EOF
@@ -242,7 +262,7 @@ jobs:
           This image passed the hosted build, Amlogic container, filesystem, package, checksum and downloaded-artifact checks. Physical flashing, boot and hardware encoding were not tested for this build.
 
           One-KVM package: 0.2.6+ws1608amlenc.run-${GITHUB_RUN_NUMBER}-${GITHUB_RUN_ATTEMPT}
-          Kernel: 3.10.107
+          Kernel: 6.12.28-current-meson (verified stable base boot chain)
           Channel: experimental prerelease
           EOF
       - name: Publish experimental prerelease

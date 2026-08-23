@@ -1,0 +1,91 @@
+diff --git a/drivers/media/platform/amlogic/Kconfig b/drivers/media/platform/amlogic/Kconfig
+index 111111111111..222222222222 100644
+--- a/drivers/media/platform/amlogic/Kconfig
++++ b/drivers/media/platform/amlogic/Kconfig
+@@ -1,3 +1,4 @@
+ # SPDX-License-Identifier: GPL-2.0-only
+ 
+ source "drivers/media/platform/amlogic/meson-ge2d/Kconfig"
++source "drivers/media/platform/amlogic/meson8b-amlenc-research/Kconfig"
+diff --git a/drivers/media/platform/amlogic/Makefile b/drivers/media/platform/amlogic/Makefile
+index 333333333333..444444444444 100644
+--- a/drivers/media/platform/amlogic/Makefile
++++ b/drivers/media/platform/amlogic/Makefile
+@@ -1,3 +1,4 @@
+ # SPDX-License-Identifier: GPL-2.0-only
+ 
+ obj-y += meson-ge2d/
++obj-y += meson8b-amlenc-research/
+diff --git a/drivers/media/platform/amlogic/meson8b-amlenc-research/Kconfig b/drivers/media/platform/amlogic/meson8b-amlenc-research/Kconfig
+new file mode 100644
+index 000000000000..555555555555
+--- /dev/null
++++ b/drivers/media/platform/amlogic/meson8b-amlenc-research/Kconfig
+@@ -0,0 +1,12 @@
++# SPDX-License-Identifier: GPL-2.0-only
++config VIDEO_MESON8B_AMLENC_RESEARCH
++	tristate "Meson8b AMLENC research boundary"
++	depends on ARCH_MESON || COMPILE_TEST
++	depends on OF
++	default n
++	help
++	  Build a non-functional probe boundary for the Meson8b/S805 H.264
++	  encoder. It does not register /dev/amvenc_avc or issue vendor
++	  ioctls. Keep this disabled until the reserved-memory, clock, reset,
++	  canvas and firmware contracts have been ported and tested on the
++	  6.12.28-current-meson kernel used by the verified WS1608 image.
+diff --git a/drivers/media/platform/amlogic/meson8b-amlenc-research/Makefile b/drivers/media/platform/amlogic/meson8b-amlenc-research/Makefile
+new file mode 100644
+index 000000000000..666666666666
+--- /dev/null
++++ b/drivers/media/platform/amlogic/meson8b-amlenc-research/Makefile
+@@ -0,0 +1,2 @@
++# SPDX-License-Identifier: GPL-2.0-only
++obj-$(CONFIG_VIDEO_MESON8B_AMLENC_RESEARCH) += meson8b-amlenc-research.o
+diff --git a/drivers/media/platform/amlogic/meson8b-amlenc-research/meson8b-amlenc-research.c b/drivers/media/platform/amlogic/meson8b-amlenc-research/meson8b-amlenc-research.c
+new file mode 100644
+index 000000000000..777777777777
+--- /dev/null
++++ b/drivers/media/platform/amlogic/meson8b-amlenc-research/meson8b-amlenc-research.c
+@@ -0,0 +1,41 @@
++// SPDX-License-Identifier: GPL-2.0-only
++/*
++ * WS1608/S805 AMLENC research boundary for Linux 6.12.
++ *
++ * The vendor userspace ABI expects /dev/amvenc_avc. This boundary does not
++ * create that node and deliberately refuses probe until the hardware resource
++ * and ioctl contracts have independent tests.
++ */
++#include <linux/errno.h>
++#include <linux/module.h>
++#include <linux/of.h>
++#include <linux/platform_device.h>
++
++#define MESON8B_AMLENC_VENDOR_NODE "amvenc_avc"
++
++static int meson8b_amlenc_research_probe(struct platform_device *pdev)
++{
++	dev_warn(&pdev->dev,
++		 "research boundary only; %s is not registered\n",
++		 MESON8B_AMLENC_VENDOR_NODE);
++	return -ENODEV;
++}
++
++static const struct of_device_id meson8b_amlenc_research_of_match[] = {
++	{ .compatible = "amlogic,meson8b-amvenc" },
++	{ }
++};
++MODULE_DEVICE_TABLE(of, meson8b_amlenc_research_of_match);
++
++static struct platform_driver meson8b_amlenc_research_driver = {
++	.probe = meson8b_amlenc_research_probe,
++	.driver = {
++		.name = "meson8b-amlenc-research",
++		.of_match_table = meson8b_amlenc_research_of_match,
++	},
++};
++module_platform_driver(meson8b_amlenc_research_driver);
++
++MODULE_DESCRIPTION("Meson8b AMLENC Linux 6.12 research boundary");
++MODULE_AUTHOR("WS1608 One-KVM Builder contributors");
++MODULE_LICENSE("GPL");

@@ -13,6 +13,7 @@ test('keeps AMLENC builds isolated from the stable image workflow', () => {
   assert.doesNotMatch(workflow, /schedule:/);
   assert.doesNotMatch(workflow, /repository_dispatch:/);
   assert.match(workflow, /experimental\/amlenc\/scripts\/verify-source-locks\.mjs/);
+  assert.match(workflow, /experimental\/amlenc\/scripts\/verify-stable-kernel-boundary\.sh/);
   assert.equal(
     workflow.match(/experimental\/amlenc\/scripts\/verify-stable-chain\.sh/g)?.length,
     2,
@@ -44,6 +45,12 @@ test('keeps AMLENC builds isolated from the stable image workflow', () => {
     'both legacy build containers must install the file utility used by artifact verification',
   );
   assert.match(workflow, /experimental\/amlenc\/scripts\/verify-one-kvm\.sh/);
+  assert.match(workflow, /ONE_KVM_DEB:/);
+  assert.doesNotMatch(workflow, /DIAGNOSTIC_IMAGE:|DIAGNOSTIC_MANIFEST:/);
+  assert.match(workflow, /stable_base_preserved == true/);
+  assert.match(workflow, /kernel\.version == "6\.12\.28-current-meson"/);
+  assert.match(workflow, /Upload legacy research artifacts/);
+  assert.match(workflow, /path: \|\s*out\/amlenc\/kernel\//);
   assert.equal(
     workflow.match(/sudo chown -R "\$\(id -u\):\$\(id -g\)" \.build\/amlenc out\/amlenc/g)?.length,
     2,
@@ -81,6 +88,7 @@ test('publishes an explicitly acknowledged immutable experimental prerelease', (
   assert.match(releaseJob, /experimental\/amlenc\/scripts\/verify-burn-image\.sh/);
   assert.match(releaseJob, /scripts\/publish-release\.sh/);
   assert.match(releaseJob, /RELEASE_PRERELEASE: 'true'/);
-  assert.match(releaseJob, /ws1608-amlenc-exp-0\.2\.6-v260802-k3\.10\.107-\$build_revision/);
+  assert.match(releaseJob, /ws1608-amlenc-exp-0\.2\.6-v260802-k6\.12\.28-\$build_revision/);
+  assert.doesNotMatch(releaseJob, /Kernel: 3\.10\.107/);
   assert.doesNotMatch(releaseJob, /--clobber|--latest/);
 });

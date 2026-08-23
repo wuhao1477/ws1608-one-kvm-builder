@@ -2,6 +2,14 @@
 
 当前状态：**未通过实机验证**。本流程不得写入 eMMC，不得接入 One-KVM、USB Gadget 或稳定发布链路。
 
+实验直刷包使用已验证的 6.12.28 启动链，One-KVM 默认不运行 AMLENC 硬件探测。只有设备节点和 6.12 驱动先通过独立检查后，才可执行一次性探测：
+
+```bash
+ONE_KVM_AMLENC_SMOKE_TEST=1 /usr/bin/one-kvm
+```
+
+不得把 `ONE_KVM_AMLENC_SMOKE_TEST` 写入 systemd 服务或持久环境文件。
+
 ## 1. 可恢复启动
 
 1. 使用可移除介质或可恢复的临时启动方式加载 `out/amlenc/kernel/` 中的 Linux 3.10.107 内核、WS1608 DTB 和模块。

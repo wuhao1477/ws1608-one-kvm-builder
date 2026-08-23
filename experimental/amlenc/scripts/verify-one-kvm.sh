@@ -51,7 +51,8 @@ if ! jq -e \
     and .patches_sha256 == $patches_sha256
     and .dependency_locks_sha256 == $dependency_locks_sha256
     and .rust_toolchain == "1.97.1"
-    and .pnpm_version == "10.15.0"' \
+    and .pnpm_version == "10.15.0"
+    and .amlenc_smoke_test_default == false' \
   "$tmp/usr/share/doc/one-kvm/ws1608-amlenc-build.json" >/dev/null; then
   fail "build provenance metadata does not match source locks"
 fi

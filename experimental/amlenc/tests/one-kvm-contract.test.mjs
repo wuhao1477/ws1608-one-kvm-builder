@@ -41,6 +41,7 @@ const expectedMetadata = {
   },
   platform: 'WS1608/S805/Meson8b/armv7',
   codec: 'h264_amlenc',
+  amlenc_smoke_test_default: false,
   hardware_encoder_tested: false,
   stable_channel_modified: false,
   redistribution: 'local-test-only',
@@ -66,6 +67,16 @@ test('adds a separate Meson8b ARMv7 H.264 capability', () => {
   assert.match(patch, /allow\(dead_code\)[\s\S]*is_s912_gxm_compatible/);
   assert.match(patch, /src\/video\/pipeline\/shared\.rs/);
   assert.match(patch, /target_arch = "arm"[\s\S]*AMLENC_MAX_FPS: u32 = 30/);
+});
+
+test('keeps the AMLENC hardware smoke test opt-in', () => {
+  const patch = readRequired(files.patch);
+  const build = readRequired(files.build);
+
+  assert.match(patch, /ONE_KVM_AMLENC_SMOKE_TEST/);
+  assert.match(patch, /as_deref\(\)\s*==\s*Some\("1"\)/);
+  assert.match(build, /amlenc_smoke_test_default:false/);
+  assert.doesNotMatch(build, /Environment=ONE_KVM_AMLENC_SMOKE_TEST/);
 });
 
 test('does not expose H.265 AMLENC on Meson8b', () => {
