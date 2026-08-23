@@ -129,6 +129,8 @@ test('builds a pinned and traceable armhf Debian package', () => {
 test('independently verifies package identity, interpreter and metadata', () => {
   const verify = readRequired(files.verify);
 
+  assert.match(verify, /One-KVM package verification failed/);
+  assert.match(verify, /ELF interpreter/);
   for (const field of ['Package', 'Version', 'Architecture']) {
     assert.match(verify, new RegExp(`dpkg-deb -f .* ${field}`));
   }
