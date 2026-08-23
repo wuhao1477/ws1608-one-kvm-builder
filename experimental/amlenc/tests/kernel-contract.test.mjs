@@ -20,6 +20,8 @@ test('adapts the vendor board without ODROID-only GPIO consumers', () => {
 
   assert.match(patch, /model = "WS1608 OneCloud"/);
   assert.match(patch, /reset_pin = "GPIOH_4"/);
+  assert.match(patch, /^-\s*emmc\{/m);
+  assert.match(patch, /^-\s*sd\{/m);
   assert.match(patch, /gpio-hub-rst = "GPIOAO_4"/);
   assert.match(patch, /gpio-vbus-power = "GPIOAO_5"/);
   assert.match(patch, /^-.*(?:Hardkernel|ODROID|GPIOX_1|GPIOX_2|odroid_pwm0|odroid_pwm1)/m);

@@ -62,6 +62,7 @@ test('adds a separate Meson8b ARMv7 H.264 capability', () => {
   assert.match(patch, /AmlencCodec::H264/);
   assert.match(patch, /supports_codec/);
   assert.match(patch, /amlenc::smoke_test/);
+  assert.match(patch, /ONE_KVM_AMLENC_SMOKE_TEST/);
   assert.match(patch, /allow\(dead_code\)[\s\S]*is_s912_gxm_compatible/);
   assert.match(patch, /src\/video\/pipeline\/shared\.rs/);
   assert.match(patch, /target_arch = "arm"[\s\S]*AMLENC_MAX_FPS: u32 = 30/);

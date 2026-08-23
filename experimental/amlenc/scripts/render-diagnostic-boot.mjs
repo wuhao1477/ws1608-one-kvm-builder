@@ -30,7 +30,7 @@ bootm 0x20800000 - 0x21800000
 const environment = `console=both
 rootdev=UUID=${rootfsUuid}
 rootfstype=ext4
-extraargs=panic=10
+extraargs=panic=0 loglevel=8 ignore_loglevel
 `;
 
 fs.writeFileSync(path.join(outputDirectory, 'boot.cmd'), bootCommand);
