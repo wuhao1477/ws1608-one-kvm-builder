@@ -31,21 +31,21 @@
 - Consumes: stable `BASE_IMAGE_URL`, `BASE_IMAGE_SHA256`, AmlImg package entries.
 - Produces: burn manifest fields identifying stable boot assets and a verifier rejection when diagnostic 3.10 artifacts are supplied.
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
   Add a contract fixture asserting that `build-burn-image.sh` reads `BASE_IMAGE_NAME`/`BASE_IMAGE_SHA256`, extracts boot and rootfs from the stable base, and does not reference `out/amlenc/kernel/zImage`, `ws1608-s805.dtb`, or `3.10.107` as burn inputs.
 
-- [ ] **Step 2: Run the focused test**
+- [x] **Step 2: Run the focused test**
 
   Run: `node --test experimental/amlenc/tests/burn-image-contract.test.mjs`
 
   Expected: FAIL because the current script copies the diagnostic USB image, which embeds the 3.10.107 kernel and DTB.
 
-- [ ] **Step 3: Implement the minimal boundary change**
+- [x] **Step 3: Implement the minimal boundary change**
 
   Change the burn assembly input from `DIAGNOSTIC_IMAGE` to a stable-base working tree. Preserve the stable boot raw image byte-for-byte; inject only the experimental rootfs payload into the stable rootfs partition. Record `stable_base_preserved=true` and the stable base digest in `manifest.json`.
 
-- [ ] **Step 4: Verify the focused test**
+- [x] **Step 4: Verify the focused test**
 
   Run: `node --test experimental/amlenc/tests/burn-image-contract.test.mjs && git diff -- .github/workflows/build.yml config/base.env`
 
@@ -61,33 +61,31 @@
 ### Task 2: Build an experimental rootfs on the stable base
 
 **Files:**
-- Modify: `experimental/amlenc/scripts/assemble-diagnostic-usb.sh`
-- Modify: `experimental/amlenc/scripts/build-diagnostic-image.sh`
-- Modify: `experimental/amlenc/scripts/configure-diagnostic-rootfs.sh`
-- Create: `experimental/amlenc/scripts/assemble-stable-rootfs.mjs`
-- Modify: `experimental/amlenc/tests/diagnostic-image-contract.test.mjs`
+- Modify: `experimental/amlenc/scripts/build-burn-image.sh`
+- Modify: `experimental/amlenc/scripts/verify-burn-image.sh`
+- Reuse unchanged: `scripts/build-image.sh`
 
 **Interfaces:**
-- Consumes: stable rootfs raw image, armhf One-KVM package, AMLENC userland artifacts.
-- Produces: a rootfs-only experimental artifact with stable kernel/DTB identity and explicit `kernel_source=stable-base` metadata.
+- Consumes: verified stable burn image and experimental armhf One-KVM package.
+- Produces: a burn image where only rootfs and its VERIFY entry differ from the stable base.
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
-  Add a fixture that rejects a diagnostic manifest with `kernel.version=3.10.107` when used as a burn input, and accepts a manifest that references `BASE_KERNEL=6.12.28-current-meson` while keeping `hardware_encoder_tested=false`.
+  Require `ONE_KVM_DEB`, reject diagnostic image inputs, and require stable boot provenance.
 
-- [ ] **Step 2: Run the focused test**
+- [x] **Step 2: Run the focused test**
 
-  Run: `node --test experimental/amlenc/tests/diagnostic-image-contract.test.mjs`
+  Run: `node --test experimental/amlenc/tests/burn-image-contract.test.mjs`
 
-  Expected: FAIL until rootfs and manifest contracts distinguish stable boot assets from research kernel artifacts.
+  Expected: FAIL while the builder still copies the legacy diagnostic image.
 
-- [ ] **Step 3: Implement rootfs-only assembly**
+- [x] **Step 3: Implement rootfs-only assembly**
 
-  Reuse the stable rootfs partition size and UUID. Install One-KVM, `libvpcodec.so`, `amlenc-m8-diag`, `validate-h264.sh`, hardware limits and release provenance into the stable rootfs. Do not copy a 3.10 kernel, DTB, modules archive, or legacy boot script into the burn image.
+  Invoke the protected stable image builder with the experimental Deb. Keep the legacy diagnostic image as a separate research artifact.
 
-- [ ] **Step 4: Verify**
+- [x] **Step 4: Verify**
 
-  Run: `node --test experimental/amlenc/tests/diagnostic-image-contract.test.mjs experimental/amlenc/tests/burn-image-contract.test.mjs`
+  Run: `node --test experimental/amlenc/tests/burn-image-contract.test.mjs`
 
   Expected: all focused tests pass.
 
@@ -110,21 +108,21 @@
 - Consumes: One-KVM source and optional `ONE_KVM_AMLENC_SMOKE_TEST=1` environment variable.
 - Produces: a package that starts with software fallback and only runs AMLENC smoke testing when explicitly enabled.
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
   Assert the patch contains an explicit environment gate, that the package metadata records `amlenc_smoke_test_default=false`, and that the rootfs service does not export the gate by default.
 
-- [ ] **Step 2: Run the focused test**
+- [x] **Step 2: Run the focused test**
 
   Run: `node --test experimental/amlenc/tests/one-kvm-contract.test.mjs`
 
   Expected: FAIL if the package still performs the hardware probe during every startup.
 
-- [ ] **Step 3: Implement the gate**
+- [x] **Step 3: Implement the gate**
 
   Keep the Meson8b H.264 registry path, but use software fallback unless `ONE_KVM_AMLENC_SMOKE_TEST=1`. Add a documented one-shot diagnostic command that exports the variable only for manual testing.
 
-- [ ] **Step 4: Verify**
+- [x] **Step 4: Verify**
 
   Run: `node --test experimental/amlenc/tests/one-kvm-contract.test.mjs && bash -n experimental/amlenc/scripts/*.sh`
 
@@ -147,21 +145,21 @@
 - Consumes: stable 6.12.28 kernel identity and 3.10.107 driver ABI notes.
 - Produces: a separately verifiable 6.12 module/patch candidate; no change to stable boot assets until hardware validation passes.
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
   Require the research patch to target the stable kernel version, keep stable HDMI/eMMC/USB nodes untouched, and expose only a disabled AMLENC device/module path.
 
-- [ ] **Step 2: Run the focused test**
+- [x] **Step 2: Run the focused test**
 
   Run: `node --test experimental/amlenc/tests/stable-kernel-boundary.test.mjs`
 
   Expected: FAIL because no 6.12 driver boundary exists.
 
-- [ ] **Step 3: Implement the research boundary**
+- [x] **Step 3: Implement the research boundary**
 
   Do not replace the stable DTB or kernel in the image. Record the old `amvenc_avc` ioctl contract, memory requirements and expected device node; keep the 6.12 candidate disabled until a Linux build produces a loadable module and a device-side test is available.
 
-- [ ] **Step 4: Verify**
+- [x] **Step 4: Verify**
 
   Run: `node --test experimental/amlenc/tests/stable-kernel-boundary.test.mjs && experimental/amlenc/scripts/verify-stable-kernel-boundary.sh`
 
@@ -183,19 +181,19 @@
 - Consumes: rootfs-only experimental image, stable base digest, explicit hardware-gate state.
 - Produces: PR artifact and prerelease with five assets, stable boot provenance, and no 3.10 kernel/DTB in the burn image.
 
-- [ ] **Step 1: Write the failing workflow test**
+- [x] **Step 1: Write the failing workflow test**
 
   Require the workflow to reject a burn manifest containing `kernel.version=3.10.107`, require `stable_base_preserved=true`, and keep `publish` disabled by default.
 
-- [ ] **Step 2: Run the focused test**
+- [x] **Step 2: Run the focused test**
 
   Run: `node --test experimental/amlenc/tests/workflow-policy.test.mjs`
 
-- [ ] **Step 3: Update the workflow**
+- [x] **Step 3: Update the workflow**
 
   Build the research kernel as a separate artifact, but pass only the stable base and rootfs package to the burn-image builder. Keep the existing post-upload download verification and prerelease-only policy.
 
-- [ ] **Step 4: Run all local gates**
+- [x] **Step 4: Run all local gates**
 
   ```bash
   npm test
@@ -217,10 +215,10 @@
 
 ## Verification Checklist
 
-- [ ] `npm test` passes.
-- [ ] `node --test experimental/amlenc/tests/*.test.mjs` passes.
-- [ ] Every experimental shell script passes `bash -n`.
-- [ ] Stable workflow and `config/base.env` have no diff.
+- [x] `npm test` passes.
+- [x] `node --test experimental/amlenc/tests/*.test.mjs` passes.
+- [x] Every experimental shell script passes `bash -n`.
+- [x] Stable workflow and `config/base.env` have no diff.
 - [ ] Burn image boot partition matches the stable base boot partition.
 - [ ] Burn manifest does not contain `kernel.version=3.10.107`.
 - [ ] One-KVM package verification reports Rust `1.97.1`.

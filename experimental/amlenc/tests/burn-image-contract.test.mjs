@@ -23,7 +23,7 @@ test('defines an isolated burn image build and verification chain', () => {
   const verifier = read(verifierPath);
   const packager = read(packagerPath);
   assert.match(builder, /AmlImg/);
-  assert.match(builder, /raw-to-sparse\.mjs/);
+  assert.match(builder, /build-image\.sh/);
   assert.match(builder, /one_kvm/);
   assert.match(builder, /hardware_encoder_tested/);
   assert.match(verifier, /AmlImg.*unpack|unpack.*AmlImg/s);
@@ -33,6 +33,29 @@ test('defines an isolated burn image build and verification chain', () => {
   assert.match(verifier, /hardware_encoder_tested/);
   assert.match(packager, /xz/);
   assert.match(packager, /SHA256SUMS/);
+});
+
+test('builds the flashable experiment from the verified stable boot chain', () => {
+  const builder = read(builderPath);
+  const verifier = read(verifierPath);
+  const workflow = read(workflowPath);
+
+  assert.match(builder, /ONE_KVM_DEB/);
+  assert.doesNotMatch(builder, /DIAGNOSTIC_IMAGE|DIAGNOSTIC_MANIFEST|BOOT_RAW/);
+  assert.doesNotMatch(builder, /3\.10\.107/);
+  assert.match(builder, /stable_base_preserved/);
+  assert.match(builder, /BASE_IMAGE_SHA256/);
+  assert.match(builder, /BASE_KERNEL/);
+
+  assert.match(verifier, /cmp[^\n]*base[^\n]*final|cmp[^\n]*final[^\n]*base/);
+  assert.match(verifier, /name[^\n]*!=[^\n]*rootfs/);
+  assert.match(verifier, /stable_base_preserved/);
+  assert.match(verifier, /BASE_KERNEL/);
+  assert.match(verifier, /3\.10\.107/);
+
+  assert.match(workflow, /ONE_KVM_DEB:/);
+  assert.doesNotMatch(workflow, /DIAGNOSTIC_IMAGE:|DIAGNOSTIC_MANIFEST:/);
+  assert.doesNotMatch(workflow, /bullseye_3\.10\.107\.burn\.img/);
 });
 
 test('runs burn image gates before metadata upload and keeps hardware gate explicit', () => {
@@ -58,7 +81,7 @@ test('verifies exactly five packaged burn release assets', (t) => {
   assert.equal(fs.existsSync(releaseVerifierPath), true, 'burn release verifier is required');
   const fixture = fs.mkdtempSync(path.join(os.tmpdir(), 'ws1608-burn-release-'));
   t.after(() => fs.rmSync(fixture, { recursive: true, force: true }));
-  const imageName = 'WS1608-AMLENC_0.2.6+ws1608amlenc.run-1-1_Onecloud_bullseye_3.10.107.burn.img';
+  const imageName = 'WS1608-AMLENC_0.2.6+ws1608amlenc.run-1-1_Onecloud_trixie_6.12.28.burn.img';
   const image = path.join(fixture, imageName);
   fs.writeFileSync(image, 'burn-image-fixture');
   assert.equal(spawnSync('xz', ['-k', image], { encoding: 'utf8' }).status, 0);
@@ -68,6 +91,12 @@ test('verifies exactly five packaged burn release assets', (t) => {
     kind: 'ws1608-amlenc-burn-image',
     image_name: imageName,
     image_sha256: digest(image),
+    build_tag: 'ws1608-amlenc-exp-0.2.6-v260802-k6.12.28-b001001',
+    stable_base_preserved: true,
+    base_release_tag: 'base-20260804-consolefix',
+    base_image_name: 'Armbian_26.8.0-trunk.413_Onecloud_trixie_6.12.28_HDMI-consolefix.burn.img.xz',
+    base_image_sha256: 'b'.repeat(64),
+    kernel: { version: '6.12.28-current-meson', source: 'stable-base' },
     one_kvm: { version: '0.2.6+ws1608amlenc.run-1-1', sha256: 'a'.repeat(64) },
     hardware_boot_tested: false,
     hardware_encoder_tested: false,

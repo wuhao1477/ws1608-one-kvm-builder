@@ -37,6 +37,7 @@ function verify(metadata, sources) {
   }
   requireEqual(metadata.platform, 'WS1608/S805/Meson8b/armv7', 'platform');
   requireEqual(metadata.codec, 'h264_amlenc', 'codec');
+  requireEqual(metadata.amlenc_smoke_test_default, false, 'AMLENC smoke test default');
   requireEqual(metadata.hardware_encoder_tested, false, 'hardware encoder status');
   requireEqual(metadata.stable_channel_modified, false, 'stable channel status');
   requireEqual(metadata.redistribution, 'local-test-only', 'redistribution');

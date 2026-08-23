@@ -122,7 +122,8 @@ jq -cn \
     patches_sha256:$patches,dependency_locks_sha256:$locks,rust_toolchain:$rust,rustc_commit:$rustc,
     pnpm_version:$pnpm,source_date_epoch:$epoch,build_container:$container,
     toolchain:{gcc:$gcc,binutils:$binutils},dependencies:{x264:$x264,rkmpp:$rkmpp,rkrga:$rkrga},
-    platform:"WS1608/S805/Meson8b/armv7",codec:"h264_amlenc",hardware_encoder_tested:false,
+    platform:"WS1608/S805/Meson8b/armv7",codec:"h264_amlenc",amlenc_smoke_test_default:false,
+    hardware_encoder_tested:false,
     stable_channel_modified:false,redistribution:"local-test-only"}' >"$metadata"
 (cd "$package_dir" && sha256sum usr/bin/one-kvm usr/lib/one-kvm/libvpcodec.so usr/lib/one-kvm/amlenc-m8-diag usr/share/doc/one-kvm/ws1608-amlenc-build.json >usr/share/doc/one-kvm/SHA256SUMS)
 find "$package_dir" -exec touch -h -d "@$SOURCE_DATE_EPOCH" {} +

@@ -163,7 +163,7 @@ index 3baa50c..99c28a9 100644
 -        }
 +        };
  
-+        let smoke_test_enabled = std::env::var_os("ONE_KVM_AMLENC_SMOKE_TEST").is_some();
++        let smoke_test_enabled = std::env::var("ONE_KVM_AMLENC_SMOKE_TEST").ok().as_deref() == Some("1");
          self.detect_amlenc_candidates(
 -            true,
 +            Some(platform),
