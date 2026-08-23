@@ -61,8 +61,11 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y curl jq qemu-user-static device-tree-compiler dpkg-dev gcc-arm-linux-gnueabihf binutils-arm-linux-gnueabihf build-essential e2fsprogs file mtools u-boot-tools xz-utils
           docker version
-          curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --default-toolchain stable
+          source experimental/amlenc/config/sources.env
+          curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --default-toolchain "$ONE_KVM_RUST_TOOLCHAIN"
           source "$HOME/.cargo/env"
+          rustup default "$ONE_KVM_RUST_TOOLCHAIN"
+          rustc --version
           cargo install cross --locked
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7
         with:

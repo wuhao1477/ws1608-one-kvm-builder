@@ -28,6 +28,10 @@ test('keeps AMLENC builds isolated from the stable image workflow', () => {
   assert.match(workflow, /DOCKER_BUILDKIT[^\n]*1/);
   assert.doesNotMatch(workflow, /apt-get install[^\n]*docker\.io/);
   assert.match(workflow, /docker version/);
+  assert.match(workflow, /source experimental\/amlenc\/config\/sources\.env/);
+  assert.match(workflow, /--default-toolchain "\$ONE_KVM_RUST_TOOLCHAIN"/);
+  assert.match(workflow, /rustup default "\$ONE_KVM_RUST_TOOLCHAIN"/);
+  assert.doesNotMatch(workflow, /--default-toolchain stable/);
   assert.equal(workflow.match(/qemu-user-static/g)?.length, 2);
   assert.match(workflow, /gcc-arm-linux-gnueabihf/);
   assert.match(workflow, /Verify encoder library[\s\S]*CC: arm-linux-gnueabihf-gcc/);
