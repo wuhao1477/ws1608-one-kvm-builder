@@ -147,7 +147,7 @@ jobs:
           source config/base.env
           curl --fail --location --retry 5 "$BASE_IMAGE_URL" -o "$RUNNER_TEMP/base.burn.img.xz"
           echo "$BASE_IMAGE_SHA256  $RUNNER_TEMP/base.burn.img.xz" | sha256sum --check
-          BASE_IMAGE_XZ="$RUNNER_TEMP/base.burn.img.xz" \
+          IMAGE_NAME="$AMLENC_IMAGE_NAME" BASE_IMAGE_XZ="$RUNNER_TEMP/base.burn.img.xz" \
             experimental/amlenc/scripts/build-burn-image.sh
       - name: Verify experimental burn image
         env:

@@ -54,6 +54,7 @@ test('builds the flashable experiment from the verified stable boot chain', () =
   assert.match(verifier, /3\.10\.107/);
 
   assert.match(workflow, /ONE_KVM_DEB:/);
+  assert.match(workflow, /IMAGE_NAME="\$AMLENC_IMAGE_NAME"[\s\S]{0,200}build-burn-image\.sh/);
   assert.doesNotMatch(workflow, /DIAGNOSTIC_IMAGE:|DIAGNOSTIC_MANIFEST:/);
   assert.doesNotMatch(workflow, /bullseye_3\.10\.107\.burn\.img/);
 });
