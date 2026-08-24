@@ -6,6 +6,7 @@ import path from 'node:path';
 import test from 'node:test';
 
 const files = {
+  softwareCodecs: 'experimental/amlenc/config/software-codecs.json',
   patch: 'experimental/amlenc/patches/one-kvm/0001-detect-meson8b-armv7.patch',
   buildEnvPatch: 'experimental/amlenc/patches/one-kvm/0002-pin-armv7-build-inputs.patch',
   cargoLock: 'experimental/amlenc/locks/one-kvm/Cargo.lock',
@@ -17,6 +18,26 @@ const files = {
   prepareCrossImage: 'experimental/amlenc/scripts/prepare-one-kvm-cross-image.sh',
   sources: 'experimental/amlenc/config/sources.env',
 };
+
+test('locks the four software codec inputs and FFmpeg decoder gates', () => {
+  const manifest = JSON.parse(readRequired(files.softwareCodecs));
+  assert.deepEqual(manifest, {
+    schema: 1,
+    codecs: [
+      { id: 'h264', encoder: 'libx264', decoder: 'h264' },
+      { id: 'h265', encoder: 'libx265', decoder: 'hevc' },
+      { id: 'vp8', encoder: 'libvpx_vp8', decoder: 'vp8' },
+      { id: 'vp9', encoder: 'libvpx_vp9', decoder: 'vp9' },
+    ],
+  });
+  const sources = readRequired(files.sources);
+  assert.match(sources, /^ONE_KVM_LIBVPX_COMMIT=1024874c5919305883187e2953de8fcb4c3d7fa6$/m);
+  assert.match(sources, /^ONE_KVM_X265_COMMIT=07295ba7ab551bb9c1580fdaee3200f1b45711b7$/m);
+  const patch = readRequired(files.buildEnvPatch);
+  assert.match(patch, /ARG LIBVPX_REV=1024874c5919305883187e2953de8fcb4c3d7fa6/);
+  assert.match(patch, /ARG X265_REV=07295ba7ab551bb9c1580fdaee3200f1b45711b7/);
+  for (const decoder of ['h264', 'hevc', 'vp8', 'vp9']) assert.match(patch, new RegExp(`--enable-decoder=${decoder}`));
+});
 
 const expectedMetadata = {
   schema: 1,
