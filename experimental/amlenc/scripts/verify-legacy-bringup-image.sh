@@ -108,7 +108,8 @@ for path in \
   /usr/local/sbin/ws1608-amlenc-arm-trial \
   /usr/local/sbin/ws1608-amlenc-mark-success \
   /etc/init.d/ws1608-amlenc-firstboot \
-  /etc/rcS.d/S99ws1608-amlenc-firstboot; do
+  /etc/rc2.d/S01ws1608-amlenc-firstboot \
+  /etc/rc2.d/S02ssh; do
   debugfs -R "stat $path" "$ROOTFS_RAW" 2>/dev/null | grep -q 'Inode:' || fail "missing rootfs path $path"
 done
 for helper in ws1608-amlenc-arm-trial ws1608-amlenc-mark-success; do
@@ -116,7 +117,7 @@ for helper in ws1608-amlenc-arm-trial ws1608-amlenc-mark-success; do
 done
 debugfs -R 'stat /etc/init.d/ws1608-amlenc-firstboot' "$ROOTFS_RAW" 2>/dev/null \
   | grep -q 'Mode:  0755' || fail "firstboot helper mode"
-firstboot_link=$(debugfs -R 'stat /etc/rcS.d/S99ws1608-amlenc-firstboot' "$ROOTFS_RAW" 2>/dev/null)
+firstboot_link=$(debugfs -R 'stat /etc/rc2.d/S01ws1608-amlenc-firstboot' "$ROOTFS_RAW" 2>/dev/null)
 grep -q 'Type: symlink' <<<"$firstboot_link" || fail "firstboot link type"
 grep -Fq 'Fast link dest: "../init.d/ws1608-amlenc-firstboot"' <<<"$firstboot_link" \
   || fail "firstboot link target"
@@ -125,7 +126,9 @@ if grep -Eq '/ssh_host_[^/]+/' <<<"$ssh_directory"; then
   fail "preinstalled SSH host key"
 fi
 for forbidden in \
+  /etc/rcS.d/S99ws1608-amlenc-firstboot \
   /etc/rcS.d/S01ws1608-amlenc-firstboot \
+  /etc/rc2.d/S01ssh \
   /var/lib/ws1608-amlenc/firstboot-complete \
   /tmp/ws1608-amlenc-firstboot.complete; do
   if debugfs -R "stat $forbidden" "$ROOTFS_RAW" 2>/dev/null | grep -q 'Inode:'; then

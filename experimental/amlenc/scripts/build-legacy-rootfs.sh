@@ -58,7 +58,9 @@ KbdInteractiveAuthentication yes
 PubkeyAuthentication yes
 PermitRootLogin yes
 EOF
-    ln -s ../init.d/ws1608-amlenc-firstboot /etc/rcS.d/S99ws1608-amlenc-firstboot
+    rm -f /etc/rc2.d/S01ssh /etc/rcS.d/S99ws1608-amlenc-firstboot
+    ln -s ../init.d/ws1608-amlenc-firstboot /etc/rc2.d/S01ws1608-amlenc-firstboot
+    ln -s ../init.d/ssh /etc/rc2.d/S02ssh
     rm -f /etc/ssh/ssh_host_* /etc/machine-id
     SSHD_START_BIN=/bin/true STATUS_FILE=/tmp/ws1608-amlenc-firstboot.complete /etc/init.d/ws1608-amlenc-firstboot
     test -s /tmp/ws1608-amlenc-firstboot.complete
