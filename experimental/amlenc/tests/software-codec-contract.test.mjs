@@ -61,6 +61,8 @@ test('requires armhf runtime verification before experimental burn assembly', ()
   assert.match(runtime, /--platform linux\/arm\/v7/);
   assert.match(runtime, /BULLSEYE_ARMV7_OCI_IMAGE/);
   assert.match(runtime, /one-kvm codec self-check --backend software --json/);
+  assert.match(runtime, /codec_status=\$\?/);
+  assert.match(runtime, /printf '%s\\n' "\$result" >&2/);
   assert.match(runtime, /submitted_frames == 10/);
   assert.match(runtime, /decoded_frames == 10/);
   const packageVerify = workflow.indexOf('Verify One-KVM armhf package');
