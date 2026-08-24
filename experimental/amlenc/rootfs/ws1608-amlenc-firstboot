@@ -12,6 +12,7 @@ RUN_DIR=${RUN_DIR:-/run/sshd}
 STATUS_FILE=${STATUS_FILE:-/var/lib/ws1608-amlenc/firstboot-complete}
 SSH_KEYGEN_BIN=${SSH_KEYGEN_BIN:-ssh-keygen}
 SSHD_BIN=${SSHD_BIN:-sshd}
+SSHD_START_BIN=${SSHD_START_BIN:-/etc/init.d/ssh}
 
 status_dir=${STATUS_FILE%/*}
 rm -f -- "$STATUS_FILE"
@@ -19,5 +20,6 @@ mkdir -p -- "$RUN_DIR" "$status_dir"
 chmod 0755 "$RUN_DIR"
 "$SSH_KEYGEN_BIN" -A
 "$SSHD_BIN" -t
+"$SSHD_START_BIN" start
 printf 'host-keys-ready\n' >"$STATUS_FILE"
 chmod 0644 "$STATUS_FILE"

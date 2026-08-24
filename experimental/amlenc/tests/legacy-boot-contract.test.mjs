@@ -43,12 +43,13 @@ function writeExecutable(filePath, content) {
   fs.writeFileSync(filePath, content, { mode: 0o755 });
 }
 
-function firstbootFixture(t, sshdExit = 0) {
+function firstbootFixture(t, sshdExit = 0, startExit = 0) {
   const directory = fixture(t);
   const log = path.join(directory, 'commands.log');
   const hostKey = path.join(directory, 'ssh_host_test_key');
   const keygen = path.join(directory, 'ssh-keygen');
   const sshd = path.join(directory, 'sshd');
+  const start = path.join(directory, 'ssh-start');
   writeExecutable(keygen, [
     '#!/bin/sh',
     'printf "keygen:%s\\n" "$*" >>"$FIRSTBOOT_LOG"',
@@ -60,6 +61,11 @@ function firstbootFixture(t, sshdExit = 0) {
     'printf "sshd:%s\\n" "$*" >>"$FIRSTBOOT_LOG"',
     'exit ' + sshdExit,
   ].join('\n'));
+  writeExecutable(start, [
+    '#!/bin/sh',
+    'printf "start:%s\\n" "$*" >>"$FIRSTBOOT_LOG"',
+    'exit ' + startExit,
+  ].join('\n'));
   return {
     log,
     env: {
@@ -68,6 +74,7 @@ function firstbootFixture(t, sshdExit = 0) {
       STATUS_FILE: path.join(directory, 'state', 'firstboot-complete'),
       SSH_KEYGEN_BIN: keygen,
       SSHD_BIN: sshd,
+      SSHD_START_BIN: start,
       FIRSTBOOT_LOG: log,
       FIRSTBOOT_HOST_KEY: hostKey,
     },
@@ -168,11 +175,20 @@ test('generates host keys and validates sshd before marking first boot complete'
   assert.equal(result.status, 0, result.stderr || result.stdout);
   assert.equal(fs.readFileSync(setup.env.STATUS_FILE, 'utf8'), 'host-keys-ready\n');
   assert.equal(fs.statSync(setup.env.RUN_DIR).mode & 0o777, 0o755);
-  assert.equal(fs.readFileSync(setup.log, 'utf8'), 'keygen:-A\nsshd:-t\n');
+  assert.equal(fs.readFileSync(setup.log, 'utf8'), 'keygen:-A\nsshd:-t\nstart:start\n');
 });
 
 test('does not mark first boot complete when sshd validation fails', (t) => {
   const setup = firstbootFixture(t, 42);
+
+  const result = spawnSync('sh', [firstboot], { encoding: 'utf8', env: setup.env });
+
+  assert.equal(result.status, 42);
+  assert.equal(fs.existsSync(setup.env.STATUS_FILE), false);
+});
+
+test('does not mark first boot complete when ssh service start fails', (t) => {
+  const setup = firstbootFixture(t, 0, 42);
 
   const result = spawnSync('sh', [firstboot], { encoding: 'utf8', env: setup.env });
 

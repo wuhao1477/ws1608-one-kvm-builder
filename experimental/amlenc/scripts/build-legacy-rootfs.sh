@@ -60,7 +60,7 @@ PermitRootLogin yes
 EOF
     ln -s ../init.d/ws1608-amlenc-firstboot /etc/rcS.d/S99ws1608-amlenc-firstboot
     rm -f /etc/ssh/ssh_host_* /etc/machine-id
-    STATUS_FILE=/tmp/ws1608-amlenc-firstboot.complete /etc/init.d/ws1608-amlenc-firstboot
+    SSHD_START_BIN=/bin/true STATUS_FILE=/tmp/ws1608-amlenc-firstboot.complete /etc/init.d/ws1608-amlenc-firstboot
     test -s /tmp/ws1608-amlenc-firstboot.complete
     rm -f /etc/ssh/ssh_host_* /tmp/ws1608-amlenc-firstboot.complete
     : >/etc/machine-id

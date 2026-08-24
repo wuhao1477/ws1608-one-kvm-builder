@@ -254,6 +254,7 @@ test('builds a Bullseye SysV rootfs for both kernels without One-KVM', () => {
   assert.match(rootfs, /S99ws1608-amlenc-firstboot/);
   assert.doesNotMatch(rootfs, /S01ws1608-amlenc-firstboot/);
   assert.match(rootfs, /STATUS_FILE=.*ws1608-amlenc-firstboot/);
+  assert.match(rootfs, /SSHD_START_BIN=\/bin\/true/);
   assert.match(rootfs, /LABEL=armbi_boot \/boot vfat/);
   assert.match(rootfs, /proc \/proc proc/);
   assert.match(rootfs, /tmpfs \/run tmpfs/);
@@ -292,9 +293,6 @@ test('assembles dual boot and rootfs partitions inside the stable AmlImg package
   ]) assert.match(image, new RegExp(asset.replaceAll('.', '\\.')));
   assert.match(image, /mkimage.*Linux-3\.10\.107-WS1608-AMLENC/s);
   assert.match(image, /sha1sum/);
-  assert.match(image, /stable_channel_modified:\s*false/);
-  assert.match(image, /hardware_boot_tested:\s*false/);
-  assert.match(image, /hardware_encoder_tested:\s*false/);
-  assert.match(image, /one_kvm_included:\s*false/);
+  for (const pattern of [/stable_channel_modified:\s*false/, /hardware_boot_tested:\s*false/, /hardware_encoder_tested:\s*false/, /one_kvm_included:\s*false/]) assert.match(image, pattern);
   assert.doesNotMatch(image, /DIAGNOSTIC_IMAGE|DIAGNOSTIC_MANIFEST/);
 });
