@@ -133,8 +133,12 @@ for forbidden in \
   fi
 done
 ssh_config=$(debugfs -R 'cat /etc/ssh/sshd_config.d/ws1608-amlenc.conf' "$ROOTFS_RAW" 2>/dev/null)
-grep -Fqx 'PasswordAuthentication no' <<<"$ssh_config" || fail "SSH password policy"
+grep -Fqx 'PasswordAuthentication yes' <<<"$ssh_config" || fail "SSH password policy"
+grep -Fqx 'KbdInteractiveAuthentication yes' <<<"$ssh_config" || fail "SSH keyboard-interactive policy"
 grep -Fqx 'PubkeyAuthentication yes' <<<"$ssh_config" || fail "SSH public-key policy"
+grep -Fqx 'PermitRootLogin yes' <<<"$ssh_config" || fail "SSH root login policy"
+root_shadow=$(debugfs -R 'cat /etc/shadow' "$ROOTFS_RAW" 2>/dev/null)
+grep -Eq '^root:\$[^:]+:' <<<"$root_shadow" || fail "root password is locked or missing"
 authorized_keys=$(debugfs -R 'cat /root/.ssh/authorized_keys' "$ROOTFS_RAW" 2>/dev/null) || fail "SSH authorized_keys missing"
 ssh_key_count=0
 ssh_key_line=
@@ -158,6 +162,7 @@ jq -e --arg base_tag "$BASE_RELEASE_TAG" --arg base_sha "$BASE_IMAGE_SHA256" --a
   .recovery == {kernel:"6.12.28-current-meson",source:"stable-base"} and
   .legacy == {kernel:"3.10.107",commit:$linux,cma_mib:64} and .recovery_first == true and
   (.ssh_public_key_sha256 | test("^[a-f0-9]{64}$")) and
+  .default_login_user == "root" and .password_authentication == true and
   .hardware_boot_tested == false and .hardware_encoder_tested == false and
   .one_kvm_included == false and .hid_tested == false and .msd_tested == false and
   .stable_channel_modified == false

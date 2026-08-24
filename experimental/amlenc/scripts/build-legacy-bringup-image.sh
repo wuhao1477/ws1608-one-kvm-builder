@@ -89,6 +89,7 @@ jq -n --arg image "$IMAGE_NAME" --arg image_sha "$image_sha256" --arg revision "
     recovery:{kernel:"6.12.28-current-meson",source:"stable-base"},
     legacy:{kernel:"3.10.107",commit:$linux,cma_mib:64},
     partitions:{boot_sha256:$boot_sha,rootfs_sha256:$rootfs_sha},ssh_public_key_sha256:$key_sha,
+    default_login_user:"root",password_authentication:true,
     recovery_first:true,hardware_boot_tested:false,hardware_encoder_tested:false,
     one_kvm_included:false,hid_tested:false,msd_tested:false,stable_channel_modified:false}' >"$MANIFEST"
 echo "built $OUTPUT_DIR/$IMAGE_NAME"

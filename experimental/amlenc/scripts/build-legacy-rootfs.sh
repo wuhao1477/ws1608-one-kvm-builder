@@ -16,6 +16,8 @@ require_file() { [[ -f "$1" && ! -L "$1" && -s "$1" ]] || fail "invalid file: $1
 require_file "$RECOVERY_ROOTFS_RAW"
 require_file "$LEGACY_MODULES_TAR"
 [[ "$SSH_PUBLIC_KEY" =~ ^(ssh-ed25519|ssh-rsa|ecdsa-sha2-nistp(256|384|521))[[:space:]][A-Za-z0-9+/=]+([[:space:]].*)?$ ]] || fail "invalid SSH public key"
+[[ "$LEGACY_DEFAULT_LOGIN_USER" == root ]] || fail "default login user must be root"
+[[ -n "$LEGACY_DEFAULT_LOGIN_PASSWORD" ]] || fail "default login password is empty"
 [[ "$WORK_DIR" != / && "$WORK_DIR" != "$ROOT_DIR" && ! -L "$WORK_DIR" ]] || fail "unsafe work directory"
 [[ "$OUTPUT_ROOTFS_RAW" != / && ! -L "$OUTPUT_ROOTFS_RAW" ]] || fail "unsafe output path"
 for command in docker realpath; do command -v "$command" >/dev/null || fail "missing command: $command"; done
@@ -23,9 +25,10 @@ for command in docker realpath; do command -v "$command" >/dev/null || fail "mis
 mkdir -p "$WORK_DIR" "$(dirname "$OUTPUT_ROOTFS_RAW")"
 find "$WORK_DIR" -mindepth 1 -delete
 export SSH_PUBLIC_KEY
+export LEGACY_DEFAULT_LOGIN_USER LEGACY_DEFAULT_LOGIN_PASSWORD
 
 docker run --rm --platform linux/arm/v7 \
-  -e SSH_PUBLIC_KEY \
+  -e SSH_PUBLIC_KEY -e LEGACY_DEFAULT_LOGIN_USER -e LEGACY_DEFAULT_LOGIN_PASSWORD \
   -v "$WORK_DIR:/work" \
   -v "$ROOT_DIR/experimental/amlenc/rootfs:/assets:ro" \
   -v "$ROOT_DIR/experimental/amlenc/scripts/apt-install.sh:/build-tools/apt-install:ro" \
@@ -44,15 +47,16 @@ EOF
     install -d -m 0700 /root/.ssh
     printf "%s\n" "$SSH_PUBLIC_KEY" >/root/.ssh/authorized_keys
     chmod 0600 /root/.ssh/authorized_keys
-    passwd -l root
+    printf "%s:%s\n" "$LEGACY_DEFAULT_LOGIN_USER" "$LEGACY_DEFAULT_LOGIN_PASSWORD" | chpasswd
+    passwd -u "$LEGACY_DEFAULT_LOGIN_USER"
     install -D -m 0755 /assets/ws1608-amlenc-arm-trial /usr/local/sbin/ws1608-amlenc-arm-trial
     install -D -m 0755 /assets/ws1608-amlenc-mark-success /usr/local/sbin/ws1608-amlenc-mark-success
     install -D -m 0755 /assets/ws1608-amlenc-firstboot /etc/init.d/ws1608-amlenc-firstboot
     cat >/etc/ssh/sshd_config.d/ws1608-amlenc.conf <<"EOF"
-PasswordAuthentication no
-KbdInteractiveAuthentication no
+PasswordAuthentication yes
+KbdInteractiveAuthentication yes
 PubkeyAuthentication yes
-PermitRootLogin prohibit-password
+PermitRootLogin yes
 EOF
     ln -s ../init.d/ws1608-amlenc-firstboot /etc/rcS.d/S99ws1608-amlenc-firstboot
     rm -f /etc/ssh/ssh_host_* /etc/machine-id

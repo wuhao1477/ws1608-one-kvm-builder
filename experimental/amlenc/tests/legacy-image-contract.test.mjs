@@ -74,7 +74,8 @@ function installVerifierStubs(directory) {
     'command=$2',
     'case "$command" in',
     '  "cat /root/.ssh/authorized_keys") printf "%s\\n" "$LEGACY_TEST_AUTHORIZED_KEYS" ;;',
-    '  "cat /etc/ssh/sshd_config.d/ws1608-amlenc.conf") printf "PasswordAuthentication no\\nPubkeyAuthentication yes\\n" ;;',
+    '  "cat /etc/ssh/sshd_config.d/ws1608-amlenc.conf") printf "PasswordAuthentication yes\\nKbdInteractiveAuthentication yes\\nPubkeyAuthentication yes\\nPermitRootLogin yes\\n" ;;',
+    '  "cat /etc/shadow") printf "root:\\$6\\$test\\$hash:20000:0:99999:7:::\\n" ;;',
     '  "cat /etc/fstab") printf "LABEL=armbi_boot /boot vfat defaults 0 2\\n" ;;',
     '  "ls -p /etc/ssh") if [ "$LEGACY_TEST_FORBIDDEN" = host-key ]; then echo "/42/100600/0/0/ssh_host_test_key/16/"; else echo "/42/100644/0/0/sshd_config/3289/"; fi ;;',
     '  "stat /usr/bin/one-kvm") exit 1 ;;',
@@ -139,6 +140,8 @@ function runLegacyVerifier(t, manifestKeySha256, authorizedKey, forbidden = '') 
       rootfs_sha256: sha256Text('final-rootfs\n'),
     },
     ssh_public_key_sha256: manifestKeySha256,
+    default_login_user: 'root',
+    password_authentication: true,
     recovery_first: true,
     hardware_boot_tested: false,
     hardware_encoder_tested: false,
@@ -183,6 +186,19 @@ test('rejects a legacy image when the root SSH key does not match the manifest i
   assert.match(result.stderr, /ssh.*key|key.*ssh/i);
 });
 
+test('requires the default root password login contract', () => {
+  const config = readRequired(files.config);
+  const rootfs = readRequired(files.rootfs);
+  assert.match(config, /^LEGACY_DEFAULT_LOGIN_USER=root$/m);
+  assert.match(config, /^LEGACY_DEFAULT_LOGIN_PASSWORD=ws1608$/m);
+  assert.match(rootfs, /LEGACY_DEFAULT_LOGIN_PASSWORD/);
+  assert.match(rootfs, /chpasswd/);
+  assert.doesNotMatch(rootfs, /passwd -l root/);
+  assert.match(rootfs, /PasswordAuthentication yes/);
+  assert.match(rootfs, /KbdInteractiveAuthentication yes/);
+  assert.match(rootfs, /PermitRootLogin yes/);
+});
+
 test('rejects preinstalled host keys and build-time firstboot markers', (t) => {
   const key = 'ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAITestOnlyKey ws1608-test';
   for (const forbidden of ['host-key', 'build-marker']) {
@@ -211,11 +227,9 @@ test('independently verifies recovery identity, rootfs and untested status', () 
   assert.match(verify, /S99ws1608-amlenc-firstboot/);
   assert.match(verify, /S01ws1608-amlenc-firstboot/);
   assert.match(verify, /ssh_host_\[\^\/\]\+/);
-  assert.match(verify, /PasswordAuthentication no/);
+  for (const pattern of [/PasswordAuthentication yes/, /PermitRootLogin yes/, /cat \/etc\/shadow/, /root:\\\$\[\^:\]\+/]) assert.match(verify, pattern);
   assert.match(verify, /one-kvm/);
-  for (const field of ['hardware_boot_tested', 'hardware_encoder_tested', 'one_kvm_included', 'hid_tested', 'msd_tested']) {
-    assert.match(verify, new RegExp(`${field}.*false`));
-  }
+  for (const field of ['hardware_boot_tested', 'hardware_encoder_tested', 'one_kvm_included', 'hid_tested', 'msd_tested']) assert.match(verify, new RegExp(`${field}.*false`));
 });
 
 test('builds a Bullseye SysV rootfs for both kernels without One-KVM', () => {
@@ -228,9 +242,8 @@ test('builds a Bullseye SysV rootfs for both kernels without One-KVM', () => {
   for (const packageName of ['sysvinit-core', 'udev', 'kmod', 'ifupdown', 'isc-dhcp-client', 'openssh-server']) {
     assert.match(rootfs, new RegExp(packageName));
   }
-  assert.match(rootfs, /passwd -l root/);
-  assert.match(rootfs, /PasswordAuthentication no/);
-  assert.match(rootfs, /PubkeyAuthentication yes/);
+  for (const pattern of [/LEGACY_DEFAULT_LOGIN_PASSWORD/, /chpasswd/, /PasswordAuthentication yes/, /KbdInteractiveAuthentication yes/, /PermitRootLogin yes/, /PubkeyAuthentication yes/]) assert.match(rootfs, pattern);
+  assert.doesNotMatch(rootfs, /passwd -l root/);
   assert.match(rootfs, /authorized_keys/);
   assert.match(rootfs, /RECOVERY_ROOTFS_RAW/);
   assert.match(rootfs, /LEGACY_MODULES_TAR/);
@@ -245,9 +258,7 @@ test('builds a Bullseye SysV rootfs for both kernels without One-KVM', () => {
   assert.match(rootfs, /proc \/proc proc/);
   assert.match(rootfs, /tmpfs \/run tmpfs/);
   assert.doesNotMatch(rootfs, /install -d \/boot \/proc \/sys/);
-  for (const mountpoint of ['boot', 'proc', 'sys', 'dev', 'run']) {
-    assert.match(offlineMountpoints, new RegExp('/work/rootfs-tree/' + mountpoint));
-  }
+  for (const mountpoint of ['boot', 'proc', 'sys', 'dev', 'run']) assert.match(offlineMountpoints, new RegExp('/work/rootfs-tree/' + mountpoint));
   assert.doesNotMatch(rootfs, /one-kvm\.deb|\/usr\/bin\/one-kvm/);
 });
 
