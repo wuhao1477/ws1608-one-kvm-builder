@@ -35,7 +35,7 @@
 - Consumes: pinned One-KVM `v260802` source and its `build/cross/Dockerfile.armv7`.
 - Produces: `software-codecs.json` with exactly four codec objects and source-lock keys `ONE_KVM_LIBVPX_COMMIT=1024874c5919305883187e2953de8fcb4c3d7fa6` and `ONE_KVM_X265_COMMIT=07295ba7ab551bb9c1580fdaee3200f1b45711b7`.
 
-- [ ] **Step 1: Write the failing contract test**
+- [x] **Step 1: Write the failing contract test**
 
 Add a test that loads `software-codecs.json` and requires this exact normalized
 value:
@@ -57,7 +57,7 @@ commits. Require the ARMv7 patch to set both Docker `ARG` values from those
 locks and to contain all four `--enable-encoder` plus all four
 `--enable-decoder` options.
 
-- [ ] **Step 2: Verify the test fails**
+- [x] **Step 2: Verify the test fails**
 
 Run:
 
@@ -68,7 +68,7 @@ node --test experimental/amlenc/tests/one-kvm-contract.test.mjs
 Expected: failure because the codec manifest, source-lock checks and decoder
 options do not yet exist.
 
-- [ ] **Step 3: Implement the locked capability inputs**
+- [x] **Step 3: Implement the locked capability inputs**
 
 Create `software-codecs.json` with the exact four rows above. Add the two
 commit keys to `sources.env`. Extend `verify-source-locks.mjs` to require
@@ -95,7 +95,7 @@ and FFmpeg adds:
 
 Keep all existing static encoder switches unchanged.
 
-- [ ] **Step 4: Verify the contract passes**
+- [x] **Step 4: Verify the contract passes**
 
 Run:
 
@@ -107,7 +107,7 @@ node experimental/amlenc/scripts/verify-source-locks.mjs experimental/amlenc/con
 Expected: all One-KVM contract cases pass and the source lock verifier reports
 four immutable source locks.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add experimental/amlenc/config/software-codecs.json experimental/amlenc/config/sources.env experimental/amlenc/scripts/verify-source-locks.mjs experimental/amlenc/patches/one-kvm/0002-pin-armv7-build-inputs.patch experimental/amlenc/tests/one-kvm-contract.test.mjs
@@ -126,7 +126,7 @@ git commit -S -m "feat(amlenc): 锁定四种软件编码输入"
   JSON object with `backend:"software"`, one `320p` row, exactly four result
   cells and nonzero status when any result fails.
 
-- [ ] **Step 1: Write the failing contract test**
+- [x] **Step 1: Write the failing contract test**
 
 Require patch `0003` to add these stable interfaces:
 
@@ -141,7 +141,7 @@ Require `CliCommand::Codec`, `CodecAction::SelfCheck`,
 software mode never selects a hardware encoder. Require the patch to call
 matching decode helpers after encoding.
 
-- [ ] **Step 2: Verify the test fails**
+- [x] **Step 2: Verify the test fails**
 
 Run:
 
@@ -151,7 +151,7 @@ node --test experimental/amlenc/tests/one-kvm-contract.test.mjs
 
 Expected: failure because patch `0003` does not exist.
 
-- [ ] **Step 3: Implement the upstream patch**
+- [x] **Step 3: Implement the upstream patch**
 
 Generate the patch from a clean copy of the locked One-KVM source. Make these
 changes:
@@ -205,7 +205,7 @@ The JSON response must contain this shape for software mode:
 Leave the existing `/video/encoder/self-check` endpoint unchanged and
 hardware-only. This task exposes software validation only through the CLI.
 
-- [ ] **Step 4: Verify the source patch applies and unit tests pass**
+- [x] **Step 4: Verify the source patch applies and unit tests pass**
 
 Run:
 
@@ -224,7 +224,7 @@ git -C "$patch_probe_dir/source" apply --check "$PWD/experimental/amlenc/patches
 Expected: contract test passes and the pinned source accepts the patch without
 offset or rejection.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add experimental/amlenc/patches/one-kvm/0003-software-codec-self-check.patch experimental/amlenc/tests/one-kvm-contract.test.mjs
@@ -246,7 +246,7 @@ git commit -S -m "feat(amlenc): 增加四编码软件自检"
 - Produces: a package metadata field `software_codecs` equal to the four codec
   contract and an executable runtime verifier.
 
-- [ ] **Step 1: Write failing tests for metadata and workflow order**
+- [x] **Step 1: Write failing tests for metadata and workflow order**
 
 Extend the metadata fixture with:
 
@@ -263,7 +263,7 @@ Require `verify-one-kvm.sh` to reject a missing codec or `hardware:true`.
 Require the workflow to run `verify-one-kvm-software-codecs.sh` after package
 verification and before burn-image assembly.
 
-- [ ] **Step 2: Verify the tests fail**
+- [x] **Step 2: Verify the tests fail**
 
 Run:
 
@@ -273,7 +273,7 @@ node --test experimental/amlenc/tests/one-kvm-contract.test.mjs experimental/aml
 
 Expected: failure because metadata and QEMU runtime verification are absent.
 
-- [ ] **Step 3: Implement package and QEMU validation**
+- [x] **Step 3: Implement package and QEMU validation**
 
 Have `build-one-kvm.sh` load `software-codecs.json` with `jq`, insert its
 four rows into `ws1608-amlenc-build.json`, and add that JSON file to package
@@ -308,7 +308,7 @@ docker run --rm --platform linux/arm/v7 \
 The script must validate the package filename before mounting it, reject a
 non-armhf package, and leave no generated artifact inside the repository.
 
-- [ ] **Step 4: Verify the tests pass**
+- [x] **Step 4: Verify the tests pass**
 
 Run:
 
@@ -320,7 +320,7 @@ bash -n experimental/amlenc/scripts/verify-one-kvm-software-codecs.sh
 Expected: static tests pass and the script has valid shell syntax. The full
 armhf runtime execution occurs in GitHub Actions.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add experimental/amlenc/scripts/verify-one-kvm-software-codecs.sh experimental/amlenc/scripts/build-one-kvm.sh experimental/amlenc/scripts/verify-one-kvm.sh experimental/amlenc/scripts/verify-one-kvm-metadata.mjs experimental/amlenc/tests/one-kvm-contract.test.mjs experimental/amlenc/tests/workflow-policy.test.mjs .github/workflows/amlenc-experimental.yml
@@ -342,7 +342,7 @@ git commit -S -m "test(amlenc): 验证 armhf 四编码软件路径"
 - Produces: stable-boot experimental burn manifest containing
   `codec_baseline.software` and `hardware_encoder_tested=false`.
 
-- [ ] **Step 1: Write failing burn-image contract tests**
+- [x] **Step 1: Write failing burn-image contract tests**
 
 Require the final burn manifest to contain:
 
@@ -359,7 +359,7 @@ compare its exact four software entries against this manifest. Require the
 release verifier to reject an unexpected hardware codec or missing software
 codec.
 
-- [ ] **Step 2: Verify the tests fail**
+- [x] **Step 2: Verify the tests fail**
 
 Run:
 
@@ -369,7 +369,7 @@ node --test experimental/amlenc/tests/burn-image-contract.test.mjs experimental/
 
 Expected: failure because the burn manifest has no codec baseline.
 
-- [ ] **Step 3: Implement the burn manifest and verifier gate**
+- [x] **Step 3: Implement the burn manifest and verifier gate**
 
 `build-burn-image.sh` must read the package metadata before image assembly,
 require the four verified software codec entries, and write the exact
@@ -381,7 +381,7 @@ Keep the normal experimental image on the verified stable 6.12 boot path.
 Do not add 3.10 boot files, do not alter stable files, and do not set an
 AMLENC smoke-test environment variable.
 
-- [ ] **Step 4: Verify the burn contracts pass**
+- [x] **Step 4: Verify the burn contracts pass**
 
 Run:
 
@@ -393,7 +393,7 @@ experimental/amlenc/scripts/verify-stable-chain.sh
 Expected: the burn contract accepts the exact software baseline and the stable
 chain reports its protected file count unchanged.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add experimental/amlenc/scripts/build-burn-image.sh experimental/amlenc/scripts/verify-burn-image.sh experimental/amlenc/scripts/package-burn-release.sh experimental/amlenc/scripts/verify-burn-release.sh experimental/amlenc/tests/burn-image-contract.test.mjs experimental/amlenc/tests/workflow-policy.test.mjs
@@ -410,7 +410,7 @@ git commit -S -m "feat(amlenc): 记录 burn 镜像软件编码基线"
 - Produces: one GitHub Actions artifact containing exactly the raw burn image,
   `.xz`, `manifest.json`, `validation-report.json` and `SHA256SUMS`.
 
-- [ ] **Step 1: Push all implementation commits**
+- [x] **Step 1: Push all implementation commits**
 
 Run:
 
@@ -418,7 +418,7 @@ Run:
 git push origin codex/amlenc-legacy-bringup
 ```
 
-- [ ] **Step 2: Dispatch the experimental workflow without publication**
+- [x] **Step 2: Dispatch the experimental workflow without publication**
 
 Run:
 
@@ -433,7 +433,7 @@ gh workflow run amlenc-experimental.yml \
 Expected: contract, package, QEMU software-codec verification, burn-image
 verification, release-asset verification and artifact upload all succeed.
 
-- [ ] **Step 3: Download and reverify outside the worktree**
+- [x] **Step 3: Download and reverify outside the worktree**
 
 Run:
 
@@ -467,3 +467,13 @@ git push origin codex/amlenc-legacy-bringup
 Provide the absolute local `.burn.img.xz` path and state that manual tests must
 verify boot, DHCP/SSH, `/stream/codecs`, the four-codec self-check, each stream
 mode and hardware status before any Release or stable-channel change.
+
+#### Task 5 Evidence — 2026-08-25
+
+- Actions run: [32782221381](https://github.com/wuhao1477/ws1608-one-kvm-builder/actions/runs/32782221381), commit `434cd69`; contract, ARMv7 package build, four-codec QEMU self-check, burn-image verification, release-asset verification and uploads all succeeded.
+- QEMU software self-check result: H.264 `libx264` 10/10 decoded with keyframe; H.265 `libx265` 10/10 decoded with keyframe; VP8 `libvpx` 10/10 decoded with keyframe; VP9 `libvpx-vp9` 10/10 decoded with keyframe.
+- Artifact: `9541286241`, `ws1608-amlenc-exp-release-59-1`, exactly five files.
+- Image: `WS1608-AMLENC_0.2.6+ws1608amlenc.run-59-1_Onecloud_trixie_6.12.28.burn.img`; SHA-256 `c5f1960c109478ef913dcb970790694b62583e40bd29687a64eb0a9664bad4f5`.
+- Compressed image: SHA-256 `54b575f01b28c698eada229bf25ea9bc73fcec05f3c0049feba4bc0d46f5783e`.
+- Local checks: exactly five regular files, `SHA256SUMS` valid, `xz -t` valid, compressed bytes equal raw image digest.
+- Manifest: `codec_baseline.software=[h264,h265,vp8,vp9]`, `codec_baseline.hardware=[]`, `runtime_verified=true`, `hardware_boot_tested=false`, `hardware_encoder_tested=false`, `one_kvm_included=true`, `stable_channel_modified=false`.
