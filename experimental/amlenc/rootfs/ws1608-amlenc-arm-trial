@@ -2,10 +2,10 @@
 set -Eeuo pipefail
 
 BOOT_DIR=${BOOT_DIR:-/boot}
-UNAME_RELEASE=${UNAME_RELEASE:-$(uname -r)}
-IP_OUTPUT=${IP_OUTPUT:-$(ip -4 -o addr show scope global)}
-SSHD_ACTIVE=${SSHD_ACTIVE:-$(pgrep -x sshd >/dev/null && echo true || echo false)}
-ROOT_MOUNT_OPTIONS=${ROOT_MOUNT_OPTIONS:-$(findmnt -no OPTIONS /)}
+UNAME_RELEASE=${UNAME_RELEASE-$(uname -r)}
+IP_OUTPUT=${IP_OUTPUT-$(ip -4 -o addr show scope global)}
+SSHD_ACTIVE=${SSHD_ACTIVE-$(pgrep -x sshd >/dev/null && echo true || echo false)}
+ROOT_MOUNT_OPTIONS=${ROOT_MOUNT_OPTIONS-$(findmnt -no OPTIONS /)}
 
 fail() { echo "cannot arm legacy trial: $*" >&2; exit 1; }
 [[ "$UNAME_RELEASE" == 6.12.28-current-meson ]] || fail "recovery kernel is not active"

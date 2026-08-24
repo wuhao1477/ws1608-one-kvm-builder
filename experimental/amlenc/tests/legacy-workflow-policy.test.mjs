@@ -7,8 +7,10 @@ const workflowPath = '.github/workflows/amlenc-legacy-bringup.yml';
 test('keeps legacy bring-up contract-only on pull requests', () => {
   assert.equal(fs.existsSync(workflowPath), true, 'legacy bring-up workflow is required');
   const workflow = fs.readFileSync(workflowPath, 'utf8');
+  const contract = workflow.slice(workflow.indexOf('\n  contract:'), workflow.indexOf('\n  build:'));
   assert.match(workflow, /pull_request:/);
   assert.match(workflow, /workflow_dispatch:/);
+  assert.match(contract, /actions\/checkout@[\s\S]*fetch-depth: 0/);
   assert.doesNotMatch(workflow, /schedule:|repository_dispatch:/);
   assert.match(workflow, /^permissions:\n  contents: read$/m);
   assert.match(workflow, /if: github\.event_name == 'workflow_dispatch'/);

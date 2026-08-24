@@ -7,9 +7,11 @@ const workflowPath = '.github/workflows/amlenc-experimental.yml';
 test('keeps AMLENC builds isolated from the stable image workflow', () => {
   assert.equal(fs.existsSync(workflowPath), true, `${workflowPath} must exist`);
   const workflow = fs.readFileSync(workflowPath, 'utf8');
+  const contract = workflow.slice(workflow.indexOf('\n  contract:'), workflow.indexOf('\n  build:'));
 
   assert.match(workflow, /pull_request:/);
   assert.match(workflow, /workflow_dispatch:/);
+  assert.match(contract, /actions\/checkout@[\s\S]*fetch-depth: 0/);
   assert.doesNotMatch(workflow, /schedule:/);
   assert.doesNotMatch(workflow, /repository_dispatch:/);
   assert.match(workflow, /experimental\/amlenc\/scripts\/verify-source-locks\.mjs/);

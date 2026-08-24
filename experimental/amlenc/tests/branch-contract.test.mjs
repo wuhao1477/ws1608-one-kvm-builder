@@ -10,17 +10,17 @@ function git(args) {
   return spawnSync('git', args, { encoding: 'utf8' });
 }
 
-function branchBase(t) {
+function branchBase() {
   if (process.env.BRANCH_CONTRACT_BASE) return process.env.BRANCH_CONTRACT_BASE;
   for (const ref of ['main', 'origin/main']) {
     const result = git(['merge-base', 'HEAD', ref]);
     if (result.status === 0) return result.stdout.trim();
   }
-  t.skip('branch base is unavailable');
+  throw new Error('branch base is unavailable; fetch full history or set BRANCH_CONTRACT_BASE');
 }
 
-test('source files changed by this branch stay within the line-count limit', (t) => {
-  const base = branchBase(t);
+test('source files changed by this branch stay within the line-count limit', () => {
+  const base = branchBase();
   const result = git(['diff', '--name-only', '--diff-filter=ACMRT', base, '--']);
   assert.equal(result.status, 0, result.stderr);
   const oversized = result.stdout.trim().split('\n')

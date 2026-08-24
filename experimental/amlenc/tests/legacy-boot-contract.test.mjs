@@ -30,6 +30,14 @@ function helper(script, bootDir, overrides = {}) {
   });
 }
 
+function pathWithHealthyIp(t) {
+  const directory = fixture(t);
+  const ip = path.join(directory, 'ip');
+  fs.writeFileSync(ip, '#!/bin/sh\necho "2: eth0    inet 192.0.2.10/24 scope global eth0"\n');
+  fs.chmodSync(ip, 0o755);
+  return `${directory}:${process.env.PATH}`;
+}
+
 test('renders a recovery-first revision-isolated boot flow', (t) => {
   assert.equal(fs.existsSync(renderer), true, 'legacy boot renderer is required');
   const output = fixture(t);
@@ -72,9 +80,10 @@ test('arms one legacy trial only from healthy recovery', (t) => {
 
 test('refuses to arm a trial from an unhealthy recovery', (t) => {
   const boot = fixture(t);
+  const healthyIpPath = pathWithHealthyIp(t);
   for (const overrides of [
     { UNAME_RELEASE: '3.10.107' },
-    { UNAME_RELEASE: '6.12.28-current-meson', IP_OUTPUT: '' },
+    { UNAME_RELEASE: '6.12.28-current-meson', IP_OUTPUT: '', PATH: healthyIpPath },
     { UNAME_RELEASE: '6.12.28-current-meson', SSHD_ACTIVE: 'false' },
     { UNAME_RELEASE: '6.12.28-current-meson', ROOT_MOUNT_OPTIONS: 'ro,relatime' },
   ]) {
@@ -99,10 +108,11 @@ test('marks legacy success after all stability gates pass', (t) => {
 
 test('refuses to mark an unstable or unhealthy legacy boot', (t) => {
   const boot = fixture(t);
+  const healthyIpPath = pathWithHealthyIp(t);
   for (const overrides of [
     { UNAME_RELEASE: '6.12.28-current-meson', UPTIME_SECONDS: '61' },
     { UNAME_RELEASE: '3.10.107', UPTIME_SECONDS: '59' },
-    { UNAME_RELEASE: '3.10.107', UPTIME_SECONDS: '61', IP_OUTPUT: '' },
+    { UNAME_RELEASE: '3.10.107', UPTIME_SECONDS: '61', IP_OUTPUT: '', PATH: healthyIpPath },
     { UNAME_RELEASE: '3.10.107', UPTIME_SECONDS: '61', SSHD_ACTIVE: 'false' },
     { UNAME_RELEASE: '3.10.107', UPTIME_SECONDS: '61', ROOT_MOUNT_OPTIONS: 'ro' },
   ]) {
