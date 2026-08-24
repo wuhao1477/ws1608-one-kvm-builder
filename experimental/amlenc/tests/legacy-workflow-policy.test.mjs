@@ -31,10 +31,15 @@ test('requires a public key and derives an immutable build revision', () => {
 
 test('builds, independently verifies and downloads exactly one candidate artifact', () => {
   const workflow = fs.readFileSync(workflowPath, 'utf8');
+  const hostTools = workflow.slice(
+    workflow.indexOf('- name: Install build tools'),
+    workflow.indexOf('- uses: actions/setup-go'),
+  );
   for (const command of [
     'build-kernel.sh', 'verify-build.sh kernel', 'build-legacy-bringup-image.sh',
     'verify-legacy-bringup-image.sh', 'sha256sum --check', 'xz -t',
   ]) assert.match(workflow, new RegExp(command.replaceAll('.', '\\.')));
+  assert.match(hostTools, /apt-get install[\s\S]*binutils-arm-linux-gnueabihf/);
   assert.match(workflow, /actions\/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a/);
   assert.match(workflow, /actions\/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131/);
   assert.match(workflow, /retention-days: 14/);
@@ -42,10 +47,10 @@ test('builds, independently verifies and downloads exactly one candidate artifac
   assert.match(workflow, /hardware_encoder_tested.*false/);
   assert.match(workflow, /one_kvm_included.*false/);
   assert.doesNotMatch(workflow, /gh release|contents: write|RELEASE_PRERELEASE|publish:/);
-  const build = workflow.indexOf('Build recovery-first image');
+  const buildImage = workflow.indexOf('Build recovery-first image');
   const verify = workflow.indexOf('Verify recovery-first image');
   const upload = workflow.indexOf('Upload recovery-first artifact');
   const download = workflow.indexOf('Download recovery-first artifact');
   const reverify = workflow.indexOf('Reverify downloaded candidate');
-  assert.ok(build >= 0 && verify > build && upload > verify && download > upload && reverify > download);
+  assert.ok(buildImage >= 0 && verify > buildImage && upload > verify && download > upload && reverify > download);
 });
