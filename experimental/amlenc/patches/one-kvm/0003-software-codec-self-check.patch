@@ -47,7 +47,7 @@ index de99b9c..ba2d100 100644
              debug!(
                  "Adding software {:?} encoder: {}",
 diff --git a/libs/hwcodec/src/ffmpeg_ram/mod.rs b/libs/hwcodec/src/ffmpeg_ram/mod.rs
-index f90b0ac..0dcfecc 100644
+index f90b0ac..98961ea 100644
 --- a/libs/hwcodec/src/ffmpeg_ram/mod.rs
 +++ b/libs/hwcodec/src/ffmpeg_ram/mod.rs
 @@ -5,6 +5,7 @@
@@ -58,22 +58,6 @@ index f90b0ac..0dcfecc 100644
  use std::ffi::c_int;
  
  include!(concat!(env!("OUT_DIR"), "/ffmpeg_ram_ffi.rs"));
-@@ -95,13 +96,13 @@ impl CodecInfo {
-                 priority: Priority::Soft as _,
-             }),
-             VP8 => Some(CodecInfo {
--                name: "libvpx".to_owned(),
-+                name: "libvpx_vp8".to_owned(),
-                 format: VP8,
-                 hwdevice: AV_HWDEVICE_TYPE_NONE,
-                 priority: Priority::Soft as _,
-             }),
-             VP9 => Some(CodecInfo {
--                name: "libvpx-vp9".to_owned(),
-+                name: "libvpx_vp9".to_owned(),
-                 format: VP9,
-                 hwdevice: AV_HWDEVICE_TYPE_NONE,
-                 priority: Priority::Soft as _,
 @@ -181,6 +182,12 @@ impl CodecInfo {
      }
  }
@@ -225,7 +209,7 @@ index 04d8823..3d82a0a 100644
      BitratePreset, EncodedFormat, EncodedFrame, Encoder, EncoderConfig, EncoderFactory,
  };
 diff --git a/src/video/codec/registry.rs b/src/video/codec/registry.rs
-index 5a35cca..33c9625 100644
+index 5a35cca..c78aabf 100644
 --- a/src/video/codec/registry.rs
 +++ b/src/video/codec/registry.rs
 @@ -16,7 +16,7 @@ use super::amlenc::{
@@ -237,8 +221,14 @@ index 5a35cca..33c9625 100644
  use hwcodec::ffmpeg_ram::CodecInfo;
  
  // Keep native AMLENC behind the highest-priority desktop GPU backends while
-@@ -273,6 +273,11 @@ impl EncoderRegistry {
-                 VideoEncoderType::VP9 => "libvpx_vp9",
+@@ -269,10 +269,15 @@ impl EncoderRegistry {
+             let codec_name = match format {
+                 VideoEncoderType::H264 => "libx264",
+                 VideoEncoderType::H265 => "libx265",
+-                VideoEncoderType::VP8 => "libvpx_vp8",
+-                VideoEncoderType::VP9 => "libvpx_vp9",
++                VideoEncoderType::VP8 => "libvpx",
++                VideoEncoderType::VP9 => "libvpx-vp9",
              };
  
 +            if !has_encoder(codec_name) {
@@ -251,7 +241,7 @@ index 5a35cca..33c9625 100644
                  codec_name: codec_name.to_string(),
 diff --git a/src/video/codec/software_self_check.rs b/src/video/codec/software_self_check.rs
 new file mode 100644
-index 0000000..b89faff
+index 0000000..44f94c3
 --- /dev/null
 +++ b/src/video/codec/software_self_check.rs
 @@ -0,0 +1,255 @@
@@ -349,12 +339,12 @@ index 0000000..b89faff
 +    },
 +    SoftwareCodecSpec {
 +        id: "vp8",
-+        encoder: "libvpx_vp8",
++        encoder: "libvpx",
 +        decoder: "vp8",
 +    },
 +    SoftwareCodecSpec {
 +        id: "vp9",
-+        encoder: "libvpx_vp9",
++        encoder: "libvpx-vp9",
 +        decoder: "vp9",
 +    },
 +];

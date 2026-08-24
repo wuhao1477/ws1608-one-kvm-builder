@@ -97,8 +97,8 @@ jq -e --arg version "$(jq -er '.one_kvm.version' "$MANIFEST")" '
   .software_codecs == [
     {id:"h264",encoder:"libx264",decoder:"h264",hardware:false},
     {id:"h265",encoder:"libx265",decoder:"hevc",hardware:false},
-    {id:"vp8",encoder:"libvpx_vp8",decoder:"vp8",hardware:false},
-    {id:"vp9",encoder:"libvpx_vp9",decoder:"vp9",hardware:false}
+    {id:"vp8",encoder:"libvpx",decoder:"vp8",hardware:false},
+    {id:"vp9",encoder:"libvpx-vp9",decoder:"vp9",hardware:false}
   ] and .hardware_encoder_tested == false and .stable_channel_modified == false
 ' "$metadata" >/dev/null || fail "installed package provenance mismatch"
 

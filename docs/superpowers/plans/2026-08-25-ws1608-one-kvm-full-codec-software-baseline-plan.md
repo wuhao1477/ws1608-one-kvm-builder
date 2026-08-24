@@ -46,8 +46,8 @@ value:
   codecs: [
     { id: 'h264', encoder: 'libx264', decoder: 'h264' },
     { id: 'h265', encoder: 'libx265', decoder: 'hevc' },
-    { id: 'vp8', encoder: 'libvpx_vp8', decoder: 'vp8' },
-    { id: 'vp9', encoder: 'libvpx_vp9', decoder: 'vp9' },
+    { id: 'vp8', encoder: 'libvpx', decoder: 'vp8' },
+    { id: 'vp9', encoder: 'libvpx-vp9', decoder: 'vp9' },
   ],
 }
 ```
@@ -254,8 +254,8 @@ Extend the metadata fixture with:
 software_codecs: [
   { id: 'h264', encoder: 'libx264', decoder: 'h264', hardware: false },
   { id: 'h265', encoder: 'libx265', decoder: 'hevc', hardware: false },
-  { id: 'vp8', encoder: 'libvpx_vp8', decoder: 'vp8', hardware: false },
-  { id: 'vp9', encoder: 'libvpx_vp9', decoder: 'vp9', hardware: false },
+  { id: 'vp8', encoder: 'libvpx', decoder: 'vp8', hardware: false },
+  { id: 'vp9', encoder: 'libvpx-vp9', decoder: 'vp9', hardware: false },
 ]
 ```
 
@@ -300,7 +300,7 @@ docker run --rm --platform linux/arm/v7 \
       all(.rows[0].cells[];
         .backend == "software" and .ok == true and
         .submitted_frames == 10 and .decoded_frames == 10 and
-        (.encoder == "libx264" or .encoder == "libx265" or .encoder == "libvpx_vp8" or .encoder == "libvpx_vp9"))
+        (.encoder == "libx264" or .encoder == "libx265" or .encoder == "libvpx" or .encoder == "libvpx-vp9"))
     '\'' /tmp/codecs.json
   '
 ```

@@ -25,8 +25,9 @@ are outside this slice.
 - One-KVM `v260802` defines four `VideoEncoderType` values: H.264, H.265,
   VP8 and VP9.
 - Its ARMv7 Dockerfile already builds static `libx264`, `libx265` and
-  `libvpx`, and configures FFmpeg for `libx264`, `libx265`, `libvpx_vp8` and
-  `libvpx_vp9`.
+  `libvpx`, and configures FFmpeg for the `libx264`, `libx265`,
+  `libvpx_vp8` and `libvpx_vp9` build components. Their runtime encoder names
+  are `libx264`, `libx265`, `libvpx` and `libvpx-vp9`.
 - The current registry registers these names as fallbacks even when a runtime
   probe has not proved the matching FFmpeg encoder exists. That can make
   `/stream/codecs` claim a codec that fails during stream creation.
@@ -65,8 +66,8 @@ software entries:
 | --- | --- | --- | --- |
 | `h264` | `libx264` | `h264` | `Software` |
 | `h265` | `libx265` | `hevc` | `Software` |
-| `vp8` | `libvpx_vp8` | `vp8` | `Software` |
-| `vp9` | `libvpx_vp9` | `vp9` | `Software` |
+| `vp8` | `libvpx` | `vp8` | `Software` |
+| `vp9` | `libvpx-vp9` | `vp9` | `Software` |
 
 The metadata records the pinned dependency identities and `hardware=false` for
 every baseline entry. No password, device address or private runtime log is
@@ -151,8 +152,8 @@ Hardware registration follows only after this software baseline:
 
 ## Acceptance Criteria
 
-- [ ] ARMv7 FFmpeg is built with `libx264`, `libx265`, `libvpx_vp8` and
-  `libvpx_vp9`, plus H.264, HEVC, VP8 and VP9 decoders.
+- [ ] ARMv7 FFmpeg is built with `libx264`, `libx265`, the `libvpx_vp8` and
+  `libvpx_vp9` build components, plus H.264, HEVC, VP8 and VP9 decoders.
 - [ ] The armhf self-check verifies encode, keyframe and decode for all four
   codecs under QEMU.
 - [ ] `/stream/codecs` reports all four codecs as software available when no

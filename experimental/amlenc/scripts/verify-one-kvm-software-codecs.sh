@@ -45,8 +45,8 @@ jq -e '
     .backend == "software" and .ok == true and .submitted_frames == 10 and .decoded_frames == 10 and
     ((.codec_id == "h264" and .encoder == "libx264" and .decoder == "h264") or
      (.codec_id == "h265" and .encoder == "libx265" and .decoder == "hevc") or
-     (.codec_id == "vp8" and .encoder == "libvpx_vp8" and .decoder == "vp8") or
-     (.codec_id == "vp9" and .encoder == "libvpx_vp9" and .decoder == "vp9")))
+     (.codec_id == "vp8" and .encoder == "libvpx" and .decoder == "vp8") or
+     (.codec_id == "vp9" and .encoder == "libvpx-vp9" and .decoder == "vp9")))
 ' <<<"$result" >/dev/null || {
   printf '%s\n' "$result" >&2
   fail "software self-check result"

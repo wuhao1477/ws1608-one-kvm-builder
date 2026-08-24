@@ -26,8 +26,8 @@ test('locks the four software codec inputs and FFmpeg decoder gates', () => {
     codecs: [
       { id: 'h264', encoder: 'libx264', decoder: 'h264' },
       { id: 'h265', encoder: 'libx265', decoder: 'hevc' },
-      { id: 'vp8', encoder: 'libvpx_vp8', decoder: 'vp8' },
-      { id: 'vp9', encoder: 'libvpx_vp9', decoder: 'vp9' },
+      { id: 'vp8', encoder: 'libvpx', decoder: 'vp8' },
+      { id: 'vp9', encoder: 'libvpx-vp9', decoder: 'vp9' },
     ],
   });
   const sources = readRequired(files.sources);
@@ -67,8 +67,8 @@ const expectedMetadata = {
   software_codecs: [
     { id: 'h264', encoder: 'libx264', decoder: 'h264', hardware: false },
     { id: 'h265', encoder: 'libx265', decoder: 'hevc', hardware: false },
-    { id: 'vp8', encoder: 'libvpx_vp8', decoder: 'vp8', hardware: false },
-    { id: 'vp9', encoder: 'libvpx_vp9', decoder: 'vp9', hardware: false },
+    { id: 'vp8', encoder: 'libvpx', decoder: 'vp8', hardware: false },
+    { id: 'vp9', encoder: 'libvpx-vp9', decoder: 'vp9', hardware: false },
   ],
   amlenc_smoke_test_default: false,
   hardware_encoder_tested: false,

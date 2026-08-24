@@ -74,7 +74,7 @@ mkdir -p "$STAGING_DIR" "$PACKAGE_METADATA_DIR"
 dpkg-deb -x "$ONE_KVM_DEB" "$PACKAGE_METADATA_DIR"
 package_metadata="$PACKAGE_METADATA_DIR/usr/share/doc/one-kvm/ws1608-amlenc-build.json"
 require_file "$package_metadata"
-software_codecs='[{"id":"h264","encoder":"libx264","decoder":"h264","hardware":false},{"id":"h265","encoder":"libx265","decoder":"hevc","hardware":false},{"id":"vp8","encoder":"libvpx_vp8","decoder":"vp8","hardware":false},{"id":"vp9","encoder":"libvpx_vp9","decoder":"vp9","hardware":false}]'
+software_codecs='[{"id":"h264","encoder":"libx264","decoder":"h264","hardware":false},{"id":"h265","encoder":"libx265","decoder":"hevc","hardware":false},{"id":"vp8","encoder":"libvpx","decoder":"vp8","hardware":false},{"id":"vp9","encoder":"libvpx-vp9","decoder":"vp9","hardware":false}]'
 jq -e --argjson expected "$software_codecs" '.software_codecs == $expected' "$package_metadata" >/dev/null \
   || fail "One-KVM software codec metadata"
 
