@@ -202,6 +202,10 @@ test('independently verifies recovery identity, rootfs and untested status', () 
 
 test('builds a Bullseye SysV rootfs for both kernels without One-KVM', () => {
   const rootfs = readRequired(files.rootfs);
+  const offlineMountpoints = rootfs.slice(
+    rootfs.indexOf('tar --numeric-owner'),
+    rootfs.indexOf('debugfs -R'),
+  );
   assert.match(rootfs, /BULLSEYE_ARMV7_OCI_IMAGE/);
   for (const packageName of ['sysvinit-core', 'udev', 'kmod', 'ifupdown', 'isc-dhcp-client', 'openssh-server']) {
     assert.match(rootfs, new RegExp(packageName));
@@ -219,6 +223,10 @@ test('builds a Bullseye SysV rootfs for both kernels without One-KVM', () => {
   assert.match(rootfs, /LABEL=armbi_boot \/boot vfat/);
   assert.match(rootfs, /proc \/proc proc/);
   assert.match(rootfs, /tmpfs \/run tmpfs/);
+  assert.doesNotMatch(rootfs, /install -d \/boot \/proc \/sys/);
+  for (const mountpoint of ['boot', 'proc', 'sys', 'dev', 'run']) {
+    assert.match(offlineMountpoints, new RegExp('/work/rootfs-tree/' + mountpoint));
+  }
   assert.doesNotMatch(rootfs, /one-kvm\.deb|\/usr\/bin\/one-kvm/);
 });
 

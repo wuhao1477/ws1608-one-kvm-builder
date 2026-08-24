@@ -47,7 +47,6 @@ EOF
     passwd -l root
     install -D -m 0755 /assets/ws1608-amlenc-arm-trial /usr/local/sbin/ws1608-amlenc-arm-trial
     install -D -m 0755 /assets/ws1608-amlenc-mark-success /usr/local/sbin/ws1608-amlenc-mark-success
-    install -d /boot /proc /sys /run/sshd
     cat >/etc/ssh/sshd_config.d/ws1608-amlenc.conf <<"EOF"
 PasswordAuthentication no
 KbdInteractiveAuthentication no
@@ -84,6 +83,8 @@ docker run --rm --platform linux/arm64 \
     apt-install e2fsprogs >/dev/null
     mkdir /work/rootfs-tree /work/recovery-tree
     tar --numeric-owner --xattrs --acls -xpf /work/rootfs.tar -C /work/rootfs-tree
+    mkdir -p /work/rootfs-tree/boot /work/rootfs-tree/proc \\
+      /work/rootfs-tree/sys /work/rootfs-tree/dev /work/rootfs-tree/run
     debugfs -R "rdump /lib/modules /work/recovery-tree" /recovery/'"${RECOVERY_ROOTFS_RAW##*/}"'
     debugfs -R "rdump /lib/firmware /work/recovery-tree" /recovery/'"${RECOVERY_ROOTFS_RAW##*/}"'
     test -d /work/recovery-tree/modules/'"$RECOVERY_KERNEL"'
