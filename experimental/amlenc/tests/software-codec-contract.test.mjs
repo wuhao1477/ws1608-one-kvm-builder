@@ -46,6 +46,8 @@ test('adds a truthful four-codec software self-check command', () => {
   assert.match(patch, /\.decode\(&packet\.data\)/);
   assert.match(patch, /all\(\|cell\| cell\.ok\)/);
   assert.match(patch, /serde_json::to_string/);
+  assert.match(patch, /with_writer\(std::io::stderr\)/);
+  assert.match(patch, /args\.command\.as_ref/);
   assert.doesNotMatch(patch, /Meson8bS805\s*=>\s*codec\s*==\s*AmlencCodec::H265/);
 });
 

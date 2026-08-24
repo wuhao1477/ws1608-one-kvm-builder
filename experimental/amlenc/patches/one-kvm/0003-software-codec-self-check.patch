@@ -19,7 +19,7 @@ index b30de54..76d624c 100644
  void ffmpeg_ram_request_keyframe(void *encoder);
  const char *ffmpeg_ram_encoder_last_error(void);
 +int ffmpeg_ram_has_encoder(const char *name);
- 
+
  void *ffmpeg_ram_new_decoder(const char *name, int width, int height,
                               int sw_pixfmt, int thread_count,
 diff --git a/libs/hwcodec/src/ffmpeg_ram/encode.rs b/libs/hwcodec/src/ffmpeg_ram/encode.rs
@@ -37,7 +37,7 @@ index de99b9c..ba2d100 100644
  #[cfg(feature = "bytes")]
 @@ -423,6 +423,10 @@ fn add_software_fallback(codecs: &mut Vec<CodecInfo>) {
      use log::debug;
- 
+
      for fallback in CodecInfo::soft().into_vec() {
 +        if !has_encoder(&fallback.name) {
 +            debug!("Software {:?} encoder is not embedded: {}", fallback.format, fallback.name);
@@ -56,12 +56,12 @@ index f90b0ac..98961ea 100644
  use serde_derive::{Deserialize, Serialize};
 +use std::ffi::CString;
  use std::ffi::c_int;
- 
+
  include!(concat!(env!("OUT_DIR"), "/ffmpeg_ram_ffi.rs"));
 @@ -181,6 +182,12 @@ impl CodecInfo {
      }
  }
- 
+
 +pub fn has_encoder(name: &str) -> bool {
 +    CString::new(name)
 +        .ok()
@@ -72,17 +72,17 @@ index f90b0ac..98961ea 100644
  pub struct CodecInfos {
      pub h264: Option<CodecInfo>,
 diff --git a/src/main.rs b/src/main.rs
-index e407bb3..5440044 100644
+index e407bb3..5b56944 100644
 --- a/src/main.rs
 +++ b/src/main.rs
-@@ -35,6 +35,7 @@ use one_kvm::video::codec_constraints::{
+@@ -31,6 +31,7 @@ use one_kvm::rustdesk::RustDeskService;
+ use one_kvm::state::{AppState, ShutdownAction};
+ use one_kvm::update::UpdateService;
+ use one_kvm::utils::bind_tcp_listener;
++use one_kvm::video::codec::{run_codec_self_check, CodecSelfCheckBackend};
+ use one_kvm::video::codec_constraints::{
      enforce_constraints_with_stream_manager, validate_third_party_codec_compatibility,
      StreamCodecConstraints,
- };
-+use one_kvm::video::codec::{run_codec_self_check, CodecSelfCheckBackend};
- use one_kvm::video::format::{PixelFormat, Resolution};
- use one_kvm::video::{Streamer, VideoStreamManager};
- use one_kvm::vnc::VncService;
 @@ -106,6 +107,8 @@ struct CliArgs {
  enum CliCommand {
      /// Manage local users
@@ -90,12 +90,12 @@ index e407bb3..5440044 100644
 +    /// Verify embedded video codec paths
 +    Codec(CodecCommand),
  }
- 
+
  #[derive(Args, Debug)]
-@@ -122,6 +125,44 @@ enum UserAction {
+@@ -122,11 +125,55 @@ enum UserAction {
      DisableTotp,
  }
- 
+
 +#[derive(Args, Debug)]
 +struct CodecCommand {
 +    #[command(subcommand)]
@@ -137,9 +137,54 @@ index e407bb3..5440044 100644
  #[tokio::main]
  async fn main() -> anyhow::Result<()> {
      let args = CliArgs::parse();
-@@ -883,16 +924,42 @@ fn restart_current_process(exe_path: Option<PathBuf>) -> anyhow::Result<()> {
+
+-    init_logging(args.log_level, args.verbose);
++    let machine_codec_output = matches!(
++        args.command.as_ref(),
++        Some(CliCommand::Codec(CodecCommand {
++            action: CodecAction::SelfCheck(CodecSelfCheckArgs { json: true, .. }),
++        }))
++    );
++    init_logging(args.log_level, args.verbose, machine_codec_output);
+
+     CryptoProvider::install_default(ring::default_provider())
+         .expect("Failed to install rustls crypto provider");
+@@ -762,7 +809,7 @@ async fn main() -> anyhow::Result<()> {
+     Ok(())
  }
- 
+
+-fn init_logging(level: LogLevel, verbose_count: u8) {
++fn init_logging(level: LogLevel, verbose_count: u8, stderr: bool) {
+     let effective_level = match verbose_count {
+         0 => level,
+         1 => LogLevel::Verbose,
+@@ -782,11 +829,18 @@ fn init_logging(level: LogLevel, verbose_count: u8) {
+     let env_filter =
+         tracing_subscriber::EnvFilter::try_from_default_env().unwrap_or_else(|_| filter.into());
+
+-    if let Err(err) = tracing_subscriber::registry()
+-        .with(env_filter)
+-        .with(tracing_subscriber::fmt::layer())
+-        .try_init()
+-    {
++    let result = if stderr {
++        tracing_subscriber::registry()
++            .with(env_filter)
++            .with(tracing_subscriber::fmt::layer().with_writer(std::io::stderr))
++            .try_init()
++    } else {
++        tracing_subscriber::registry()
++            .with(env_filter)
++            .with(tracing_subscriber::fmt::layer())
++            .try_init()
++    };
++    if let Err(err) = result {
+         eprintln!("failed to initialize tracing: {}", err);
+     }
+ }
+@@ -883,16 +937,42 @@ fn restart_current_process(exe_path: Option<PathBuf>) -> anyhow::Result<()> {
+ }
+
  async fn run_cli_command(command: CliCommand, data_dir: PathBuf) -> anyhow::Result<()> {
 -    tokio::fs::create_dir_all(&data_dir).await?;
 -    let db = open_database_pool(&data_dir).await?;
@@ -185,7 +230,7 @@ index e407bb3..5440044 100644
 +        anyhow::bail!("video codec self-check failed")
      }
  }
- 
+
 diff --git a/src/video/codec/mod.rs b/src/video/codec/mod.rs
 index 04d8823..3d82a0a 100644
 --- a/src/video/codec/mod.rs
@@ -213,13 +258,13 @@ index 5a35cca..c78aabf 100644
 --- a/src/video/codec/registry.rs
 +++ b/src/video/codec/registry.rs
 @@ -16,7 +16,7 @@ use super::amlenc::{
- 
+
  use hwcodec::common::{DataFormat, Quality, RateControl};
  use hwcodec::ffmpeg::{resolve_pixel_format, AVPixelFormat};
 -use hwcodec::ffmpeg_ram::encode::{EncodeContext, Encoder as HwEncoder};
 +use hwcodec::ffmpeg_ram::{encode::{EncodeContext, Encoder as HwEncoder}, has_encoder};
  use hwcodec::ffmpeg_ram::CodecInfo;
- 
+
  // Keep native AMLENC behind the highest-priority desktop GPU backends while
 @@ -269,10 +269,15 @@ impl EncoderRegistry {
              let codec_name = match format {
@@ -230,7 +275,7 @@ index 5a35cca..c78aabf 100644
 +                VideoEncoderType::VP8 => "libvpx",
 +                VideoEncoderType::VP9 => "libvpx-vp9",
              };
- 
+
 +            if !has_encoder(codec_name) {
 +                warn!("Software {} encoder is not embedded", codec_name);
 +                continue;
