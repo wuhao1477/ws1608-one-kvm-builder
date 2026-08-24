@@ -83,7 +83,8 @@ before software encoders, but it never removes a verified software entry.
 `/stream/codecs` continues to return H.264, H.265, VP8 and VP9. For this
 baseline its selected backend must be `Software`, `hardware=false`, and
 `available=true`. Later hardware registration may change the selected backend
-for a codec, but the software backend remains listed in the registry.
+for a codec only after its separate evidence gate passes; the software backend
+remains listed in the registry.
 
 ### Software self-check
 
@@ -103,9 +104,8 @@ For each of the four codecs it must:
    frame counts, keyframe result, elapsed time and a sanitized error value.
 
 The command exits zero only when all four rows pass. A failed codec reports its
-own failure but makes the command nonzero. The web handler may expose the same
-software self-check through an explicit query parameter; the existing
-hardware-only endpoint behavior remains backward compatible.
+own failure but makes the command nonzero. This slice leaves the existing
+hardware-only endpoint unchanged.
 
 ### Build and runtime verification
 
@@ -131,7 +131,7 @@ not a 720p30 performance claim for software H.265 or VP9.
 
 Hardware registration follows only after this software baseline:
 
-- S805 H.264 AMLENC may be evaluated on the recoverable 3.10.107 trial path.
+- S805 H.264 AMLENC is evaluated only on the recoverable 3.10.107 trial path.
 - S805 H.265, VP8 and VP9 remain software-only until a driver, userspace ABI,
   valid hardware bitstream and error-free physical test exist.
 - A hardware creation or encoding failure retries the selected verified
