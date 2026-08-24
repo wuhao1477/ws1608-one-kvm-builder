@@ -39,6 +39,28 @@ test('accepts only immutable experimental source inputs', () => {
   assert.match(sources, /^ONE_KVM_ARMV7_GCC_VERSION=10\.2\.1$/m);
   assert.match(sources, /^ONE_KVM_ARMV7_BINUTILS_VERSION=2\.35\.2$/m);
   assert.match(sources, /^ONE_KVM_RUSTC_COMMIT=8bab26f4f68e0e26f0bb7960be334d5b520ea452$/m);
+  assert.match(sources, /^ONECLOUD_DTS_REPOSITORY=https:\/\/github\.com\/coolsnowwolf\/lede\.git$/m);
+  assert.match(sources, /^ONECLOUD_DTS_COMMIT=f7fd86eaa58c29fed97da04ab219c74a835a9358$/m);
+  assert.match(sources, /^ONECLOUD_DTS_PATH=target\/linux\/amlogic\/files\/arch\/arm\/boot\/dts\/amlogic\/meson8b-onecloud\.dts$/m);
+  assert.match(sources, /^ONECLOUD_DTS_SHA256=2728716388bb0c023cf380780b7fee7cf3d361ee3144c722e55f22234cae548f$/m);
+  assert.match(sources, /^ONECLOUD_UBOOT_REPOSITORY=https:\/\/github\.com\/hzyitc\/u-boot\.git$/m);
+  assert.match(sources, /^ONECLOUD_UBOOT_COMMIT=0038d741ed1c77a77570c3a6bf88fe6189c11733$/m);
+});
+
+test('rejects modified OneCloud board evidence', (t) => {
+  const fixture = fs.mkdtempSync(path.join(os.tmpdir(), 'ws1608-board-lock-'));
+  t.after(() => fs.rmSync(fixture, { recursive: true, force: true }));
+  const invalidSources = path.join(fixture, 'sources.env');
+  const sources = fs.readFileSync(sourcesPath, 'utf8')
+    .replace(/^ONECLOUD_DTS_SHA256=.*$/m, `ONECLOUD_DTS_SHA256=${'0'.repeat(64)}`);
+  fs.writeFileSync(invalidSources, sources);
+
+  const result = spawnSync(process.execPath, [validatorPath, invalidSources], {
+    cwd: process.cwd(), encoding: 'utf8',
+  });
+
+  assert.notEqual(result.status, 0);
+  assert.match(result.stderr, /ONECLOUD_DTS_SHA256/);
 });
 
 test('rejects an incomplete One-KVM toolchain source lock', (t) => {

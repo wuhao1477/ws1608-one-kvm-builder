@@ -5,6 +5,14 @@ import fs from 'node:fs';
 const sourceNames = ['LINUX', 'LIBENCODER', 'ONE_KVM', 'AMLENC'];
 const commitPattern = /^[0-9a-f]{40}$/;
 const sha256Pattern = /^[0-9a-f]{64}$/;
+const boardEvidence = {
+  ONECLOUD_DTS_REPOSITORY: 'https://github.com/coolsnowwolf/lede.git',
+  ONECLOUD_DTS_COMMIT: 'f7fd86eaa58c29fed97da04ab219c74a835a9358',
+  ONECLOUD_DTS_PATH: 'target/linux/amlogic/files/arch/arm/boot/dts/amlogic/meson8b-onecloud.dts',
+  ONECLOUD_DTS_SHA256: '2728716388bb0c023cf380780b7fee7cf3d361ee3144c722e55f22234cae548f',
+  ONECLOUD_UBOOT_REPOSITORY: 'https://github.com/hzyitc/u-boot.git',
+  ONECLOUD_UBOOT_COMMIT: '0038d741ed1c77a77570c3a6bf88fe6189c11733',
+};
 
 function parseEnvironment(contents) {
   const values = new Map();
@@ -42,10 +50,23 @@ function verifySource(values, name) {
   }
 }
 
+function verifyBoardEvidence(values) {
+  for (const [key, expected] of Object.entries(boardEvidence)) {
+    if (requireValue(values, key) !== expected) throw new Error(`${key} does not match reviewed board evidence`);
+  }
+  if (!commitPattern.test(requireValue(values, 'ONECLOUD_DTS_COMMIT'))) throw new Error('invalid OneCloud DTS commit');
+  if (!commitPattern.test(requireValue(values, 'ONECLOUD_UBOOT_COMMIT'))) throw new Error('invalid OneCloud U-Boot commit');
+  if (!sha256Pattern.test(requireValue(values, 'ONECLOUD_DTS_SHA256'))) throw new Error('invalid OneCloud DTS digest');
+  if (requireValue(values, 'ONECLOUD_DTS_PATH').split('/').some((part) => !part || part === '.' || part === '..')) {
+    throw new Error('ONECLOUD_DTS_PATH must be a safe relative path');
+  }
+}
+
 function main() {
   const filePath = process.argv[2] ?? 'experimental/amlenc/config/sources.env';
   const values = parseEnvironment(fs.readFileSync(filePath, 'utf8'));
   for (const name of sourceNames) verifySource(values, name);
+  verifyBoardEvidence(values);
   requireValue(values, 'ONE_KVM_VERSION');
   requireValue(values, 'KERNEL_VERSION');
   requireValue(values, 'DEBIAN_SUITE');
