@@ -30,35 +30,52 @@ mkdir -p "$FINAL_DIR" "$BASE_DIR"
 "$AMLIMG_BIN" unpack "$BASE_IMAGE" "$BASE_DIR"
 cmp "$BASE_DIR/commands.txt" "$FINAL_DIR/commands.txt" || fail "commands.txt changed"
 
-declare -A final_partition base_partition verify_file
+final_boot= final_rootfs= final_bootloader= final_resource=
+base_boot= base_rootfs= base_bootloader= base_resource=
+verify_boot= verify_rootfs= verify_bootloader= verify_resource=
 while IFS=: read -r type name image_type filename; do
   basename_only "$filename"
   if [[ "$name" != boot && "$name" != rootfs ]]; then
     cmp "$BASE_DIR/$filename" "$FINAL_DIR/$filename" || fail "$type $name changed"
   fi
   if [[ "$type" == PARTITION ]]; then
-    final_partition[$name]="$FINAL_DIR/$filename"
-    base_partition[$name]="$BASE_DIR/$filename"
+    case "$name" in
+      boot) final_boot="$FINAL_DIR/$filename"; base_boot="$BASE_DIR/$filename" ;;
+      rootfs) final_rootfs="$FINAL_DIR/$filename"; base_rootfs="$BASE_DIR/$filename" ;;
+      bootloader) final_bootloader="$FINAL_DIR/$filename"; base_bootloader="$BASE_DIR/$filename" ;;
+      resource) final_resource="$FINAL_DIR/$filename"; base_resource="$BASE_DIR/$filename" ;;
+    esac
   elif [[ "$type" == VERIFY ]]; then
-    verify_file[$name]="$FINAL_DIR/$filename"
+    case "$name" in
+      boot) verify_boot="$FINAL_DIR/$filename" ;;
+      rootfs) verify_rootfs="$FINAL_DIR/$filename" ;;
+      bootloader) verify_bootloader="$FINAL_DIR/$filename" ;;
+      resource) verify_resource="$FINAL_DIR/$filename" ;;
+    esac
   fi
 done <"$FINAL_DIR/commands.txt"
 
 for name in boot rootfs bootloader resource; do
-  [[ -f "${final_partition[$name]:-}" && -f "${verify_file[$name]:-}" ]] || fail "missing $name partition"
-  expected=$(<"${verify_file[$name]}")
-  actual="sha1sum $(sha1sum "${final_partition[$name]}" | awk '{print $1}')"
+  case "$name" in
+    boot) partition="$final_boot"; verify="$verify_boot" ;;
+    rootfs) partition="$final_rootfs"; verify="$verify_rootfs" ;;
+    bootloader) partition="$final_bootloader"; verify="$verify_bootloader" ;;
+    resource) partition="$final_resource"; verify="$verify_resource" ;;
+  esac
+  [[ -f "$partition" && -f "$verify" ]] || fail "missing $name partition"
+  expected=$(<"$verify")
+  actual="sha1sum $(sha1sum "$partition" | awk '{print $1}')"
   [[ "$expected" == "$actual" ]] || fail "$name VERIFY mismatch"
 done
-cmp --silent "${base_partition[boot]}" "${final_partition[boot]}" && fail "boot partition was not changed"
-cmp --silent "${base_partition[rootfs]}" "${final_partition[rootfs]}" && fail "rootfs partition was not changed"
+cmp --silent "$base_boot" "$final_boot" && fail "boot partition was not changed"
+cmp --silent "$base_rootfs" "$final_rootfs" && fail "rootfs partition was not changed"
 
 BOOT_RAW="$VERIFY_DIR/boot.raw"
 BASE_BOOT_RAW="$VERIFY_DIR/base-boot.raw"
 ROOTFS_RAW="$VERIFY_DIR/rootfs.raw"
-node "$ROOT_DIR/scripts/sparse-to-raw.mjs" "${final_partition[boot]}" "$BOOT_RAW"
-node "$ROOT_DIR/scripts/sparse-to-raw.mjs" "${base_partition[boot]}" "$BASE_BOOT_RAW"
-node "$ROOT_DIR/scripts/sparse-to-raw.mjs" "${final_partition[rootfs]}" "$ROOTFS_RAW"
+node "$ROOT_DIR/scripts/sparse-to-raw.mjs" "$final_boot" "$BOOT_RAW"
+node "$ROOT_DIR/scripts/sparse-to-raw.mjs" "$base_boot" "$BASE_BOOT_RAW"
+node "$ROOT_DIR/scripts/sparse-to-raw.mjs" "$final_rootfs" "$ROOTFS_RAW"
 e2fsck -fn "$ROOTFS_RAW" >/dev/null || fail "rootfs filesystem check"
 features=$(dumpe2fs -h "$ROOTFS_RAW" 2>/dev/null | awk -F: '/Filesystem features/{print $2}')
 for feature in 64bit metadata_csum orphan_file; do [[ " $features " != *" $feature "* ]] || fail "unsupported ext4 feature $feature"; done
@@ -98,6 +115,19 @@ done
 ssh_config=$(debugfs -R 'cat /etc/ssh/sshd_config.d/ws1608-amlenc.conf' "$ROOTFS_RAW" 2>/dev/null)
 grep -Fqx 'PasswordAuthentication no' <<<"$ssh_config" || fail "SSH password policy"
 grep -Fqx 'PubkeyAuthentication yes' <<<"$ssh_config" || fail "SSH public-key policy"
+authorized_keys=$(debugfs -R 'cat /root/.ssh/authorized_keys' "$ROOTFS_RAW" 2>/dev/null) || fail "SSH authorized_keys missing"
+ssh_key_count=0
+ssh_key_line=
+while IFS= read -r line || [[ -n "$line" ]]; do
+  [[ -n "$line" ]] || continue
+  [[ "$line" =~ ^(ssh-ed25519|ssh-rsa|ecdsa-sha2-nistp(256|384|521))[[:space:]][A-Za-z0-9+/=]+([[:space:]].*)?$ ]] || fail "invalid SSH public key"
+  ssh_key_count=$((ssh_key_count + 1))
+  ssh_key_line="$line"
+done <<<"$authorized_keys"
+[[ "$ssh_key_count" -eq 1 ]] || fail "expected one SSH public key"
+ssh_key_sha256=$(printf '%s\n' "$ssh_key_line" | sha256sum | awk '{print $1}')
+manifest_ssh_key_sha256=$(jq -er '.ssh_public_key_sha256' "$MANIFEST")
+[[ "$ssh_key_sha256" == "$manifest_ssh_key_sha256" ]] || fail "SSH public key digest mismatch"
 fstab=$(debugfs -R 'cat /etc/fstab' "$ROOTFS_RAW" 2>/dev/null)
 grep -Fq 'LABEL=armbi_boot /boot vfat' <<<"$fstab" || fail "boot mount policy"
 if debugfs -R 'stat /usr/bin/one-kvm' "$ROOTFS_RAW" 2>/dev/null | grep -q 'Inode:'; then fail "one-kvm must not be installed"; fi
@@ -107,11 +137,12 @@ jq -e --arg base_tag "$BASE_RELEASE_TAG" --arg base_sha "$BASE_IMAGE_SHA256" --a
   .base_release_tag == $base_tag and .base_image_sha256 == $base_sha and
   .recovery == {kernel:"6.12.28-current-meson",source:"stable-base"} and
   .legacy == {kernel:"3.10.107",commit:$linux,cma_mib:64} and .recovery_first == true and
+  (.ssh_public_key_sha256 | test("^[a-f0-9]{64}$")) and
   .hardware_boot_tested == false and .hardware_encoder_tested == false and
   .one_kvm_included == false and .hid_tested == false and .msd_tested == false and
   .stable_channel_modified == false
 ' "$MANIFEST" >/dev/null || fail "manifest gate"
 [[ "$(sha256sum "$IMAGE" | awk '{print $1}')" == "$(jq -er '.image_sha256' "$MANIFEST")" ]] || fail "image digest"
-[[ "$(sha256sum "${final_partition[boot]}" | awk '{print $1}')" == "$(jq -er '.partitions.boot_sha256' "$MANIFEST")" ]] || fail "boot digest"
-[[ "$(sha256sum "${final_partition[rootfs]}" | awk '{print $1}')" == "$(jq -er '.partitions.rootfs_sha256' "$MANIFEST")" ]] || fail "rootfs digest"
+[[ "$(sha256sum "$final_boot" | awk '{print $1}')" == "$(jq -er '.partitions.boot_sha256' "$MANIFEST")" ]] || fail "boot digest"
+[[ "$(sha256sum "$final_rootfs" | awk '{print $1}')" == "$(jq -er '.partitions.rootfs_sha256' "$MANIFEST")" ]] || fail "rootfs digest"
 echo "verified WS1608 recovery-first legacy bring-up image"

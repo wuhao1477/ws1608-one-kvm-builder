@@ -86,7 +86,6 @@ test('audits immutable diagnostic image inputs and writes an untested manifest',
   const outputDir = path.join(inputRoot, 'output');
 
   const result = audit(inputRoot, outputDir);
-
   assert.equal(result.status, 0, result.stderr || result.stdout);
   const manifest = JSON.parse(fs.readFileSync(path.join(outputDir, 'input-manifest.json')));
   assert.equal(manifest.schema, 1);
