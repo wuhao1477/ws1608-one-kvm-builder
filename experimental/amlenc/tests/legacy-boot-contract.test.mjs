@@ -8,6 +8,7 @@ import test from 'node:test';
 const renderer = 'experimental/amlenc/scripts/render-legacy-trial-boot.mjs';
 const armTrial = 'experimental/amlenc/rootfs/ws1608-amlenc-arm-trial';
 const markSuccess = 'experimental/amlenc/rootfs/ws1608-amlenc-mark-success';
+const firstboot = 'experimental/amlenc/rootfs/ws1608-amlenc-firstboot';
 const uuid = '7c59bb76-d17e-4a9c-9ff8-031b35133010';
 
 function fixture(t) {
@@ -36,6 +37,41 @@ function pathWithHealthyIp(t) {
   fs.writeFileSync(ip, '#!/bin/sh\necho "2: eth0    inet 192.0.2.10/24 scope global eth0"\n');
   fs.chmodSync(ip, 0o755);
   return `${directory}:${process.env.PATH}`;
+}
+
+function writeExecutable(filePath, content) {
+  fs.writeFileSync(filePath, content, { mode: 0o755 });
+}
+
+function firstbootFixture(t, sshdExit = 0) {
+  const directory = fixture(t);
+  const log = path.join(directory, 'commands.log');
+  const hostKey = path.join(directory, 'ssh_host_test_key');
+  const keygen = path.join(directory, 'ssh-keygen');
+  const sshd = path.join(directory, 'sshd');
+  writeExecutable(keygen, [
+    '#!/bin/sh',
+    'printf "keygen:%s\\n" "$*" >>"$FIRSTBOOT_LOG"',
+    'printf "host-key\\n" >"$FIRSTBOOT_HOST_KEY"',
+  ].join('\n'));
+  writeExecutable(sshd, [
+    '#!/bin/sh',
+    'test -s "$FIRSTBOOT_HOST_KEY"',
+    'printf "sshd:%s\\n" "$*" >>"$FIRSTBOOT_LOG"',
+    'exit ' + sshdExit,
+  ].join('\n'));
+  return {
+    log,
+    env: {
+      ...process.env,
+      RUN_DIR: path.join(directory, 'run', 'sshd'),
+      STATUS_FILE: path.join(directory, 'state', 'firstboot-complete'),
+      SSH_KEYGEN_BIN: keygen,
+      SSHD_BIN: sshd,
+      FIRSTBOOT_LOG: log,
+      FIRSTBOOT_HOST_KEY: hostKey,
+    },
+  };
 }
 
 test('renders a recovery-first revision-isolated boot flow', (t) => {
@@ -121,4 +157,25 @@ test('refuses to mark an unstable or unhealthy legacy boot', (t) => {
     assert.notEqual(result.status, 0);
     assert.equal(fs.existsSync(path.join(boot, 'amlenc-3.10.ok')), false);
   }
+});
+
+test('generates host keys and validates sshd before marking first boot complete', (t) => {
+  assert.equal(fs.existsSync(firstboot), true, 'firstboot helper is required');
+  const setup = firstbootFixture(t);
+
+  const result = spawnSync('sh', [firstboot], { encoding: 'utf8', env: setup.env });
+
+  assert.equal(result.status, 0, result.stderr || result.stdout);
+  assert.equal(fs.readFileSync(setup.env.STATUS_FILE, 'utf8'), 'host-keys-ready\n');
+  assert.equal(fs.statSync(setup.env.RUN_DIR).mode & 0o777, 0o755);
+  assert.equal(fs.readFileSync(setup.log, 'utf8'), 'keygen:-A\nsshd:-t\n');
+});
+
+test('does not mark first boot complete when sshd validation fails', (t) => {
+  const setup = firstbootFixture(t, 42);
+
+  const result = spawnSync('sh', [firstboot], { encoding: 'utf8', env: setup.env });
+
+  assert.equal(result.status, 42);
+  assert.equal(fs.existsSync(setup.env.STATUS_FILE), false);
 });

@@ -76,7 +76,12 @@ function installVerifierStubs(directory) {
     '  "cat /root/.ssh/authorized_keys") printf "%s\\n" "$LEGACY_TEST_AUTHORIZED_KEYS" ;;',
     '  "cat /etc/ssh/sshd_config.d/ws1608-amlenc.conf") printf "PasswordAuthentication no\\nPubkeyAuthentication yes\\n" ;;',
     '  "cat /etc/fstab") printf "LABEL=armbi_boot /boot vfat defaults 0 2\\n" ;;',
+    '  "ls -p /etc/ssh") if [ "$LEGACY_TEST_FORBIDDEN" = host-key ]; then echo "/42/100600/0/0/ssh_host_test_key/16/"; else echo "/42/100644/0/0/sshd_config/3289/"; fi ;;',
     '  "stat /usr/bin/one-kvm") exit 1 ;;',
+    '  "stat /etc/rcS.d/S99ws1608-amlenc-firstboot") echo "Inode: 42   Type: symlink    Mode:  0777"; echo "Fast link dest: \\"../init.d/ws1608-amlenc-firstboot\\"" ;;',
+    '  "stat /etc/rcS.d/S01ws1608-amlenc-firstboot"|"stat /etc/ssh/ssh_host_"*|"stat /var/lib/ws1608-amlenc/firstboot-complete") exit 0 ;;',
+    '  "stat /tmp/ws1608-amlenc-firstboot.complete") if [ "$LEGACY_TEST_FORBIDDEN" = build-marker ]; then echo "Inode: 42   Type: regular    Mode:  0644"; fi ;;',
+    '  "stat /etc/init.d/ws1608-amlenc-firstboot") echo "Inode: 42   Type: regular    Mode:  0755" ;;',
     '  "stat /usr/local/sbin/ws1608-amlenc-"*) echo "Inode: 42   Type: regular    Mode:  0755" ;;',
     '  stat*) echo "Inode: 42   Type: regular    Mode:  0644" ;;',
     'esac',
@@ -108,7 +113,7 @@ function writeAmlImgStub(filePath) {
   ].join('\n'));
 }
 
-function runLegacyVerifier(t, manifestKeySha256, authorizedKey) {
+function runLegacyVerifier(t, manifestKeySha256, authorizedKey, forbidden = '') {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'amlenc-legacy-verify-'));
   t.after(() => fs.rmSync(root, { recursive: true, force: true }));
   const bin = path.join(root, 'bin');
@@ -154,6 +159,7 @@ function runLegacyVerifier(t, manifestKeySha256, authorizedKey) {
       AMLIMG_BIN: amlImg,
       VERIFY_DIR: path.join(root, 'verify'),
       LEGACY_TEST_AUTHORIZED_KEYS: authorizedKey,
+      LEGACY_TEST_FORBIDDEN: forbidden,
     },
     encoding: 'utf8',
   });
@@ -177,6 +183,15 @@ test('rejects a legacy image when the root SSH key does not match the manifest i
   assert.match(result.stderr, /ssh.*key|key.*ssh/i);
 });
 
+test('rejects preinstalled host keys and build-time firstboot markers', (t) => {
+  const key = 'ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAITestOnlyKey ws1608-test';
+  for (const forbidden of ['host-key', 'build-marker']) {
+    const result = runLegacyVerifier(t, sha256Identity(key), key, forbidden);
+    assert.notEqual(result.status, 0, forbidden + ' must be rejected');
+    assert.match(result.stderr, /host key|firstboot|forbidden/i);
+  }
+});
+
 test('independently verifies recovery identity, rootfs and untested status', () => {
   const verify = readRequired(files.verify);
   assert.match(verify, /AmlImg|AMLIMG_BIN/);
@@ -193,6 +208,9 @@ test('independently verifies recovery identity, rootfs and untested status', () 
   assert.match(verify, /3\.10\.107/);
   assert.match(verify, /ws1608-amlenc-arm-trial/);
   assert.match(verify, /ws1608-amlenc-mark-success/);
+  assert.match(verify, /S99ws1608-amlenc-firstboot/);
+  assert.match(verify, /S01ws1608-amlenc-firstboot/);
+  assert.match(verify, /ssh_host_\[\^\/\]\+/);
   assert.match(verify, /PasswordAuthentication no/);
   assert.match(verify, /one-kvm/);
   for (const field of ['hardware_boot_tested', 'hardware_encoder_tested', 'one_kvm_included', 'hid_tested', 'msd_tested']) {
@@ -213,13 +231,16 @@ test('builds a Bullseye SysV rootfs for both kernels without One-KVM', () => {
   assert.match(rootfs, /passwd -l root/);
   assert.match(rootfs, /PasswordAuthentication no/);
   assert.match(rootfs, /PubkeyAuthentication yes/);
-  assert.match(rootfs, /ssh-keygen -A/);
   assert.match(rootfs, /authorized_keys/);
   assert.match(rootfs, /RECOVERY_ROOTFS_RAW/);
   assert.match(rootfs, /LEGACY_MODULES_TAR/);
   assert.match(rootfs, /lib\/modules\/6\.12\.28-current-meson/);
   assert.match(rootfs, /ws1608-amlenc-arm-trial/);
   assert.match(rootfs, /ws1608-amlenc-mark-success/);
+  assert.match(rootfs, /ws1608-amlenc-firstboot/);
+  assert.match(rootfs, /S99ws1608-amlenc-firstboot/);
+  assert.doesNotMatch(rootfs, /S01ws1608-amlenc-firstboot/);
+  assert.match(rootfs, /STATUS_FILE=.*ws1608-amlenc-firstboot/);
   assert.match(rootfs, /LABEL=armbi_boot \/boot vfat/);
   assert.match(rootfs, /proc \/proc proc/);
   assert.match(rootfs, /tmpfs \/run tmpfs/);

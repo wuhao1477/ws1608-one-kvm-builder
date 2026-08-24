@@ -1,0 +1,23 @@
+#!/bin/sh
+### BEGIN INIT INFO
+# Provides:          ws1608-amlenc-firstboot
+# Required-Start:    $local_fs $remote_fs $syslog
+# Required-Stop:
+# Default-Start:     S
+# Default-Stop:
+### END INIT INFO
+set -eu
+
+RUN_DIR=${RUN_DIR:-/run/sshd}
+STATUS_FILE=${STATUS_FILE:-/var/lib/ws1608-amlenc/firstboot-complete}
+SSH_KEYGEN_BIN=${SSH_KEYGEN_BIN:-ssh-keygen}
+SSHD_BIN=${SSHD_BIN:-sshd}
+
+status_dir=${STATUS_FILE%/*}
+rm -f -- "$STATUS_FILE"
+mkdir -p -- "$RUN_DIR" "$status_dir"
+chmod 0755 "$RUN_DIR"
+"$SSH_KEYGEN_BIN" -A
+"$SSHD_BIN" -t
+printf 'host-keys-ready\n' >"$STATUS_FILE"
+chmod 0644 "$STATUS_FILE"

@@ -47,28 +47,18 @@ EOF
     passwd -l root
     install -D -m 0755 /assets/ws1608-amlenc-arm-trial /usr/local/sbin/ws1608-amlenc-arm-trial
     install -D -m 0755 /assets/ws1608-amlenc-mark-success /usr/local/sbin/ws1608-amlenc-mark-success
+    install -D -m 0755 /assets/ws1608-amlenc-firstboot /etc/init.d/ws1608-amlenc-firstboot
     cat >/etc/ssh/sshd_config.d/ws1608-amlenc.conf <<"EOF"
 PasswordAuthentication no
 KbdInteractiveAuthentication no
 PubkeyAuthentication yes
 PermitRootLogin prohibit-password
 EOF
-    cat >/etc/init.d/ws1608-amlenc-firstboot <<"EOF"
-#!/bin/sh
-### BEGIN INIT INFO
-# Provides:          ws1608-amlenc-firstboot
-# Required-Start:    $local_fs
-# Required-Stop:
-# Default-Start:     S
-# Default-Stop:
-### END INIT INFO
-set -eu
-mkdir -p /run/sshd
-ssh-keygen -A
-EOF
-    chmod 0755 /etc/init.d/ws1608-amlenc-firstboot
-    ln -s ../init.d/ws1608-amlenc-firstboot /etc/rcS.d/S01ws1608-amlenc-firstboot
+    ln -s ../init.d/ws1608-amlenc-firstboot /etc/rcS.d/S99ws1608-amlenc-firstboot
     rm -f /etc/ssh/ssh_host_* /etc/machine-id
+    STATUS_FILE=/tmp/ws1608-amlenc-firstboot.complete /etc/init.d/ws1608-amlenc-firstboot
+    test -s /tmp/ws1608-amlenc-firstboot.complete
+    rm -f /etc/ssh/ssh_host_* /tmp/ws1608-amlenc-firstboot.complete
     : >/etc/machine-id
     find /var/lib/apt/lists /var/cache/apt/archives /tmp /var/tmp -mindepth 1 -delete
     /build-tools/archive-rootfs /work/rootfs.tar /
