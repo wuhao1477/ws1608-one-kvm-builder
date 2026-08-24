@@ -1,0 +1,199 @@
+name: Build WS1608 recovery-first legacy kernel candidate
+
+on:
+  pull_request:
+    paths:
+      - '.github/workflows/amlenc-legacy-bringup.yml'
+      - 'experimental/amlenc/**'
+  workflow_dispatch:
+    inputs:
+      ssh_public_key_b64:
+        description: Base64-encoded OpenSSH public key for hardware access
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ws1608-legacy-${{ github.event.pull_request.number || github.run_id }}-${{ github.run_attempt }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  contract:
+    name: Check legacy bring-up contracts
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7
+        with:
+          persist-credentials: false
+      - name: Install contract tools
+        run: sudo apt-get update && sudo apt-get install -y jq
+      - name: Run repository contracts
+        run: |
+          experimental/amlenc/scripts/verify-stable-chain.sh
+          node experimental/amlenc/scripts/verify-source-locks.mjs experimental/amlenc/config/sources.env
+          npm test
+          node --test experimental/amlenc/tests/*.test.mjs
+          for script in experimental/amlenc/scripts/*.sh experimental/amlenc/rootfs/*; do bash -n "$script"; done
+      - name: Confirm stable workflow boundary
+        run: git diff --exit-code -- .github/workflows/build.yml config/base.env
+
+  build:
+    name: Build recovery-first candidate
+    needs: contract
+    if: github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 180
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7
+        with:
+          persist-credentials: false
+      - name: Install build tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y curl jq qemu-user-static device-tree-compiler \
+            e2fsprogs file mtools u-boot-tools xz-utils
+          docker version
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7
+        with:
+          go-version: "1.24.x"
+          cache: false
+      - name: Build pinned AmlImg tool
+        env:
+          TOOLS_DIR: ${{ github.workspace }}/.tools
+        run: echo "AMLIMG_BIN=$(./scripts/build-tools.sh)" >>"$GITHUB_ENV"
+      - name: Prepare build identity and SSH key
+        id: identity
+        env:
+          SSH_PUBLIC_KEY_B64: ${{ inputs.ssh_public_key_b64 }}
+        run: |
+          test -n "$SSH_PUBLIC_KEY_B64"
+          printf '%s' "$SSH_PUBLIC_KEY_B64" | base64 --decode >"$RUNNER_TEMP/ws1608.pub"
+          test "$(wc -l <"$RUNNER_TEMP/ws1608.pub")" -eq 1
+          ssh-keygen -l -f "$RUNNER_TEMP/ws1608.pub"
+          build_number=$((GITHUB_RUN_NUMBER * 1000 + GITHUB_RUN_ATTEMPT))
+          build_revision=$(printf 'b%06d' "$build_number")
+          {
+            echo "BUILD_REVISION=$build_revision"
+            echo "SSH_PUBLIC_KEY_FILE=$RUNNER_TEMP/ws1608.pub"
+          } >>"$GITHUB_ENV"
+          echo "artifact_name=ws1608-amlenc-legacy-$build_revision" >>"$GITHUB_OUTPUT"
+      - name: Build Linux 3.10.107
+        run: |
+          docker run --rm --platform linux/amd64 \
+            -v "$GITHUB_WORKSPACE:/repo" -w /repo ubuntu:18.04 bash -lc '
+              set -euo pipefail
+              apt-get update && apt-get install -y bc curl file git lzop make gcc-7 g++-7 \
+                gcc-7-arm-linux-gnueabihf g++-7-arm-linux-gnueabihf \
+                binutils-arm-linux-gnueabihf device-tree-compiler jq xz-utils
+              ln -sf "$(command -v gcc-7)" /usr/local/bin/gcc
+              ln -sf "$(command -v g++-7)" /usr/local/bin/g++
+              ln -sf "$(command -v arm-linux-gnueabihf-gcc-7)" /usr/local/bin/arm-linux-gnueabihf-gcc
+              curl --fail --location https://nodejs.org/dist/v16.20.2/node-v16.20.2-linux-x64.tar.xz \
+                | tar -xJ -C /usr/local --strip-components=1
+              CROSS_COMPILE=arm-linux-gnueabihf- /repo/experimental/amlenc/scripts/build-kernel.sh
+            '
+          sudo chown -R "$(id -u):$(id -g)" .build/amlenc out/amlenc
+      - name: Verify Linux 3.10.107
+        run: experimental/amlenc/scripts/verify-build.sh kernel
+      - name: Download verified recovery base
+        run: |
+          source config/base.env
+          curl --fail --location --retry 5 "$BASE_IMAGE_URL" -o "$RUNNER_TEMP/base.burn.img.xz"
+          echo "$BASE_IMAGE_SHA256  $RUNNER_TEMP/base.burn.img.xz" | sha256sum --check
+      - name: Build recovery-first image
+        env:
+          BASE_IMAGE_XZ: ${{ runner.temp }}/base.burn.img.xz
+          LEGACY_KERNEL_DIR: ${{ github.workspace }}/out/amlenc/kernel
+          OUTPUT_DIR: ${{ github.workspace }}/out/amlenc/legacy-bringup
+          WORK_DIR: ${{ github.workspace }}/.build/amlenc/legacy-bringup
+        run: |
+          SSH_PUBLIC_KEY="$(<"$SSH_PUBLIC_KEY_FILE")" \
+            experimental/amlenc/scripts/build-legacy-bringup-image.sh
+      - name: Verify recovery-first image
+        env:
+          BASE_IMAGE: ${{ runner.temp }}/base.burn.img
+          MANIFEST: ${{ github.workspace }}/out/amlenc/legacy-bringup/manifest.json
+          VERIFY_DIR: ${{ github.workspace }}/.build/amlenc/legacy-verify
+        run: |
+          xz -dc "$RUNNER_TEMP/base.burn.img.xz" >"$BASE_IMAGE"
+          IMAGE="$GITHUB_WORKSPACE/out/amlenc/legacy-bringup/$(jq -er .image_name "$MANIFEST")" \
+            experimental/amlenc/scripts/verify-legacy-bringup-image.sh
+      - name: Package five candidate files
+        env:
+          OUTPUT_DIR: ${{ github.workspace }}/out/amlenc/legacy-bringup
+        run: |
+          image_name=$(jq -er .image_name "$OUTPUT_DIR/manifest.json")
+          xz -T0 -9e -c "$OUTPUT_DIR/$image_name" >"$OUTPUT_DIR/$image_name.xz"
+          jq -n --arg image "$image_name" \
+            --arg image_sha "$(sha256sum "$OUTPUT_DIR/$image_name" | awk '{print $1}')" \
+            --arg xz_sha "$(sha256sum "$OUTPUT_DIR/$image_name.xz" | awk '{print $1}')" \
+            '{schema:1,result:"pending",hardware_boot_tested:false,hardware_encoder_tested:false,
+              one_kvm_included:false,assets:{image:{name:$image,sha256:$image_sha},
+              compressed_image:{name:($image+".xz"),sha256:$xz_sha}}}' \
+            >"$OUTPUT_DIR/validation-report.json"
+          (cd "$OUTPUT_DIR" && sha256sum "$image_name" "$image_name.xz" manifest.json validation-report.json >SHA256SUMS)
+          test "$(find "$OUTPUT_DIR" -mindepth 1 -maxdepth 1 -type f | wc -l)" -eq 5
+          (cd "$OUTPUT_DIR" && sha256sum --check SHA256SUMS)
+          xz -t "$OUTPUT_DIR/$image_name.xz"
+      - name: Upload recovery-first artifact
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: ${{ steps.identity.outputs.artifact_name }}
+          path: out/amlenc/legacy-bringup/
+          if-no-files-found: error
+          retention-days: 14
+          compression-level: 0
+
+  reverify:
+    name: Recheck candidate artifact
+    needs: build
+    if: github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7
+        with:
+          persist-credentials: false
+      - name: Install verification tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y curl e2fsprogs file jq mtools u-boot-tools xz-utils
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7
+        with:
+          go-version: "1.24.x"
+          cache: false
+      - name: Build pinned AmlImg tool
+        env:
+          TOOLS_DIR: ${{ github.workspace }}/.tools
+        run: echo "AMLIMG_BIN=$(./scripts/build-tools.sh)" >>"$GITHUB_ENV"
+      - name: Restore artifact identity
+        id: identity
+        run: |
+          build_number=$((GITHUB_RUN_NUMBER * 1000 + GITHUB_RUN_ATTEMPT))
+          echo "artifact_name=$(printf 'ws1608-amlenc-legacy-b%06d' "$build_number")" >>"$GITHUB_OUTPUT"
+      - name: Download recovery-first artifact
+        uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7
+        with:
+          name: ${{ steps.identity.outputs.artifact_name }}
+          path: ${{ runner.temp }}/candidate
+      - name: Reverify downloaded candidate
+        env:
+          BASE_IMAGE: ${{ runner.temp }}/base.burn.img
+          MANIFEST: ${{ runner.temp }}/candidate/manifest.json
+          VERIFY_DIR: ${{ runner.temp }}/legacy-verify
+        run: |
+          source config/base.env
+          curl --fail --location --retry 5 "$BASE_IMAGE_URL" -o "$RUNNER_TEMP/base.burn.img.xz"
+          echo "$BASE_IMAGE_SHA256  $RUNNER_TEMP/base.burn.img.xz" | sha256sum --check
+          xz -dc "$RUNNER_TEMP/base.burn.img.xz" >"$BASE_IMAGE"
+          (cd "$RUNNER_TEMP/candidate" && sha256sum --check SHA256SUMS)
+          jq -e '.result == "pending" and .hardware_boot_tested == false and
+            .hardware_encoder_tested == false and .one_kvm_included == false' \
+            "$RUNNER_TEMP/candidate/validation-report.json" >/dev/null
+          image_name=$(jq -er .image_name "$MANIFEST")
+          xz -t "$RUNNER_TEMP/candidate/$image_name.xz"
+          test "$(xz -dc "$RUNNER_TEMP/candidate/$image_name.xz" | sha256sum | awk '{print $1}')" \
+            = "$(sha256sum "$RUNNER_TEMP/candidate/$image_name" | awk '{print $1}')"
+          IMAGE="$RUNNER_TEMP/candidate/$image_name" \
+            experimental/amlenc/scripts/verify-legacy-bringup-image.sh
