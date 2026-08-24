@@ -117,7 +117,10 @@ jobs:
       - name: Verify One-KVM armhf package
         run: experimental/amlenc/scripts/verify-one-kvm.sh out/amlenc/one-kvm/one-kvm_0.2.6+ws1608amlenc.run-${{ github.run_number }}-${{ github.run_attempt }}_armhf.deb
       - name: Verify armhf software codecs
-        run: experimental/amlenc/scripts/verify-one-kvm-software-codecs.sh out/amlenc/one-kvm/one-kvm_0.2.6+ws1608amlenc.run-${{ github.run_number }}-${{ github.run_attempt }}_armhf.deb
+        run: |
+          experimental/amlenc/scripts/verify-one-kvm-software-codecs.sh out/amlenc/one-kvm/one-kvm_0.2.6+ws1608amlenc.run-${{ github.run_number }}-${{ github.run_attempt }}_armhf.deb >"$RUNNER_TEMP/software-codecs.json"
+          jq -e '.backend == "software" and all(.rows[].cells[]; .ok == true)' "$RUNNER_TEMP/software-codecs.json" >/dev/null
+          echo "SOFTWARE_CODECS_RUNTIME_VERIFIED=true" >>"$GITHUB_ENV"
       - name: Prepare experimental image identity
         run: |
           build_number=$((GITHUB_RUN_NUMBER * 1000 + GITHUB_RUN_ATTEMPT))
@@ -135,6 +138,7 @@ jobs:
           ONE_KVM_DEB: ${{ github.workspace }}/out/amlenc/one-kvm/one-kvm_0.2.6+ws1608amlenc.run-${{ github.run_number }}-${{ github.run_attempt }}_armhf.deb
           AMLIMG_BIN: ${{ github.workspace }}/.tools/AmlImg
           BUILDER_COMMIT: ${{ github.sha }}
+          SOFTWARE_CODECS_RUNTIME_VERIFIED: ${{ env.SOFTWARE_CODECS_RUNTIME_VERIFIED }}
           OUTPUT_DIR: ${{ github.workspace }}/out/amlenc/burn
           WORK_DIR: ${{ github.workspace }}/.build/amlenc/burn
         run: |
@@ -169,7 +173,7 @@ jobs:
       - name: Record untested experimental status
         run: |
           jq -e '.hardware_encoder_tested == false and .one_kvm_included == true and .stable_channel_modified == false' out/amlenc/diagnostic-image/manifest.json
-          jq -e --arg tag "$EXPERIMENTAL_BUILD_TAG" '.build_tag == $tag and .stable_base_preserved == true and .kernel.version == "6.12.28-current-meson" and .hardware_encoder_tested == false and .hardware_boot_tested == false and .one_kvm_included == true' out/amlenc/burn/manifest.json
+          jq -e --arg tag "$EXPERIMENTAL_BUILD_TAG" '.build_tag == $tag and .stable_base_preserved == true and .kernel.version == "6.12.28-current-meson" and .codec_baseline == {software:["h264","h265","vp8","vp9"],hardware:[],runtime_verified:true} and .hardware_encoder_tested == false and .hardware_boot_tested == false and .one_kvm_included == true' out/amlenc/burn/manifest.json
       - name: Verify packaged experimental release
         run: |
           experimental/amlenc/scripts/verify-stable-chain.sh

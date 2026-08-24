@@ -74,6 +74,22 @@ test('runs burn image gates before metadata upload and keeps hardware gate expli
   assert.ok(buildIndex >= 0 && diagnosticIndex > buildIndex && verifyIndex > buildIndex && uploadIndex > verifyIndex);
 });
 
+test('records the verified four-codec software baseline in the burn candidate', () => {
+  const builder = read(builderPath);
+  const verifier = read(verifierPath);
+  const packager = read(packagerPath);
+  const releaseVerifier = read(releaseVerifierPath);
+  const workflow = read(workflowPath);
+
+  for (const source of [builder, verifier, packager, releaseVerifier]) assert.match(source, /codec_baseline/);
+  assert.match(builder, /SOFTWARE_CODECS_RUNTIME_VERIFIED/);
+  assert.match(builder, /software_codecs/);
+  assert.match(verifier, /ws1608-amlenc-build\.json/);
+  assert.match(verifier, /runtime_verified:true/);
+  assert.match(workflow, /SOFTWARE_CODECS_RUNTIME_VERIFIED=true/);
+  assert.match(workflow, /GITHUB_ENV/);
+});
+
 test('keeps untested hardware status explicit in the experimental prerelease', () => {
   const workflow = read(workflowPath);
   assert.match(workflow, /RELEASE_PRERELEASE: 'true'/);
@@ -102,6 +118,7 @@ test('verifies exactly five packaged burn release assets', (t) => {
     base_image_sha256: 'b'.repeat(64),
     kernel: { version: '6.12.28-current-meson', source: 'stable-base' },
     one_kvm: { version: '0.2.6+ws1608amlenc.run-1-1', sha256: 'a'.repeat(64) },
+    codec_baseline: { software: ['h264', 'h265', 'vp8', 'vp9'], hardware: [], runtime_verified: true },
     hardware_boot_tested: false,
     hardware_encoder_tested: false,
     one_kvm_included: true,

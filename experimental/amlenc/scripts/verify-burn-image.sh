@@ -39,6 +39,7 @@ jq -e \
   .kernel == {version: $base_kernel, source: "stable-base"} and
   .kernel.version != "3.10.107" and
   .encoder.driver_status == "research-only" and
+  .codec_baseline == {software:["h264","h265","vp8","vp9"],hardware:[],runtime_verified:true} and
   .hardware_encoder_tested == false and .hardware_boot_tested == false and
   .one_kvm_included == true and .stable_channel_modified == false
 ' "$MANIFEST" >/dev/null || fail "manifest gate"
@@ -93,7 +94,12 @@ done
 metadata="$files_dir/usr/share/doc/one-kvm/ws1608-amlenc-build.json"
 jq -e --arg version "$(jq -er '.one_kvm.version' "$MANIFEST")" '
   .package_version == $version and .amlenc_smoke_test_default == false and
-  .hardware_encoder_tested == false and .stable_channel_modified == false
+  .software_codecs == [
+    {id:"h264",encoder:"libx264",decoder:"h264",hardware:false},
+    {id:"h265",encoder:"libx265",decoder:"hevc",hardware:false},
+    {id:"vp8",encoder:"libvpx_vp8",decoder:"vp8",hardware:false},
+    {id:"vp9",encoder:"libvpx_vp9",decoder:"vp9",hardware:false}
+  ] and .hardware_encoder_tested == false and .stable_channel_modified == false
 ' "$metadata" >/dev/null || fail "installed package provenance mismatch"
 
 binary="$files_dir/usr/bin/one-kvm"

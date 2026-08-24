@@ -11,6 +11,7 @@ REPORT_NAME=${REPORT_NAME:-validation-report.json}
 [[ "$IMAGE_NAME" != */* && "$MANIFEST_NAME" != */* && "$REPORT_NAME" != */* ]] || exit 1
 command -v xz >/dev/null
 command -v sha256sum >/dev/null
+command -v jq >/dev/null
 image="$OUTPUT_DIR/$IMAGE_NAME"
 manifest="$OUTPUT_DIR/$MANIFEST_NAME"
 report="$OUTPUT_DIR/$REPORT_NAME"
@@ -18,6 +19,7 @@ report="$OUTPUT_DIR/$REPORT_NAME"
 jq -e '
   .stable_base_preserved == true and .kernel.source == "stable-base" and
   (.build_tag | test("^ws1608-amlenc-exp-0\\.2\\.6-v[0-9]+-k6\\.12\\.28-b[0-9]{6}$")) and
+  .codec_baseline == {software:["h264","h265","vp8","vp9"],hardware:[],runtime_verified:true} and
   .hardware_encoder_tested == false and .hardware_boot_tested == false and
   .one_kvm_included == true
 ' "$manifest" >/dev/null
