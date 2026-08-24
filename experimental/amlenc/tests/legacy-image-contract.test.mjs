@@ -230,6 +230,22 @@ test('builds a Bullseye SysV rootfs for both kernels without One-KVM', () => {
   assert.doesNotMatch(rootfs, /one-kvm\.deb|\/usr\/bin\/one-kvm/);
 });
 
+test('creates offline rootfs mountpoints with POSIX shell semantics', (t) => {
+  const rootfs = readRequired(files.rootfs);
+  const start = rootfs.indexOf('mkdir -p /work/rootfs-tree/boot');
+  const end = rootfs.indexOf('\n    debugfs -R', start);
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'amlenc-mountpoints-'));
+  t.after(() => fs.rmSync(directory, { recursive: true, force: true }));
+  const command = rootfs.slice(start, end).replaceAll('/work/rootfs-tree', directory);
+
+  const result = spawnSync('sh', ['-c', command], { encoding: 'utf8' });
+
+  assert.equal(result.status, 0, result.stderr || result.stdout);
+  for (const mountpoint of ['boot', 'proc', 'sys', 'dev', 'run']) {
+    assert.equal(fs.statSync(path.join(directory, mountpoint)).isDirectory(), true);
+  }
+});
+
 test('assembles dual boot and rootfs partitions inside the stable AmlImg package', () => {
   const image = readRequired(files.image);
   assert.match(image, /BASE_IMAGE_XZ/);

@@ -83,8 +83,7 @@ docker run --rm --platform linux/arm64 \
     apt-install e2fsprogs >/dev/null
     mkdir /work/rootfs-tree /work/recovery-tree
     tar --numeric-owner --xattrs --acls -xpf /work/rootfs.tar -C /work/rootfs-tree
-    mkdir -p /work/rootfs-tree/boot /work/rootfs-tree/proc \\
-      /work/rootfs-tree/sys /work/rootfs-tree/dev /work/rootfs-tree/run
+    mkdir -p /work/rootfs-tree/boot /work/rootfs-tree/proc /work/rootfs-tree/sys /work/rootfs-tree/dev /work/rootfs-tree/run
     debugfs -R "rdump /lib/modules /work/recovery-tree" /recovery/'"${RECOVERY_ROOTFS_RAW##*/}"'
     debugfs -R "rdump /lib/firmware /work/recovery-tree" /recovery/'"${RECOVERY_ROOTFS_RAW##*/}"'
     test -d /work/recovery-tree/modules/'"$RECOVERY_KERNEL"'
