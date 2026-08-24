@@ -1,0 +1,512 @@
+diff --git a/libs/hwcodec/cpp/ffmpeg_ram/ffmpeg_ram_encode.cpp b/libs/hwcodec/cpp/ffmpeg_ram/ffmpeg_ram_encode.cpp
+index d96fbd0..7fb43ed 100644
+--- a/libs/hwcodec/cpp/ffmpeg_ram/ffmpeg_ram_encode.cpp
++++ b/libs/hwcodec/cpp/ffmpeg_ram/ffmpeg_ram_encode.cpp
+@@ -727,3 +727,7 @@ extern "C" void ffmpeg_ram_request_keyframe(FFmpegRamEncoder *encoder) {
+ extern "C" const char *ffmpeg_ram_encoder_last_error(void) {
+   return g_encoder_last_error.c_str();
+ }
++
++extern "C" int ffmpeg_ram_has_encoder(const char *name) {
++  return name && avcodec_find_encoder_by_name(name) ? 1 : 0;
++}
+diff --git a/libs/hwcodec/cpp/ffmpeg_ram/ffmpeg_ram_ffi.h b/libs/hwcodec/cpp/ffmpeg_ram/ffmpeg_ram_ffi.h
+index b30de54..76d624c 100644
+--- a/libs/hwcodec/cpp/ffmpeg_ram/ffmpeg_ram_ffi.h
++++ b/libs/hwcodec/cpp/ffmpeg_ram/ffmpeg_ram_ffi.h
+@@ -32,6 +32,7 @@ int ffmpeg_ram_get_linesize_offset_length(int pix_fmt, int width, int height,
+ int ffmpeg_ram_set_bitrate(void *encoder, int kbs);
+ void ffmpeg_ram_request_keyframe(void *encoder);
+ const char *ffmpeg_ram_encoder_last_error(void);
++int ffmpeg_ram_has_encoder(const char *name);
+ 
+ void *ffmpeg_ram_new_decoder(const char *name, int width, int height,
+                              int sw_pixfmt, int thread_count,
+diff --git a/libs/hwcodec/src/ffmpeg_ram/encode.rs b/libs/hwcodec/src/ffmpeg_ram/encode.rs
+index de99b9c..ba2d100 100644
+--- a/libs/hwcodec/src/ffmpeg_ram/encode.rs
++++ b/libs/hwcodec/src/ffmpeg_ram/encode.rs
+@@ -6,7 +6,7 @@ use crate::{
+     ffmpeg_ram::{
+         ffmpeg_linesize_offset_length, ffmpeg_ram_encode, ffmpeg_ram_encoder_last_error,
+         ffmpeg_ram_free_encoder, ffmpeg_ram_new_encoder, ffmpeg_ram_request_keyframe,
+-        ffmpeg_ram_set_bitrate, CodecInfo, AV_NUM_DATA_POINTERS,
++        ffmpeg_ram_set_bitrate, has_encoder, CodecInfo, AV_NUM_DATA_POINTERS,
+     },
+ };
+ #[cfg(feature = "bytes")]
+@@ -423,6 +423,10 @@ fn add_software_fallback(codecs: &mut Vec<CodecInfo>) {
+     use log::debug;
+ 
+     for fallback in CodecInfo::soft().into_vec() {
++        if !has_encoder(&fallback.name) {
++            debug!("Software {:?} encoder is not embedded: {}", fallback.format, fallback.name);
++            continue;
++        }
+         if !codecs.iter().any(|codec| codec.format == fallback.format) {
+             debug!(
+                 "Adding software {:?} encoder: {}",
+diff --git a/libs/hwcodec/src/ffmpeg_ram/mod.rs b/libs/hwcodec/src/ffmpeg_ram/mod.rs
+index f90b0ac..0dcfecc 100644
+--- a/libs/hwcodec/src/ffmpeg_ram/mod.rs
++++ b/libs/hwcodec/src/ffmpeg_ram/mod.rs
+@@ -5,6 +5,7 @@
+ use crate::common::DataFormat::{self, *};
+ use crate::ffmpeg::AVHWDeviceType::{self, *};
+ use serde_derive::{Deserialize, Serialize};
++use std::ffi::CString;
+ use std::ffi::c_int;
+ 
+ include!(concat!(env!("OUT_DIR"), "/ffmpeg_ram_ffi.rs"));
+@@ -95,13 +96,13 @@ impl CodecInfo {
+                 priority: Priority::Soft as _,
+             }),
+             VP8 => Some(CodecInfo {
+-                name: "libvpx".to_owned(),
++                name: "libvpx_vp8".to_owned(),
+                 format: VP8,
+                 hwdevice: AV_HWDEVICE_TYPE_NONE,
+                 priority: Priority::Soft as _,
+             }),
+             VP9 => Some(CodecInfo {
+-                name: "libvpx-vp9".to_owned(),
++                name: "libvpx_vp9".to_owned(),
+                 format: VP9,
+                 hwdevice: AV_HWDEVICE_TYPE_NONE,
+                 priority: Priority::Soft as _,
+@@ -181,6 +182,12 @@ impl CodecInfo {
+     }
+ }
+ 
++pub fn has_encoder(name: &str) -> bool {
++    CString::new(name)
++        .ok()
++        .is_some_and(|name| unsafe { ffmpeg_ram_has_encoder(name.as_ptr()) != 0 })
++}
++
+ #[derive(Debug, Eq, PartialEq, Clone, Serialize, Deserialize)]
+ pub struct CodecInfos {
+     pub h264: Option<CodecInfo>,
+diff --git a/src/main.rs b/src/main.rs
+index e407bb3..5440044 100644
+--- a/src/main.rs
++++ b/src/main.rs
+@@ -35,6 +35,7 @@ use one_kvm::video::codec_constraints::{
+     enforce_constraints_with_stream_manager, validate_third_party_codec_compatibility,
+     StreamCodecConstraints,
+ };
++use one_kvm::video::codec::{run_codec_self_check, CodecSelfCheckBackend};
+ use one_kvm::video::format::{PixelFormat, Resolution};
+ use one_kvm::video::{Streamer, VideoStreamManager};
+ use one_kvm::vnc::VncService;
+@@ -106,6 +107,8 @@ struct CliArgs {
+ enum CliCommand {
+     /// Manage local users
+     User(UserCommand),
++    /// Verify embedded video codec paths
++    Codec(CodecCommand),
+ }
+ 
+ #[derive(Args, Debug)]
+@@ -122,6 +125,44 @@ enum UserAction {
+     DisableTotp,
+ }
+ 
++#[derive(Args, Debug)]
++struct CodecCommand {
++    #[command(subcommand)]
++    action: CodecAction,
++}
++
++#[derive(Subcommand, Debug)]
++enum CodecAction {
++    /// Run video encoder self-checks
++    SelfCheck(CodecSelfCheckArgs),
++}
++
++#[derive(Args, Debug)]
++struct CodecSelfCheckArgs {
++    /// Encoder backend to verify
++    #[arg(long, value_enum, default_value_t = CodecSelfCheckBackendArg::Software)]
++    backend: CodecSelfCheckBackendArg,
++    /// Write a machine-readable JSON result
++    #[arg(long)]
++    json: bool,
++}
++
++#[derive(Debug, Clone, Copy, Default, ValueEnum)]
++enum CodecSelfCheckBackendArg {
++    #[default]
++    Software,
++    Hardware,
++}
++
++impl From<CodecSelfCheckBackendArg> for CodecSelfCheckBackend {
++    fn from(value: CodecSelfCheckBackendArg) -> Self {
++        match value {
++            CodecSelfCheckBackendArg::Software => Self::Software,
++            CodecSelfCheckBackendArg::Hardware => Self::Hardware,
++        }
++    }
++}
++
+ #[tokio::main]
+ async fn main() -> anyhow::Result<()> {
+     let args = CliArgs::parse();
+@@ -883,16 +924,42 @@ fn restart_current_process(exe_path: Option<PathBuf>) -> anyhow::Result<()> {
+ }
+ 
+ async fn run_cli_command(command: CliCommand, data_dir: PathBuf) -> anyhow::Result<()> {
+-    tokio::fs::create_dir_all(&data_dir).await?;
+-    let db = open_database_pool(&data_dir).await?;
+-    let users = UserStore::new(db.clone_pool());
+-    let two_factor = TwoFactorService::new(db.clone_pool());
+-    let sessions = SessionStore::new(0);
+-
+     match command {
+         CliCommand::User(user) => {
++            tokio::fs::create_dir_all(&data_dir).await?;
++            let db = open_database_pool(&data_dir).await?;
++            let users = UserStore::new(db.clone_pool());
++            let two_factor = TwoFactorService::new(db.clone_pool());
++            let sessions = SessionStore::new(0);
+             run_user_action(user.action, &users, &sessions, &two_factor).await
+         }
++        CliCommand::Codec(codec) => run_codec_action(codec.action),
++    }
++}
++
++fn run_codec_action(action: CodecAction) -> anyhow::Result<()> {
++    let CodecAction::SelfCheck(args) = action;
++    let result = run_codec_self_check(args.backend.into());
++    if args.json {
++        println!("{}", serde_json::to_string(&result)?);
++    } else {
++        for cell in result.rows.iter().flat_map(|row| &row.cells) {
++            println!(
++                "{} {} {} decoded={}/{} keyframe={} ok={}",
++                cell.codec_id,
++                cell.backend,
++                cell.encoder,
++                cell.decoded_frames,
++                cell.submitted_frames,
++                cell.keyframe,
++                cell.ok,
++            );
++        }
++    }
++    if result.all_passed() {
++        Ok(())
++    } else {
++        anyhow::bail!("video codec self-check failed")
+     }
+ }
+ 
+diff --git a/src/video/codec/mod.rs b/src/video/codec/mod.rs
+index 04d8823..3d82a0a 100644
+--- a/src/video/codec/mod.rs
++++ b/src/video/codec/mod.rs
+@@ -12,6 +12,7 @@ pub mod h265;
+ pub mod jpeg;
+ pub mod registry;
+ pub mod self_check;
++pub mod software_self_check;
+ pub mod traits;
+ pub mod video_codec;
+ pub mod vp8;
+@@ -30,6 +31,9 @@ pub use self_check::{
+     build_hardware_self_check_runtime_error, run_hardware_self_check, VideoEncoderSelfCheckCell,
+     VideoEncoderSelfCheckCodec, VideoEncoderSelfCheckResponse, VideoEncoderSelfCheckRow,
+ };
++pub use software_self_check::{
++    run_codec_self_check, CodecSelfCheckBackend, SoftwareCodecSelfCheckResponse,
++};
+ pub use traits::{
+     BitratePreset, EncodedFormat, EncodedFrame, Encoder, EncoderConfig, EncoderFactory,
+ };
+diff --git a/src/video/codec/registry.rs b/src/video/codec/registry.rs
+index 5a35cca..33c9625 100644
+--- a/src/video/codec/registry.rs
++++ b/src/video/codec/registry.rs
+@@ -16,7 +16,7 @@ use super::amlenc::{
+ 
+ use hwcodec::common::{DataFormat, Quality, RateControl};
+ use hwcodec::ffmpeg::{resolve_pixel_format, AVPixelFormat};
+-use hwcodec::ffmpeg_ram::encode::{EncodeContext, Encoder as HwEncoder};
++use hwcodec::ffmpeg_ram::{encode::{EncodeContext, Encoder as HwEncoder}, has_encoder};
+ use hwcodec::ffmpeg_ram::CodecInfo;
+ 
+ // Keep native AMLENC behind the highest-priority desktop GPU backends while
+@@ -273,6 +273,11 @@ impl EncoderRegistry {
+                 VideoEncoderType::VP9 => "libvpx_vp9",
+             };
+ 
++            if !has_encoder(codec_name) {
++                warn!("Software {} encoder is not embedded", codec_name);
++                continue;
++            }
++
+             encoders.push(AvailableEncoder {
+                 format,
+                 codec_name: codec_name.to_string(),
+diff --git a/src/video/codec/software_self_check.rs b/src/video/codec/software_self_check.rs
+new file mode 100644
+index 0000000..b89faff
+--- /dev/null
++++ b/src/video/codec/software_self_check.rs
+@@ -0,0 +1,255 @@
++use hwcodec::{
++    common::{Quality, RateControl},
++    ffmpeg::{resolve_pixel_format, AVPixelFormat},
++    ffmpeg_ram::{
++        decode::{DecodeContext, Decoder},
++        encode::{EncodeContext, Encoder as HwEncoder},
++        has_encoder,
++    },
++};
++use serde::Serialize;
++use std::{
++    sync::mpsc,
++    time::{Duration, Instant},
++};
++
++const SOFTWARE_SELF_CHECK_WIDTH: u32 = 320;
++const SOFTWARE_SELF_CHECK_HEIGHT: u32 = 240;
++const SOFTWARE_SELF_CHECK_FPS: u32 = 10;
++const SOFTWARE_SELF_CHECK_FRAME_COUNT: u32 = 10;
++const SOFTWARE_SELF_CHECK_TIMEOUT: Duration = Duration::from_secs(5);
++
++#[derive(Debug, Clone, Copy, PartialEq, Eq)]
++pub enum CodecSelfCheckBackend {
++    Software,
++    Hardware,
++}
++
++impl CodecSelfCheckBackend {
++    pub const fn id(self) -> &'static str {
++        match self {
++            Self::Software => "software",
++            Self::Hardware => "hardware",
++        }
++    }
++}
++
++#[derive(Serialize)]
++pub struct SoftwareCodecSelfCheckCell {
++    pub codec_id: &'static str,
++    pub encoder: &'static str,
++    pub decoder: &'static str,
++    pub backend: &'static str,
++    pub submitted_frames: u32,
++    pub decoded_frames: u32,
++    pub keyframe: bool,
++    pub ok: bool,
++    pub elapsed_ms: u64,
++    #[serde(skip_serializing_if = "Option::is_none")]
++    pub error: Option<&'static str>,
++}
++
++#[derive(Serialize)]
++pub struct SoftwareCodecSelfCheckRow {
++    pub resolution_id: &'static str,
++    pub width: u32,
++    pub height: u32,
++    pub cells: Vec<SoftwareCodecSelfCheckCell>,
++}
++
++#[derive(Serialize)]
++pub struct SoftwareCodecSelfCheckResponse {
++    pub backend: &'static str,
++    pub rows: Vec<SoftwareCodecSelfCheckRow>,
++}
++
++impl SoftwareCodecSelfCheckResponse {
++    pub fn all_passed(&self) -> bool {
++        self.rows
++            .iter()
++            .flat_map(|row| &row.cells)
++            .all(|cell| cell.ok)
++    }
++}
++
++#[derive(Clone, Copy)]
++struct SoftwareCodecSpec {
++    id: &'static str,
++    encoder: &'static str,
++    decoder: &'static str,
++}
++
++const SOFTWARE_CODECS: [SoftwareCodecSpec; 4] = [
++    SoftwareCodecSpec {
++        id: "h264",
++        encoder: "libx264",
++        decoder: "h264",
++    },
++    SoftwareCodecSpec {
++        id: "h265",
++        encoder: "libx265",
++        decoder: "hevc",
++    },
++    SoftwareCodecSpec {
++        id: "vp8",
++        encoder: "libvpx_vp8",
++        decoder: "vp8",
++    },
++    SoftwareCodecSpec {
++        id: "vp9",
++        encoder: "libvpx_vp9",
++        decoder: "vp9",
++    },
++];
++
++pub fn run_codec_self_check(backend: CodecSelfCheckBackend) -> SoftwareCodecSelfCheckResponse {
++    let cells = SOFTWARE_CODECS
++        .into_iter()
++        .map(|codec| run_single_codec(codec, backend))
++        .collect();
++    SoftwareCodecSelfCheckResponse {
++        backend: backend.id(),
++        rows: vec![SoftwareCodecSelfCheckRow {
++            resolution_id: "320p",
++            width: SOFTWARE_SELF_CHECK_WIDTH,
++            height: SOFTWARE_SELF_CHECK_HEIGHT,
++            cells,
++        }],
++    }
++}
++
++fn run_single_codec(
++    spec: SoftwareCodecSpec,
++    backend: CodecSelfCheckBackend,
++) -> SoftwareCodecSelfCheckCell {
++    let started = Instant::now();
++    if backend != CodecSelfCheckBackend::Software {
++        return failed_cell(spec, backend, started, "hardware_self_check_not_supported");
++    }
++    if !has_encoder(spec.encoder) {
++        return failed_cell(spec, backend, started, "encoder_unavailable");
++    }
++    let (sender, receiver) = mpsc::channel();
++    let _ = std::thread::Builder::new()
++        .name(format!("software-codec-self-check-{}", spec.id))
++        .spawn(move || {
++            let _ = sender.send(run_software_codec(spec));
++        });
++    match receiver.recv_timeout(SOFTWARE_SELF_CHECK_TIMEOUT) {
++        Ok(Ok(metrics)) => successful_cell(spec, backend, started, metrics),
++        Ok(Err(error)) => failed_cell(spec, backend, started, error),
++        Err(_) => failed_cell(spec, backend, started, "self_check_timeout"),
++    }
++}
++
++struct Metrics {
++    decoded_frames: u32,
++    keyframe: bool,
++}
++
++fn run_software_codec(spec: SoftwareCodecSpec) -> Result<Metrics, &'static str> {
++    let mut encoder = HwEncoder::new(EncodeContext {
++        name: spec.encoder.to_string(),
++        width: SOFTWARE_SELF_CHECK_WIDTH as i32,
++        height: SOFTWARE_SELF_CHECK_HEIGHT as i32,
++        pixfmt: resolve_pixel_format("yuv420p", AVPixelFormat::AV_PIX_FMT_YUV420P),
++        align: 1,
++        fps: SOFTWARE_SELF_CHECK_FPS as i32,
++        gop: SOFTWARE_SELF_CHECK_FRAME_COUNT as i32,
++        rc: RateControl::RC_CBR,
++        quality: Quality::Quality_Low,
++        kbs: 400,
++        q: 23,
++        thread_count: 1,
++    })
++    .map_err(|_| "encoder_initialization_failed")?;
++    let mut decoder = Decoder::new(DecodeContext {
++        name: spec.decoder.to_string(),
++        width: SOFTWARE_SELF_CHECK_WIDTH as i32,
++        height: SOFTWARE_SELF_CHECK_HEIGHT as i32,
++        sw_pixfmt: AVPixelFormat::AV_PIX_FMT_YUV420P,
++        thread_count: 1,
++    })
++    .map_err(|_| "decoder_initialization_failed")?;
++    let frame = build_yuv420p_test_frame(encoder.length as usize);
++    encoder.request_keyframe();
++    let mut decoded_frames = 0;
++    let mut keyframe = false;
++    for sequence in 0..SOFTWARE_SELF_CHECK_FRAME_COUNT {
++        let packets = encoder
++            .encode(&frame, i64::from(sequence * 100))
++            .map_err(|_| "encode_failed")?;
++        if packets.is_empty() {
++            return Err("empty_output");
++        }
++        for packet in packets.iter() {
++            if packet.data.is_empty() {
++                return Err("empty_output");
++            }
++            keyframe |= packet.key != 0;
++            decoded_frames += decoder
++                .decode(&packet.data)
++                .map_err(|_| "decode_failed")?
++                .len() as u32;
++        }
++    }
++    if !keyframe {
++        return Err("keyframe_missing");
++    }
++    if decoded_frames != SOFTWARE_SELF_CHECK_FRAME_COUNT {
++        return Err("frame_count_mismatch");
++    }
++    Ok(Metrics {
++        decoded_frames,
++        keyframe,
++    })
++}
++
++fn build_yuv420p_test_frame(length: usize) -> Vec<u8> {
++    let y_len = (SOFTWARE_SELF_CHECK_WIDTH * SOFTWARE_SELF_CHECK_HEIGHT) as usize;
++    let mut frame = vec![0x80; length.max(y_len * 3 / 2)];
++    for (index, pixel) in frame[..y_len].iter_mut().enumerate() {
++        *pixel = 16 + (index % 200) as u8;
++    }
++    frame
++}
++
++fn successful_cell(
++    spec: SoftwareCodecSpec,
++    backend: CodecSelfCheckBackend,
++    started: Instant,
++    metrics: Metrics,
++) -> SoftwareCodecSelfCheckCell {
++    SoftwareCodecSelfCheckCell {
++        codec_id: spec.id,
++        encoder: spec.encoder,
++        decoder: spec.decoder,
++        backend: backend.id(),
++        submitted_frames: SOFTWARE_SELF_CHECK_FRAME_COUNT,
++        decoded_frames: metrics.decoded_frames,
++        keyframe: metrics.keyframe,
++        ok: true,
++        elapsed_ms: started.elapsed().as_millis() as u64,
++        error: None,
++    }
++}
++
++fn failed_cell(
++    spec: SoftwareCodecSpec,
++    backend: CodecSelfCheckBackend,
++    started: Instant,
++    error: &'static str,
++) -> SoftwareCodecSelfCheckCell {
++    SoftwareCodecSelfCheckCell {
++        codec_id: spec.id,
++        encoder: spec.encoder,
++        decoder: spec.decoder,
++        backend: backend.id(),
++        submitted_frames: SOFTWARE_SELF_CHECK_FRAME_COUNT,
++        decoded_frames: 0,
++        keyframe: false,
++        ok: false,
++        elapsed_ms: started.elapsed().as_millis() as u64,
++        error: Some(error),
++    }
++}

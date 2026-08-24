@@ -93,7 +93,7 @@ without starting the web server, capture device, OTG service or database.
 
 For each of the four codecs it must:
 
-1. construct a deterministic NV12 `320x240` test sequence at 10 fps;
+1. construct a deterministic YUV420P `320x240` test sequence at 10 fps;
 2. encode at least ten frames with the required software encoder;
 3. force a keyframe where the codec supports it;
 4. reject empty output, timeout, invalid packet sequence or unsupported

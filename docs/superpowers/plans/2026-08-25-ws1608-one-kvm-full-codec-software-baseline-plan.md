@@ -172,7 +172,7 @@ src/video/codec/registry.rs
 
 src/video/codec/self_check.rs
     Add Software and Hardware selection, use 320x240 at 10 fps for Software,
-    encode ten deterministic NV12 frames, request a keyframe for H.264/H.265,
+    encode ten deterministic YUV420P frames, request a keyframe for H.264/H.265,
     decode the packets, compare submitted and decoded frame counts, and return
     sanitized per-codec errors.
 
