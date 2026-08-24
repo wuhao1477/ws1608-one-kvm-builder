@@ -6,6 +6,7 @@ const files = {
   config: 'experimental/amlenc/config/legacy-bringup.env',
   rootfs: 'experimental/amlenc/scripts/build-legacy-rootfs.sh',
   image: 'experimental/amlenc/scripts/build-legacy-bringup-image.sh',
+  verify: 'experimental/amlenc/scripts/verify-legacy-bringup-image.sh',
 };
 
 function readRequired(filePath) {
@@ -21,6 +22,29 @@ test('defines fixed legacy bring-up partition and kernel identities', () => {
   assert.match(config, /^RECOVERY_KERNEL=6\.12\.28-current-meson$/m);
   assert.match(config, /^LEGACY_KERNEL=3\.10\.107$/m);
   assert.match(config, /^RECOVERY_BOOT_LABEL=armbi_boot$/m);
+});
+
+test('independently verifies recovery identity, rootfs and untested status', () => {
+  const verify = readRequired(files.verify);
+  assert.match(verify, /AmlImg|AMLIMG_BIN/);
+  assert.match(verify, /cmp[\s\S]*base[\s\S]*final/);
+  assert.match(verify, /name.*!=.*boot.*name.*!=.*rootfs/);
+  assert.match(verify, /sha1sum/);
+  assert.match(verify, /e2fsck/);
+  assert.match(verify, /mcopy/);
+  assert.match(verify, /mkimage -l/);
+  assert.match(verify, /debugfs/);
+  assert.match(verify, /uImage\.recovery/);
+  assert.match(verify, /uInitrd\.recovery/);
+  assert.match(verify, /6\.12\.28-current-meson/);
+  assert.match(verify, /3\.10\.107/);
+  assert.match(verify, /ws1608-amlenc-arm-trial/);
+  assert.match(verify, /ws1608-amlenc-mark-success/);
+  assert.match(verify, /PasswordAuthentication no/);
+  assert.match(verify, /one-kvm/);
+  for (const field of ['hardware_boot_tested', 'hardware_encoder_tested', 'one_kvm_included', 'hid_tested', 'msd_tested']) {
+    assert.match(verify, new RegExp(`${field}.*false`));
+  }
 });
 
 test('builds a Bullseye SysV rootfs for both kernels without One-KVM', () => {
