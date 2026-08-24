@@ -18,7 +18,7 @@ trap 'rm -rf "$runtime_dir"' EXIT
 dpkg-deb -x "$package_path" "$runtime_dir/root"
 
 result=$(docker run --rm --platform linux/arm/v7 \
-  -v "$runtime_dir/root:/opt/one-kvm:ro" "$ONE_KVM_ARMV7_OCI_IMAGE" sh -euc '
+  -v "$runtime_dir/root:/opt/one-kvm:ro" "$BULLSEYE_ARMV7_OCI_IMAGE" sh -euc '
     export DEBIAN_FRONTEND=noninteractive
     apt-get update >&2
     apt-get install -y --no-install-recommends ca-certificates libasound2 libdrm2 libudev1 libv4l-0 libva2 >&2

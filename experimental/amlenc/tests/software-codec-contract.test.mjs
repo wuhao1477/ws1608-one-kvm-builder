@@ -59,6 +59,7 @@ test('requires armhf runtime verification before experimental burn assembly', ()
   for (const source of [build, verify, metadata]) assert.match(source, /software_codecs/);
   for (const codec of ['h264', 'h265', 'vp8', 'vp9']) assert.match(runtime, new RegExp(codec));
   assert.match(runtime, /--platform linux\/arm\/v7/);
+  assert.match(runtime, /BULLSEYE_ARMV7_OCI_IMAGE/);
   assert.match(runtime, /one-kvm codec self-check --backend software --json/);
   assert.match(runtime, /submitted_frames == 10/);
   assert.match(runtime, /decoded_frames == 10/);
