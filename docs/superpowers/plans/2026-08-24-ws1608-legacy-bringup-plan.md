@@ -295,6 +295,37 @@ git push
   step was not runnable on macOS because the local Homebrew installation has
   no `mkimage`; the same verifier passed in both Ubuntu Actions jobs.
 
+#### Firstboot SSH Fix Evidence — 2026-08-24
+
+- Root cause: the prior candidate ran `ssh-keygen -A` from the early `S01`
+  init slot, before its runtime prerequisites were reliable. A failed key
+  generation left no host keys, so `sshd` did not listen on TCP 22.
+- Commit `61e8fb6 fix(amlenc): 修复首次启动 SSH` moves the firstboot helper to
+  `S99`, requires `sshd -t` to pass before writing its completion marker, and
+  removes all generated host keys and build markers before the rootfs is
+  archived. The image verifier rejects every preinstalled `ssh_host_*` entry,
+  both old and new completion-marker paths, and the obsolete `S01` link.
+- Local gates after the fix: `npm test` 145/145; AMLENC tests 86/86; changed
+  shell files pass `bash -n`; `actionlint`, `git diff --check`, stable-chain
+  verification (42 files), and source-lock verification (4 locks) pass.
+- Manual workflow run:
+  [32713900738](https://github.com/wuhao1477/ws1608-one-kvm-builder/actions/runs/32713900738)
+  on commit `61e8fb6`; contract, candidate build, and independent
+  downloaded-artifact recheck jobs all succeeded.
+- Artifact: GitHub artifact `9515747841`,
+  `ws1608-amlenc-legacy-b012001`, exactly five files; build revision
+  `b012001`.
+- Candidate image:
+  `WS1608-AMLENC-Bringup_b012001_Onecloud_bullseye_3.10.107-recovery6.12.28.burn.img`
+  SHA-256 `2ce2054f56a23e61ccebafb2a50ebc2513a67445eedaac3450a956defafba924`.
+- Compressed image:
+  `WS1608-AMLENC-Bringup_b012001_Onecloud_bullseye_3.10.107-recovery6.12.28.burn.img.xz`
+  SHA-256 `a7323ba1a911107f4ff0eecf25c88f1a66670219c61e0cdfa01822fadda62357`.
+- Independent local artifact checks: five regular files, all `SHA256SUMS`
+  entries valid, and `xz -t` valid. Its manifest remains
+  `hardware_boot_tested=false`, `hardware_encoder_tested=false`,
+  `one_kvm_included=false`, `hid_tested=false`, and `msd_tested=false`.
+
 ## Deferred Plans
 
 - Stage C/D: `/dev/amvenc_avc`, bounded mmap and standalone 720p30 encoding.
