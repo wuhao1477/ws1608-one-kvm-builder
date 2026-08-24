@@ -63,6 +63,10 @@ scripts_config="$SOURCE_DIR/scripts/config"
   --enable CMA --enable AMLOGIC_ION --enable USB_GADGET --enable AM_ENCODER \
   --disable MALI400 --disable MALI450 --disable MALI400_UMP \
   --disable FB_AMLOGIC_UMP --disable FB_TFT --disable UMP
+"$scripts_config" --file "$BUILD_DIR/.config" \
+  --enable CMA_SIZE_SEL_MBYTES --disable CMA_SIZE_SEL_PERCENTAGE \
+  --disable CMA_SIZE_SEL_MIN --disable CMA_SIZE_SEL_MAX \
+  --set-val CMA_SIZE_MBYTES 64
 make -C "$SOURCE_DIR" "${make_args[@]}" olddefconfig
 make -C "$SOURCE_DIR" "${make_args[@]}" -j"$JOBS" zImage meson8b_odroidc.dtb modules
 

@@ -10,8 +10,11 @@ const verifier = path.resolve('experimental/amlenc/scripts/verify-kernel-source-
 function createRepository() {
   const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'amlenc-kernel-source-'));
   const dts = path.join(directory, 'arch/arm/boot/dts/meson8b_odroidc.dts');
+  const encoder = path.join(directory, 'drivers/amlogic/amports/encoder.c');
   fs.mkdirSync(path.dirname(dts), { recursive: true });
+  fs.mkdirSync(path.dirname(encoder), { recursive: true });
   fs.writeFileSync(dts, 'model = "ODROID-C";\n');
+  fs.writeFileSync(encoder, 'reserve_buff[i].buf_size = reserve_mem.buf_start;\n');
   execFileSync('git', ['init', '-q'], { cwd: directory });
   execFileSync('git', ['add', '.'], { cwd: directory });
   execFileSync(
@@ -19,7 +22,7 @@ function createRepository() {
     ['-c', 'user.name=test', '-c', 'user.email=test@example.invalid', 'commit', '-q', '-m', 'baseline'],
     { cwd: directory },
   );
-  return { directory, dts };
+  return { directory, dts, encoder };
 }
 
 function verify(directory) {
@@ -30,6 +33,7 @@ test('accepts the expected clean WS1608 DTS patch', (t) => {
   const repository = createRepository();
   t.after(() => fs.rmSync(repository.directory, { recursive: true, force: true }));
   fs.writeFileSync(repository.dts, 'model = "WS1608 OneCloud";\n');
+  fs.writeFileSync(repository.encoder, 'reserve_buff[i].buf_size = min_buffsize;\n');
 
   const result = verify(repository.directory);
 
@@ -40,6 +44,7 @@ test('rejects whitespace errors in the expected DTS patch', (t) => {
   const repository = createRepository();
   t.after(() => fs.rmSync(repository.directory, { recursive: true, force: true }));
   fs.writeFileSync(repository.dts, 'model = "WS1608 OneCloud";  \n');
+  fs.writeFileSync(repository.encoder, 'reserve_buff[i].buf_size = min_buffsize;\n');
 
   assert.notEqual(verify(repository.directory).status, 0);
 });
@@ -48,6 +53,7 @@ test('rejects source changes outside the expected DTS', (t) => {
   const repository = createRepository();
   t.after(() => fs.rmSync(repository.directory, { recursive: true, force: true }));
   fs.writeFileSync(repository.dts, 'model = "WS1608 OneCloud";\n');
+  fs.writeFileSync(repository.encoder, 'reserve_buff[i].buf_size = min_buffsize;\n');
   fs.writeFileSync(path.join(repository.directory, 'unexpected.txt'), 'unexpected\n');
 
   assert.notEqual(verify(repository.directory).status, 0);

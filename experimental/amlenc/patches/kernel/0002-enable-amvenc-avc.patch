@@ -1,35 +1,50 @@
-From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From b6a753090bc42f7ae2a45a1dee37619ea5b5cdf4 Mon Sep 17 00:00:00 2001
 From: WS1608 One-KVM Builder <noreply@github.com>
-Date: Thu, 13 Aug 2026 15:24:14 +0000
-Subject: [PATCH 2/2] ARM: dts: reserve one 18 MiB S805 encoder instance
+Date: Mon, 24 Aug 2026 13:41:31 +0800
+Subject: [PATCH 2/2] media: amlogic: use CMA and fix encoder buffer size
 
 ---
- arch/arm/boot/dts/meson8b_odroidc.dts | 8 ++++----
- 1 file changed, 4 insertions(+), 4 deletions(-)
+ arch/arm/boot/dts/meson8b_odroidc.dts | 6 ------
+ drivers/amlogic/amports/encoder.c     | 2 +-
+ 2 files changed, 1 insertion(+), 7 deletions(-)
 
 diff --git a/arch/arm/boot/dts/meson8b_odroidc.dts b/arch/arm/boot/dts/meson8b_odroidc.dts
-index 4e8795b..5a94bd3 100755
+index de0407e..997f17e 100755
 --- a/arch/arm/boot/dts/meson8b_odroidc.dts
 +++ b/arch/arm/boot/dts/meson8b_odroidc.dts
-@@ -63,9 +63,9 @@
+@@ -63,11 +63,6 @@
          #address-cells = <1>;
          #size-cells = <1>;
  
 -        cma_0:region@0 {
 -           region_name = "cma_0";
 -           reg = <0 0x02a00000>;
-+        cma_encoder:region@0 {
-+           region_name = "cma_encoder";
-+           reg = <0x0 0x01200000>;
-            linux,contiguous-region;
+-           linux,contiguous-region;
+-        };
          };
-         };
-@@ -130,7 +130,7 @@
+ 
+         gic:interrupt-controller{
+@@ -130,7 +125,6 @@
                  compatible = "amlogic,amvenc_avc";
                  dev_name = "amvenc_avc.0";
                  status = "okay";
 -                linux,contiguous-region = <&cma_0>;
-+                linux,contiguous-region = <&cma_encoder>;
                  reserve-iomap = "true";
          };
  
+diff --git a/drivers/amlogic/amports/encoder.c b/drivers/amlogic/amports/encoder.c
+index 6d1fd81..b3399b0 100644
+--- a/drivers/amlogic/amports/encoder.c
++++ b/drivers/amlogic/amports/encoder.c
+@@ -2789,7 +2789,7 @@ static int amvenc_avc_probe(struct platform_device *pdev)
+                 int i = 0;
+                 for(i = 0; i < encode_manager.max_instance;i++){
+                     encode_manager.reserve_buff[i].buf_start = i*amvenc_buffspec[AMVENC_BUFFER_LEVEL_1080P].min_buffsize+encode_manager.reserve_mem.buf_start;
+-                    encode_manager.reserve_buff[i].buf_size = encode_manager.reserve_mem.buf_start;
++                    encode_manager.reserve_buff[i].buf_size = amvenc_buffspec[AMVENC_BUFFER_LEVEL_1080P].min_buffsize;
+                     encode_manager.reserve_buff[i].used = false;
+                 }
+                 encode_manager.use_reserve = true;
+-- 
+2.50.1 (Apple Git-155)
+

@@ -13,6 +13,11 @@ for option in CMA AMLOGIC_ION USB_GADGET AM_ENCODER; do
   }
 done
 
+grep -Fqx 'CONFIG_CMA_SIZE_MBYTES=64' "$CONFIG_FILE" || {
+  echo 'CONFIG_CMA_SIZE_MBYTES must be 64' >&2
+  exit 1
+}
+
 for option in MALI400 MALI450 MALI400_UMP FB_AMLOGIC_UMP FB_TFT UMP; do
   state=$("$CONFIG_TOOL" --file "$CONFIG_FILE" --state "$option")
   [[ "$state" == n || "$state" == undef ]] || {

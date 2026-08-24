@@ -20,6 +20,11 @@ test('adapts the vendor board without ODROID-only GPIO consumers', () => {
 
   assert.match(patch, /model = "WS1608 OneCloud"/);
   assert.match(patch, /reset_pin = "GPIOH_4"/);
+  assert.match(patch, /pmw_controller = "PWM_D"/);
+  assert.match(patch, /amlogic,setmask=<3 0x04000000>/);
+  assert.match(patch, /amlogic,pins="GPIODV_28"/);
+  assert.match(patch, /pinctrl-0 = <&aml_pwm_d_pins>/);
+  for (const gpio of ['GPIOAO_2', 'GPIOAO_3', 'GPIOAO_4']) assert.match(patch, new RegExp(gpio));
   assert.match(patch, /^-\s*emmc\{/m);
   assert.match(patch, /^-\s*sd\{/m);
   assert.match(patch, /gpio-hub-rst = "GPIOAO_4"/);
@@ -30,13 +35,13 @@ test('adapts the vendor board without ODROID-only GPIO consumers', () => {
   assert.doesNotMatch(patch, /^\+.*(?:Hardkernel|ODROID|GPIOX_1|GPIOX_2|odroid_pwm0|odroid_pwm1)/m);
 });
 
-test('binds the H.264 encoder to exactly 18 MiB of contiguous memory', () => {
+test('uses global CMA and fixes the vendor encoder buffer size', () => {
   const patch = readRequired(files.encoder);
 
-  assert.match(patch, /region_name = "cma_encoder"/);
-  assert.match(patch, /reg = <0x0 0x01200000>/);
   assert.match(patch, /compatible = "amlogic,amvenc_avc"/);
-  assert.match(patch, /linux,contiguous-region = <&cma_encoder>/);
+  assert.doesNotMatch(patch, /^\+.*linux,contiguous-region/m);
+  assert.match(patch, /drivers\/amlogic\/amports\/encoder\.c/);
+  assert.match(patch, /reserve_buff\[i\]\.buf_size =[\s\S]{0,120}min_buffsize/);
   assert.match(patch, /status = "okay"/);
 });
 
@@ -53,6 +58,7 @@ test('builds and independently verifies traceable kernel artifacts', () => {
   assert.match(build, /--enable AMLOGIC_ION/);
   assert.match(build, /--enable USB_GADGET/);
   assert.match(build, /--enable AM_ENCODER/);
+  assert.match(build, /--set-val CMA_SIZE_MBYTES 64/);
   assert.match(build, /--disable MALI400/);
   assert.match(build, /--disable MALI450/);
   assert.match(build, /--disable FB_AMLOGIC_UMP/);
@@ -79,7 +85,10 @@ test('builds and independently verifies traceable kernel artifacts', () => {
   assert.match(verify, /verify-kernel-config\.sh/);
   assert.match(verify, /\.toolchain\.gcc/);
   assert.match(verify, /amlogic,amvenc_avc/);
-  assert.match(verify, /0x01200000|0x1200000/);
+  assert.match(verify, /PWM_D/);
+  assert.match(verify, /GPIODV_28/);
+  assert.match(verify, /CMA_SIZE_MBYTES.*64/);
+  assert.match(verify, /contiguous-region/);
   assert.match(verify, /pinname = "emmc"/);
   assert.match(verify, /amlogic,meson-eth/);
   assert.match(verify, /amlogic,amhdmitx/);
@@ -90,4 +99,5 @@ test('builds and independently verifies traceable kernel artifacts', () => {
   assert.match(verifyConfig, /FB_AMLOGIC_UMP/);
   assert.match(verifyConfig, /FB_TFT/);
   assert.match(verifyConfig, /--state/);
+  assert.match(verifyConfig, /CMA_SIZE_MBYTES/);
 });
