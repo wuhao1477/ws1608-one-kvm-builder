@@ -187,11 +187,13 @@ test('archives the rootfs without host repository or build mounts', (t) => {
   fs.mkdirSync(path.join(rootfs, 'repo'), { recursive: true });
   fs.mkdirSync(path.join(rootfs, 'work'), { recursive: true });
   fs.mkdirSync(path.join(rootfs, 'build-tools'), { recursive: true });
+  fs.mkdirSync(path.join(rootfs, 'assets'), { recursive: true });
   fs.writeFileSync(path.join(rootfs, 'etc/issue'), 'Debian GNU/Linux 11\n');
   fs.symlinkSync('/proc/mounts', path.join(rootfs, 'etc/mtab'));
   fs.writeFileSync(path.join(rootfs, 'repo/host-secret'), 'must not be archived\n');
   fs.writeFileSync(path.join(rootfs, 'work/build-state'), 'must not be archived\n');
   fs.writeFileSync(path.join(rootfs, 'build-tools/apt-install'), 'must not be archived\n');
+  fs.writeFileSync(path.join(rootfs, 'assets/helper'), 'must not be archived\n');
 
   const result = spawnSync('bash', [rootfsArchiver, archive, rootfs], {
     cwd: process.cwd(), encoding: 'utf8',
@@ -200,7 +202,7 @@ test('archives the rootfs without host repository or build mounts', (t) => {
   const listing = spawnSync('tar', ['-tf', archive], { encoding: 'utf8' });
   assert.equal(listing.status, 0, listing.stderr);
   assert.match(listing.stdout, /(?:^|\n)\.\/etc\/issue\n/);
-  assert.doesNotMatch(listing.stdout, /(?:^|\n)\.\/(?:repo|work|build-tools)\//);
+  assert.doesNotMatch(listing.stdout, /(?:^|\n)\.\/(?:repo|work|build-tools|assets)\//);
   assert.doesNotMatch(listing.stdout, /(?:^|\n)\.\/etc\/mtab\n/);
 });
 
