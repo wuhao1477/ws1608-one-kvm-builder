@@ -5,6 +5,7 @@ ROOT_DIR=$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)
 CONFIG_FILE="$ROOT_DIR/experimental/amlenc/config/sources.env"
 PATCH_DIR="$ROOT_DIR/experimental/amlenc/patches/one-kvm"
 LOCK_DIR="$ROOT_DIR/experimental/amlenc/locks/one-kvm"
+SOFTWARE_CODECS_FILE="$ROOT_DIR/experimental/amlenc/config/software-codecs.json"
 WORK_DIR=${AMLENC_WORK_DIR:-$ROOT_DIR/.build/amlenc}
 SOURCE_DIR="$WORK_DIR/one-kvm-source"
 OUTPUT_DIR=${AMLENC_ONE_KVM_OUTPUT_DIR:-$ROOT_DIR/out/amlenc/one-kvm}
@@ -28,7 +29,15 @@ node "$ROOT_DIR/experimental/amlenc/scripts/verify-source-locks.mjs" "$CONFIG_FI
 [[ "$ONE_KVM_ARCHIVE_URL" == "https://codeload.github.com/mofeng-git/One-KVM/tar.gz/$ONE_KVM_COMMIT" ]]
 for command in curl sha256sum dpkg-deb corepack node; do command -v "$command" >/dev/null || exit 1; done
 command -v "$BUILD_DRIVER" >/dev/null || exit 1
-[[ -f "$LOCK_DIR/Cargo.lock" && -f "$LOCK_DIR/pnpm-lock.yaml" ]]
+[[ -f "$LOCK_DIR/Cargo.lock" && -f "$LOCK_DIR/pnpm-lock.yaml" && -f "$SOFTWARE_CODECS_FILE" ]]
+jq -e '
+  .schema == 1 and .codecs == [
+    {id:"h264",encoder:"libx264",decoder:"h264"},
+    {id:"h265",encoder:"libx265",decoder:"hevc"},
+    {id:"vp8",encoder:"libvpx_vp8",decoder:"vp8"},
+    {id:"vp9",encoder:"libvpx_vp9",decoder:"vp9"}
+  ]
+' "$SOFTWARE_CODECS_FILE" >/dev/null
 
 VERSION="${ONE_KVM_VERSION}+ws1608amlenc.${BUILD_NUMBER}"
 ARCHIVE="$WORK_DIR/one-kvm-$ONE_KVM_COMMIT.tar.gz"
@@ -108,6 +117,7 @@ sed -i 's#^ExecStart=/usr/bin/one-kvm#Environment=ONE_KVM_AMLENC_H264_LIB=/usr/l
 patch_digest=$("$ROOT_DIR/experimental/amlenc/scripts/one-kvm-patch-digest.sh" "$PATCH_DIR")
 dependency_locks_digest=$(cd "$LOCK_DIR" && sha256sum Cargo.lock pnpm-lock.yaml | sha256sum | awk '{print $1}')
 metadata="$package_dir/usr/share/doc/one-kvm/ws1608-amlenc-build.json"
+software_codecs=$(jq -c '[.codecs[] + {hardware:false}]' "$SOFTWARE_CODECS_FILE")
 jq -cn \
   --arg repository "$ONE_KVM_REPOSITORY" --arg ref "$ONE_KVM_REF" --arg commit "$ONE_KVM_COMMIT" \
   --arg upstream_version "$ONE_KVM_VERSION" --arg package_version "$VERSION" \
@@ -115,14 +125,17 @@ jq -cn \
   --arg rust "$RUST_TOOLCHAIN" --arg rustc "$ONE_KVM_RUSTC_COMMIT" --arg pnpm "$PNPM_VERSION" \
   --arg container "$ONE_KVM_ARMV7_OCI_IMAGE" --arg gcc "$ONE_KVM_ARMV7_GCC_VERSION" \
   --arg binutils "$ONE_KVM_ARMV7_BINUTILS_VERSION" --arg x264 "$ONE_KVM_X264_COMMIT" \
+  --arg libvpx "$ONE_KVM_LIBVPX_COMMIT" --arg x265 "$ONE_KVM_X265_COMMIT" \
   --arg rkmpp "$ONE_KVM_RKMPP_COMMIT" --arg rkrga "$ONE_KVM_RKRGA_COMMIT" \
+  --argjson software_codecs "$software_codecs" \
   --argjson epoch "$SOURCE_DATE_EPOCH" \
   '{schema:1,channel:"experimental",upstream_repository:$repository,upstream_ref:$ref,
     upstream_commit:$commit,one_kvm_version:$upstream_version,package_version:$package_version,
     patches_sha256:$patches,dependency_locks_sha256:$locks,rust_toolchain:$rust,rustc_commit:$rustc,
     pnpm_version:$pnpm,source_date_epoch:$epoch,build_container:$container,
-    toolchain:{gcc:$gcc,binutils:$binutils},dependencies:{x264:$x264,rkmpp:$rkmpp,rkrga:$rkrga},
+    toolchain:{gcc:$gcc,binutils:$binutils},dependencies:{x264:$x264,libvpx:$libvpx,x265:$x265,rkmpp:$rkmpp,rkrga:$rkrga},
     platform:"WS1608/S805/Meson8b/armv7",codec:"h264_amlenc",amlenc_smoke_test_default:false,
+    software_codecs:$software_codecs,
     hardware_encoder_tested:false,
     stable_channel_modified:false,redistribution:"local-test-only"}' >"$metadata"
 (cd "$package_dir" && sha256sum usr/bin/one-kvm usr/lib/one-kvm/libvpcodec.so usr/lib/one-kvm/amlenc-m8-diag usr/share/doc/one-kvm/ws1608-amlenc-build.json >usr/share/doc/one-kvm/SHA256SUMS)

@@ -3,6 +3,11 @@ import fs from 'node:fs';
 import test from 'node:test';
 
 const patchPath = 'experimental/amlenc/patches/one-kvm/0003-software-codec-self-check.patch';
+const packageBuildPath = 'experimental/amlenc/scripts/build-one-kvm.sh';
+const packageVerifyPath = 'experimental/amlenc/scripts/verify-one-kvm.sh';
+const metadataVerifyPath = 'experimental/amlenc/scripts/verify-one-kvm-metadata.mjs';
+const runtimeVerifyPath = 'experimental/amlenc/scripts/verify-one-kvm-software-codecs.sh';
+const workflowPath = '.github/workflows/amlenc-experimental.yml';
 
 function readRequired(filePath) {
   assert.equal(fs.existsSync(filePath), true, `${filePath} must exist`);
@@ -42,4 +47,23 @@ test('adds a truthful four-codec software self-check command', () => {
   assert.match(patch, /all\(\|cell\| cell\.ok\)/);
   assert.match(patch, /serde_json::to_string/);
   assert.doesNotMatch(patch, /Meson8bS805\s*=>\s*codec\s*==\s*AmlencCodec::H265/);
+});
+
+test('requires armhf runtime verification before experimental burn assembly', () => {
+  const build = readRequired(packageBuildPath);
+  const verify = readRequired(packageVerifyPath);
+  const metadata = readRequired(metadataVerifyPath);
+  const runtime = readRequired(runtimeVerifyPath);
+  const workflow = readRequired(workflowPath);
+
+  for (const source of [build, verify, metadata]) assert.match(source, /software_codecs/);
+  for (const codec of ['h264', 'h265', 'vp8', 'vp9']) assert.match(runtime, new RegExp(codec));
+  assert.match(runtime, /--platform linux\/arm\/v7/);
+  assert.match(runtime, /one-kvm codec self-check --backend software --json/);
+  assert.match(runtime, /submitted_frames == 10/);
+  assert.match(runtime, /decoded_frames == 10/);
+  const packageVerify = workflow.indexOf('Verify One-KVM armhf package');
+  const runtimeVerify = workflow.indexOf('Verify armhf software codecs');
+  const imageIdentity = workflow.indexOf('Prepare experimental image identity');
+  assert.ok(packageVerify >= 0 && runtimeVerify > packageVerify && imageIdentity > runtimeVerify);
 });

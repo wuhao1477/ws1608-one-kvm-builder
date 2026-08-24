@@ -57,11 +57,19 @@ const expectedMetadata = {
   toolchain: { gcc: '10.2.1', binutils: '2.35.2' },
   dependencies: {
     x264: 'c24e06c2e184345ceb33eb20a15d1024d9fd3497',
+    libvpx: '1024874c5919305883187e2953de8fcb4c3d7fa6',
+    x265: '07295ba7ab551bb9c1580fdaee3200f1b45711b7',
     rkmpp: 'a9380ef333102ac318628f83b5f7a460d377749e',
     rkrga: '1d330cc28551943bed3380261a5a9c6fbd58ff53',
   },
   platform: 'WS1608/S805/Meson8b/armv7',
   codec: 'h264_amlenc',
+  software_codecs: [
+    { id: 'h264', encoder: 'libx264', decoder: 'h264', hardware: false },
+    { id: 'h265', encoder: 'libx265', decoder: 'hevc', hardware: false },
+    { id: 'vp8', encoder: 'libvpx_vp8', decoder: 'vp8', hardware: false },
+    { id: 'vp9', encoder: 'libvpx_vp9', decoder: 'vp9', hardware: false },
+  ],
   amlenc_smoke_test_default: false,
   hardware_encoder_tested: false,
   stable_channel_modified: false,
@@ -204,6 +212,7 @@ test('rejects modified dependency and compiler provenance', (t) => {
 
   for (const [name, metadata] of [
     ['x264', { ...expectedMetadata, dependencies: { ...expectedMetadata.dependencies, x264: '0'.repeat(40) } }],
+    ['software codecs', { ...expectedMetadata, software_codecs: expectedMetadata.software_codecs.slice(0, 3) }],
     ['gcc', { ...expectedMetadata, toolchain: { ...expectedMetadata.toolchain, gcc: '12.2.0' } }],
   ]) {
     const metadataPath = path.join(fixture, `${name}.json`);
