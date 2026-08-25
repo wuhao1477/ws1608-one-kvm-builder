@@ -50,6 +50,8 @@ function firstbootFixture(t, sshdExit = 0, startExit = 0) {
   const keygen = path.join(directory, 'ssh-keygen');
   const sshd = path.join(directory, 'sshd');
   const start = path.join(directory, 'ssh-start');
+  const dmesg = path.join(directory, 'dmesg');
+  fs.mkdirSync(path.join(directory, 'boot'));
   writeExecutable(keygen, [
     '#!/bin/sh',
     'printf "keygen:%s\\n" "$*" >>"$FIRSTBOOT_LOG"',
@@ -66,15 +68,20 @@ function firstbootFixture(t, sshdExit = 0, startExit = 0) {
     'printf "start:%s\\n" "$*" >>"$FIRSTBOOT_LOG"',
     'exit ' + startExit,
   ].join('\n'));
+  writeExecutable(dmesg, '#!/bin/sh\nprintf "amvenc probe fixture\\n"\n');
+  fs.writeFileSync(path.join(directory, 'boot', 'amlenc-legacy-trial-armed'), 'trial\n');
   return {
     log,
     env: {
       ...process.env,
       RUN_DIR: path.join(directory, 'run', 'sshd'),
+      BOOT_DIR: path.join(directory, 'boot'),
+      UNAME_RELEASE: '3.10.107-ws1608',
       STATUS_FILE: path.join(directory, 'state', 'firstboot-complete'),
       SSH_KEYGEN_BIN: keygen,
       SSHD_BIN: sshd,
       SSHD_START_BIN: start,
+      DMESG_BIN: dmesg,
       FIRSTBOOT_LOG: log,
       FIRSTBOOT_HOST_KEY: hostKey,
     },
@@ -176,6 +183,10 @@ test('generates host keys and validates sshd before marking first boot complete'
   assert.equal(fs.readFileSync(setup.env.STATUS_FILE, 'utf8'), 'host-keys-ready\n');
   assert.equal(fs.statSync(setup.env.RUN_DIR).mode & 0o777, 0o755);
   assert.equal(fs.readFileSync(setup.log, 'utf8'), 'keygen:-A\nsshd:-t\nstart:start\n');
+  assert.equal(fs.existsSync(path.join(setup.env.BOOT_DIR, 'amlenc-legacy-firstboot-started')), true);
+  assert.equal(fs.existsSync(path.join(setup.env.BOOT_DIR, 'amlenc-legacy-firstboot-ready')), true);
+  assert.equal(fs.existsSync(path.join(setup.env.BOOT_DIR, 'amlenc-legacy-firstboot-failed')), false);
+  assert.equal(fs.existsSync(path.join(setup.env.BOOT_DIR, 'amlenc-legacy-trial-armed')), false);
 });
 
 test('does not mark first boot complete when sshd validation fails', (t) => {
@@ -185,6 +196,8 @@ test('does not mark first boot complete when sshd validation fails', (t) => {
 
   assert.equal(result.status, 42);
   assert.equal(fs.existsSync(setup.env.STATUS_FILE), false);
+  assert.equal(fs.existsSync(path.join(setup.env.BOOT_DIR, 'amlenc-legacy-firstboot-failed')), true);
+  assert.equal(fs.existsSync(path.join(setup.env.BOOT_DIR, 'amlenc-legacy-dmesg.log')), true);
 });
 
 test('does not mark first boot complete when ssh service start fails', (t) => {
@@ -201,4 +214,13 @@ test('declares firstboot before sshd in the SysV dependency graph', () => {
 
   assert.match(script, /^# X-Start-Before:\s+sshd$/m);
   assert.match(script, /^# Default-Start:\s+2 3 4 5$/m);
+});
+
+test('records a persistent legacy userspace boot milestone', () => {
+  const helper = fs.readFileSync(firstboot, 'utf8');
+
+  assert.match(helper, /legacy-firstboot-started/);
+  assert.match(helper, /legacy-firstboot-ready/);
+  assert.match(helper, /legacy-firstboot-failed/);
+  assert.match(helper, /dmesg/);
 });

@@ -135,6 +135,11 @@ fi
 for forbidden in \
   /etc/rcS.d/S99ws1608-amlenc-firstboot \
   /etc/rcS.d/S01ws1608-amlenc-firstboot \
+  /boot/amlenc-legacy-firstboot-started \
+  /boot/amlenc-legacy-firstboot-ready \
+  /boot/amlenc-legacy-firstboot-failed \
+  /boot/amlenc-legacy-trial-armed \
+  /boot/amlenc-legacy-dmesg.log \
   /var/lib/ws1608-amlenc/firstboot-complete \
   /tmp/ws1608-amlenc-firstboot.complete; do
   if debugfs -R "stat $forbidden" "$ROOTFS_RAW" 2>/dev/null | grep -q 'Inode:'; then

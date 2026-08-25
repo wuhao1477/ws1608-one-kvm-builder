@@ -62,9 +62,17 @@ EOF
     update-rc.d ws1608-amlenc-firstboot defaults
     update-rc.d ssh defaults
     rm -f /etc/ssh/ssh_host_* /etc/machine-id
-    SSHD_START_BIN=/bin/true STATUS_FILE=/tmp/ws1608-amlenc-firstboot.complete /etc/init.d/ws1608-amlenc-firstboot
+    mkdir -p /tmp/ws1608-amlenc-build-boot
+    BOOT_DIR=/tmp/ws1608-amlenc-build-boot DMESG_BIN=/bin/true \
+      SSHD_START_BIN=/bin/true STATUS_FILE=/tmp/ws1608-amlenc-firstboot.complete \
+      /etc/init.d/ws1608-amlenc-firstboot
     test -s /tmp/ws1608-amlenc-firstboot.complete
-    rm -f /etc/ssh/ssh_host_* /tmp/ws1608-amlenc-firstboot.complete
+    rm -f /etc/ssh/ssh_host_* /tmp/ws1608-amlenc-firstboot.complete \
+      /tmp/ws1608-amlenc-build-boot/amlenc-legacy-firstboot-started \
+      /tmp/ws1608-amlenc-build-boot/amlenc-legacy-firstboot-ready \
+      /tmp/ws1608-amlenc-build-boot/amlenc-legacy-firstboot-failed \
+      /tmp/ws1608-amlenc-build-boot/amlenc-legacy-trial-armed \
+      /tmp/ws1608-amlenc-build-boot/amlenc-legacy-dmesg.log
     : >/etc/machine-id
     find /var/lib/apt/lists /var/cache/apt/archives /tmp /var/tmp -mindepth 1 -delete
     /build-tools/archive-rootfs /work/rootfs.tar /

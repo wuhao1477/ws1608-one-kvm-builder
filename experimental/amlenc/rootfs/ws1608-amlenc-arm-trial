@@ -16,6 +16,8 @@ fail() { echo "cannot arm legacy trial: $*" >&2; exit 1; }
 marker="$BOOT_DIR/amlenc-force-recovery"
 [[ -f "$marker" && ! -L "$marker" && -s "$marker" ]] || fail "recovery marker is missing"
 
+printf 'kernel=%s\n' "$UNAME_RELEASE" >"$BOOT_DIR/amlenc-legacy-trial-armed"
+chmod 0644 "$BOOT_DIR/amlenc-legacy-trial-armed"
 rm -f -- "$marker"
 sync
 echo "armed one Linux 3.10.107 trial; reboot to continue"
