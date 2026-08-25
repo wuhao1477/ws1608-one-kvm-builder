@@ -107,11 +107,27 @@ for path in \
   /lib/modules/3.10.107 \
   /usr/local/sbin/ws1608-amlenc-arm-trial \
   /usr/local/sbin/ws1608-amlenc-mark-success \
+  /usr/local/sbin/ws1608-amlenc-probe \
+  /usr/local/libexec/ws1608-amlenc/amlenc-m8-diag \
+  /usr/local/libexec/ws1608-amlenc/validate-h264.sh \
+  /usr/local/lib/ws1608-amlenc/libvpcodec.so \
+  /usr/local/share/ws1608-amlenc/hardware-limits.json \
+  /usr/local/share/ws1608-amlenc/frame-640x480.nv12 \
+  /usr/local/share/ws1608-amlenc/frame-1280x720.nv12 \
   /etc/init.d/ws1608-amlenc-firstboot; do
   debugfs -R "stat $path" "$ROOTFS_RAW" 2>/dev/null | grep -q 'Inode:' || fail "missing rootfs path $path"
 done
 for helper in ws1608-amlenc-arm-trial ws1608-amlenc-mark-success; do
   debugfs -R "stat /usr/local/sbin/$helper" "$ROOTFS_RAW" 2>/dev/null | grep -q 'Mode:  0755' || fail "$helper mode"
+done
+for helper in /usr/local/sbin/ws1608-amlenc-probe /usr/local/libexec/ws1608-amlenc/amlenc-m8-diag /usr/local/libexec/ws1608-amlenc/validate-h264.sh; do
+  debugfs -R "stat $helper" "$ROOTFS_RAW" 2>/dev/null | grep -q 'Mode:  0755' || fail "$helper mode"
+done
+debugfs -R 'stat /usr/local/lib/ws1608-amlenc/libvpcodec.so' "$ROOTFS_RAW" 2>/dev/null \
+  | grep -q 'Mode:  0644' || fail "libvpcodec mode"
+for fixture in frame-640x480.nv12 frame-1280x720.nv12; do
+  debugfs -R "stat /usr/local/share/ws1608-amlenc/$fixture" "$ROOTFS_RAW" 2>/dev/null \
+    | grep -q 'Mode:  0644' || fail "$fixture mode"
 done
 debugfs -R 'stat /etc/init.d/ws1608-amlenc-firstboot' "$ROOTFS_RAW" 2>/dev/null \
   | grep -q 'Mode:  0755' || fail "firstboot helper mode"
@@ -170,11 +186,19 @@ fstab=$(debugfs -R 'cat /etc/fstab' "$ROOTFS_RAW" 2>/dev/null)
 grep -Fq 'LABEL=armbi_boot /boot vfat' <<<"$fstab" || fail "boot mount policy"
 if debugfs -R 'stat /usr/bin/one-kvm' "$ROOTFS_RAW" 2>/dev/null | grep -q 'Inode:'; then fail "one-kvm must not be installed"; fi
 
+limits=$(debugfs -R 'cat /usr/local/share/ws1608-amlenc/hardware-limits.json' "$ROOTFS_RAW" 2>/dev/null)
+jq -e '.schema == 1 and .codec == "h264" and .pixel_format == "nv12" and .hardware_encoder_tested == false' <<<"$limits" >/dev/null \
+  || fail "hardware limits metadata"
+
 jq -e --arg base_tag "$BASE_RELEASE_TAG" --arg base_sha "$BASE_IMAGE_SHA256" --arg linux "$LINUX_COMMIT" '
   .schema == 1 and .kind == "ws1608-amlenc-legacy-bringup" and
   .base_release_tag == $base_tag and .base_image_sha256 == $base_sha and
   .recovery == {kernel:"6.12.28-current-meson",source:"stable-base"} and
   .legacy == {kernel:"3.10.107",commit:$linux,cma_mib:64} and .recovery_first == true and
+  .diagnostic_included == true and .encoder.abi == 1 and
+  (.encoder.commit | test("^[a-f0-9]{40}$")) and
+  (.encoder.libvpcodec_sha256 | test("^[a-f0-9]{64}$")) and
+  (.encoder.diagnostic_sha256 | test("^[a-f0-9]{64}$")) and
   (.ssh_public_key_sha256 | test("^[a-f0-9]{64}$")) and
   .default_login_user == "root" and .password_authentication == true and
   .hardware_boot_tested == false and .hardware_encoder_tested == false and

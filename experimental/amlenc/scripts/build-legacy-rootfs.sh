@@ -7,6 +7,7 @@ source "$ROOT_DIR/experimental/amlenc/config/legacy-bringup.env"
 
 RECOVERY_ROOTFS_RAW=${RECOVERY_ROOTFS_RAW:?RECOVERY_ROOTFS_RAW is required}
 LEGACY_MODULES_TAR=${LEGACY_MODULES_TAR:?LEGACY_MODULES_TAR is required}
+ENCODER_DIR=${ENCODER_DIR:?ENCODER_DIR is required}
 SSH_PUBLIC_KEY=${SSH_PUBLIC_KEY:?SSH_PUBLIC_KEY is required}
 OUTPUT_ROOTFS_RAW=${OUTPUT_ROOTFS_RAW:?OUTPUT_ROOTFS_RAW is required}
 WORK_DIR=${WORK_DIR:-$ROOT_DIR/.build/amlenc/legacy-rootfs}
@@ -15,12 +16,19 @@ fail() { echo "legacy rootfs build failed: $*" >&2; exit 1; }
 require_file() { [[ -f "$1" && ! -L "$1" && -s "$1" ]] || fail "invalid file: $1"; }
 require_file "$RECOVERY_ROOTFS_RAW"
 require_file "$LEGACY_MODULES_TAR"
+for encoder_file in libvpcodec.so amlenc-m8-diag source-manifest.json SHA256SUMS; do
+  require_file "$ENCODER_DIR/$encoder_file"
+done
 [[ "$SSH_PUBLIC_KEY" =~ ^(ssh-ed25519|ssh-rsa|ecdsa-sha2-nistp(256|384|521))[[:space:]][A-Za-z0-9+/=]+([[:space:]].*)?$ ]] || fail "invalid SSH public key"
 [[ "$LEGACY_DEFAULT_LOGIN_USER" == root ]] || fail "default login user must be root"
 [[ -n "$LEGACY_DEFAULT_LOGIN_PASSWORD" ]] || fail "default login password is empty"
 [[ "$WORK_DIR" != / && "$WORK_DIR" != "$ROOT_DIR" && ! -L "$WORK_DIR" ]] || fail "unsafe work directory"
 [[ "$OUTPUT_ROOTFS_RAW" != / && ! -L "$OUTPUT_ROOTFS_RAW" ]] || fail "unsafe output path"
-for command in docker realpath; do command -v "$command" >/dev/null || fail "missing command: $command"; done
+for command in docker realpath sha256sum; do command -v "$command" >/dev/null || fail "missing command: $command"; done
+(
+  cd "$ENCODER_DIR"
+  sha256sum --check --strict SHA256SUMS >/dev/null
+) || fail "encoder artifact checksum failed"
 
 mkdir -p "$WORK_DIR" "$(dirname "$OUTPUT_ROOTFS_RAW")"
 find "$WORK_DIR" -mindepth 1 -delete
@@ -31,12 +39,15 @@ docker run --rm --platform linux/arm/v7 \
   -e SSH_PUBLIC_KEY -e LEGACY_DEFAULT_LOGIN_USER -e LEGACY_DEFAULT_LOGIN_PASSWORD \
   -v "$WORK_DIR:/work" \
   -v "$ROOT_DIR/experimental/amlenc/rootfs:/assets:ro" \
+  -v "$ENCODER_DIR:/encoder:ro" \
   -v "$ROOT_DIR/experimental/amlenc/scripts/apt-install.sh:/build-tools/apt-install:ro" \
   -v "$ROOT_DIR/experimental/amlenc/scripts/archive-rootfs.sh:/build-tools/archive-rootfs:ro" \
+  -v "$ROOT_DIR/experimental/amlenc/scripts/validate-h264.sh:/build-tools/validate-h264.sh:ro" \
+  -v "$ROOT_DIR/experimental/amlenc/config/hardware-limits.json:/build-tools/hardware-limits.json:ro" \
   "$BULLSEYE_ARMV7_OCI_IMAGE" sh -euxc '
     export DEBIAN_FRONTEND=noninteractive
     /build-tools/apt-install sysvinit-core sysv-rc insserv initscripts udev kmod ifupdown \
-      isc-dhcp-client openssh-server ca-certificates iproute2 procps psmisc util-linux
+      isc-dhcp-client openssh-server ca-certificates ffmpeg jq iproute2 procps psmisc util-linux
     printf "onecloud-amlenc\n" >/etc/hostname
     cat >/etc/network/interfaces <<"EOF"
 auto lo
@@ -52,6 +63,13 @@ EOF
     install -D -m 0755 /assets/ws1608-amlenc-arm-trial /usr/local/sbin/ws1608-amlenc-arm-trial
     install -D -m 0755 /assets/ws1608-amlenc-mark-success /usr/local/sbin/ws1608-amlenc-mark-success
     install -D -m 0755 /assets/ws1608-amlenc-firstboot /etc/init.d/ws1608-amlenc-firstboot
+    install -D -m 0755 /assets/ws1608-amlenc-probe /usr/local/sbin/ws1608-amlenc-probe
+    install -D -m 0755 /encoder/amlenc-m8-diag /usr/local/libexec/ws1608-amlenc/amlenc-m8-diag
+    install -D -m 0644 /encoder/libvpcodec.so /usr/local/lib/ws1608-amlenc/libvpcodec.so
+    install -D -m 0755 /build-tools/validate-h264.sh /usr/local/libexec/ws1608-amlenc/validate-h264.sh
+    install -D -m 0644 /build-tools/hardware-limits.json /usr/local/share/ws1608-amlenc/hardware-limits.json
+    dd if=/dev/zero of=/usr/local/share/ws1608-amlenc/frame-640x480.nv12 bs=1024 count=450
+    dd if=/dev/zero of=/usr/local/share/ws1608-amlenc/frame-1280x720.nv12 bs=1024 count=1350
     cat >/etc/ssh/sshd_config.d/ws1608-amlenc.conf <<"EOF"
 PasswordAuthentication yes
 KbdInteractiveAuthentication yes

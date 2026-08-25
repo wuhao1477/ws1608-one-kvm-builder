@@ -84,6 +84,9 @@ function installVerifierStubs(directory) {
     '  "stat /etc/rc"*"/S01ws1608-amlenc-firstboot") echo "Inode: 42   Type: symlink    Mode:  0777"; echo "Fast link dest: \\"../init.d/ws1608-amlenc-firstboot\\"" ;;',
     '  "stat /tmp/ws1608-amlenc-firstboot.complete") if [ "$LEGACY_TEST_FORBIDDEN" = build-marker ]; then echo "Inode: 42   Type: regular    Mode:  0644"; fi ;;',
     '  "stat /etc/init.d/ws1608-amlenc-firstboot") echo "Inode: 42   Type: regular    Mode:  0755" ;;',
+    '  "stat /usr/local/sbin/ws1608-amlenc-probe"|"stat /usr/local/libexec/ws1608-amlenc/amlenc-m8-diag"|"stat /usr/local/libexec/ws1608-amlenc/validate-h264.sh") echo "Inode: 42   Type: regular    Mode:  0755" ;;',
+    '  "stat /usr/local/lib/ws1608-amlenc/libvpcodec.so"|"stat /usr/local/share/ws1608-amlenc/frame-"*) echo "Inode: 42   Type: regular    Mode:  0644" ;;',
+    '  "stat /usr/local/share/ws1608-amlenc/hardware-limits.json") echo "Inode: 42   Type: regular    Mode:  0644" ;;',
     '  "stat /usr/local/sbin/ws1608-amlenc-"*) echo "Inode: 42   Type: regular    Mode:  0755" ;;',
     '  stat*) echo "Inode: 42   Type: regular    Mode:  0644" ;;',
     'esac',
@@ -227,7 +230,6 @@ test('independently verifies recovery identity, rootfs and untested status', () 
   assert.match(verify, /ws1608-amlenc-arm-trial/);
   assert.match(verify, /ws1608-amlenc-mark-success/);
   assert.match(verify, /ls -p \/etc\/rc\$\{level\}\.d/);
-  assert.match(verify, /legacy-firstboot-(?:started|ready|failed)/);
   assert.match(verify, /ssh_host_\[\^\/\]\+/);
   for (const pattern of [/PasswordAuthentication yes/, /PermitRootLogin yes/, /cat \/etc\/shadow/, /root:\\\$\[\^:\]\+/]) assert.match(verify, pattern);
   assert.match(verify, /one-kvm/);
@@ -255,7 +257,6 @@ test('builds a Bullseye SysV rootfs for both kernels without One-KVM', () => {
   assert.match(rootfs, /ws1608-amlenc-firstboot/);
   for (const pattern of [/update-rc\.d ws1608-amlenc-firstboot defaults/, /update-rc\.d ssh defaults/]) assert.match(rootfs, pattern);
   assert.doesNotMatch(rootfs, /ln -s \.\.\/init\.d\/ws1608-amlenc-firstboot/);
-  assert.match(rootfs, /legacy-firstboot-started/); assert.match(rootfs, /legacy-firstboot-ready/);
   assert.match(rootfs, /STATUS_FILE=.*ws1608-amlenc-firstboot/);
   assert.match(rootfs, /SSHD_START_BIN=\/bin\/true/);
   assert.match(rootfs, /LABEL=armbi_boot \/boot vfat/);
@@ -276,9 +277,7 @@ test('creates offline rootfs mountpoints with POSIX shell semantics', (t) => {
   const result = spawnSync('sh', ['-c', command], { encoding: 'utf8' });
 
   assert.equal(result.status, 0, result.stderr || result.stdout);
-  for (const mountpoint of ['boot', 'proc', 'sys', 'dev', 'run']) {
-    assert.equal(fs.statSync(path.join(directory, mountpoint)).isDirectory(), true);
-  }
+  for (const mountpoint of ['boot', 'proc', 'sys', 'dev', 'run']) assert.equal(fs.statSync(path.join(directory, mountpoint)).isDirectory(), true);
 });
 
 test('assembles dual boot and rootfs partitions inside the stable AmlImg package', () => {

@@ -2,7 +2,7 @@
 set -euo pipefail
 
 ROOT_DIR=$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)
-LIMITS_FILE=${AMLENC_HARDWARE_LIMITS:-$ROOT_DIR/experimental/amlenc/config/hardware-limits.json}
+LIMITS_FILE=${AMLENC_HARDWARE_LIMITS:-/usr/local/share/ws1608-amlenc/hardware-limits.json}
 
 fail() {
   echo "hardware gate failed: $*" >&2

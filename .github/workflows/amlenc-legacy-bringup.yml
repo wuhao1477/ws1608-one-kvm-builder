@@ -98,6 +98,26 @@ jobs:
           sudo chown -R "$(id -u):$(id -g)" .build/amlenc out/amlenc
       - name: Verify Linux 3.10.107
         run: experimental/amlenc/scripts/verify-build.sh kernel
+      - name: Build M8 encoder library
+        run: |
+          docker run --rm --platform linux/amd64 \
+            -v "$GITHUB_WORKSPACE:/repo" -w /repo ubuntu:18.04 bash -lc '
+              set -euo pipefail
+              apt-get update && apt-get install -y bc curl file git lzop make qemu-user-static gcc-7 g++-7 \
+                gcc-7-arm-linux-gnueabihf g++-7-arm-linux-gnueabihf binutils-arm-linux-gnueabihf jq xz-utils
+              ln -sf "$(command -v gcc-7)" /usr/local/bin/gcc
+              ln -sf "$(command -v g++-7)" /usr/local/bin/g++
+              ln -sf "$(command -v arm-linux-gnueabihf-gcc-7)" /usr/local/bin/arm-linux-gnueabihf-gcc
+              curl --fail --location https://nodejs.org/dist/v16.20.2/node-v16.20.2-linux-x64.tar.xz \
+                | tar -xJ -C /usr/local --strip-components=1
+              CC=arm-linux-gnueabihf-gcc-7 CXX=arm-linux-gnueabihf-g++-7 AR=arm-linux-gnueabihf-ar READELF=arm-linux-gnueabihf-readelf \
+                /repo/experimental/amlenc/scripts/build-libvpcodec.sh
+            '
+          sudo chown -R "$(id -u):$(id -g)" .build/amlenc out/amlenc
+      - name: Verify M8 encoder library
+        env:
+          CC: arm-linux-gnueabihf-gcc
+        run: experimental/amlenc/scripts/verify-build.sh libvpcodec
       - name: Download verified recovery base
         run: |
           source config/base.env
@@ -107,6 +127,7 @@ jobs:
         env:
           BASE_IMAGE_XZ: ${{ runner.temp }}/base.burn.img.xz
           LEGACY_KERNEL_DIR: ${{ github.workspace }}/out/amlenc/kernel
+          ENCODER_DIR: ${{ github.workspace }}/out/amlenc/libvpcodec
           OUTPUT_DIR: ${{ github.workspace }}/out/amlenc/legacy-bringup
           WORK_DIR: ${{ github.workspace }}/.build/amlenc/legacy-bringup
         run: |
@@ -130,7 +151,7 @@ jobs:
           jq -n --arg image "$image_name" \
             --arg image_sha "$(sha256sum "$OUTPUT_DIR/$image_name" | awk '{print $1}')" \
             --arg xz_sha "$(sha256sum "$OUTPUT_DIR/$image_name.xz" | awk '{print $1}')" \
-            '{schema:1,result:"pending",hardware_boot_tested:false,hardware_encoder_tested:false,
+            '{schema:1,result:"pending",hardware_boot_tested:false,hardware_encoder_tested:false,diagnostic_included:true,
               one_kvm_included:false,assets:{image:{name:$image,sha256:$image_sha},
               compressed_image:{name:($image+".xz"),sha256:$xz_sha}}}' \
             >"$OUTPUT_DIR/validation-report.json"
@@ -190,7 +211,7 @@ jobs:
           xz -dc "$RUNNER_TEMP/base.burn.img.xz" >"$BASE_IMAGE"
           (cd "$RUNNER_TEMP/candidate" && sha256sum --check SHA256SUMS)
           jq -e '.result == "pending" and .hardware_boot_tested == false and
-            .hardware_encoder_tested == false and .one_kvm_included == false' \
+            .hardware_encoder_tested == false and .diagnostic_included == true and .one_kvm_included == false' \
             "$RUNNER_TEMP/candidate/validation-report.json" >/dev/null
           image_name=$(jq -er .image_name "$MANIFEST")
           xz -t "$RUNNER_TEMP/candidate/$image_name.xz"
