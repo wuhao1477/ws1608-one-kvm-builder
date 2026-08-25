@@ -41,6 +41,7 @@ test('builds and verifies the encoder library before the legacy burn image', () 
   assert.match(workflow, /verify-build\.sh libvpcodec/);
   assert.match(workflow, /ENCODER_DIR:/);
   assert.match(workflow, /diagnostic_included.*true/);
+  assert.match(workflow, /apt-get install -y[\s\S]*gcc-arm-linux-gnueabihf/);
 });
 
 test('uses an installed hardware-limits path on the target rootfs', () => {

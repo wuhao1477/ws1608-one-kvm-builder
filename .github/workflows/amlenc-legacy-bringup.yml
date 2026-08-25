@@ -54,7 +54,7 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y curl jq qemu-user-static device-tree-compiler \
-            binutils-arm-linux-gnueabihf e2fsprogs file mtools u-boot-tools xz-utils
+            gcc-arm-linux-gnueabihf binutils-arm-linux-gnueabihf e2fsprogs file mtools u-boot-tools xz-utils
           docker version
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7
         with:
