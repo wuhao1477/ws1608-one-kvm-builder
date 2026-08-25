@@ -226,7 +226,7 @@ jobs:
           build_revision=$(printf 'b%06d' "$build_number")
           image_name="WS1608-AMLENC_0.2.6+ws1608amlenc.run-${RUN_NUMBER}-${RUN_ATTEMPT}_Onecloud_trixie_6.12.28.burn.img"
           {
-            echo "artifact_name=ws1608-amlenc-exp-${RUN_NUMBER}-${RUN_ATTEMPT}"
+            echo "artifact_name=ws1608-amlenc-exp-release-${RUN_NUMBER}-${RUN_ATTEMPT}"
             echo "build_tag=ws1608-amlenc-exp-0.2.6-v260802-k6.12.28-$build_revision"
             echo "image_name=$image_name"
           } >>"$GITHUB_OUTPUT"

@@ -106,6 +106,7 @@ test('reverifies every uploaded candidate before handoff or publication', () => 
 
   assert.match(reverifyJob, /needs: build/);
   assert.match(reverifyJob, /actions\/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131/);
+  assert.match(reverifyJob, /artifact_name=ws1608-amlenc-exp-release-\$\{RUN_NUMBER\}-\$\{RUN_ATTEMPT\}/);
   assert.match(reverifyJob, /sha256sum --check SHA256SUMS/);
   assert.match(reverifyJob, /xz -t/);
   assert.match(reverifyJob, /experimental\/amlenc\/scripts\/verify-burn-release\.sh/);
