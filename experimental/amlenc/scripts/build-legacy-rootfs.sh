@@ -35,7 +35,7 @@ docker run --rm --platform linux/arm/v7 \
   -v "$ROOT_DIR/experimental/amlenc/scripts/archive-rootfs.sh:/build-tools/archive-rootfs:ro" \
   "$BULLSEYE_ARMV7_OCI_IMAGE" sh -euxc '
     export DEBIAN_FRONTEND=noninteractive
-    /build-tools/apt-install sysvinit-core initscripts udev kmod ifupdown \
+    /build-tools/apt-install sysvinit-core sysv-rc insserv initscripts udev kmod ifupdown \
       isc-dhcp-client openssh-server ca-certificates iproute2 procps psmisc util-linux
     printf "onecloud-amlenc\n" >/etc/hostname
     cat >/etc/network/interfaces <<"EOF"
@@ -58,9 +58,9 @@ KbdInteractiveAuthentication yes
 PubkeyAuthentication yes
 PermitRootLogin yes
 EOF
-    rm -f /etc/rc2.d/S01ssh /etc/rcS.d/S99ws1608-amlenc-firstboot
-    ln -s ../init.d/ws1608-amlenc-firstboot /etc/rc2.d/S01ws1608-amlenc-firstboot
-    ln -s ../init.d/ssh /etc/rc2.d/S02ssh
+    rm -f /etc/rcS.d/S99ws1608-amlenc-firstboot /etc/rc2.d/S01ws1608-amlenc-firstboot
+    update-rc.d ws1608-amlenc-firstboot defaults
+    update-rc.d ssh defaults
     rm -f /etc/ssh/ssh_host_* /etc/machine-id
     SSHD_START_BIN=/bin/true STATUS_FILE=/tmp/ws1608-amlenc-firstboot.complete /etc/init.d/ws1608-amlenc-firstboot
     test -s /tmp/ws1608-amlenc-firstboot.complete

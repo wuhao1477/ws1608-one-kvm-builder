@@ -107,9 +107,7 @@ for path in \
   /lib/modules/3.10.107 \
   /usr/local/sbin/ws1608-amlenc-arm-trial \
   /usr/local/sbin/ws1608-amlenc-mark-success \
-  /etc/init.d/ws1608-amlenc-firstboot \
-  /etc/rc2.d/S01ws1608-amlenc-firstboot \
-  /etc/rc2.d/S02ssh; do
+  /etc/init.d/ws1608-amlenc-firstboot; do
   debugfs -R "stat $path" "$ROOTFS_RAW" 2>/dev/null | grep -q 'Inode:' || fail "missing rootfs path $path"
 done
 for helper in ws1608-amlenc-arm-trial ws1608-amlenc-mark-success; do
@@ -117,10 +115,19 @@ for helper in ws1608-amlenc-arm-trial ws1608-amlenc-mark-success; do
 done
 debugfs -R 'stat /etc/init.d/ws1608-amlenc-firstboot' "$ROOTFS_RAW" 2>/dev/null \
   | grep -q 'Mode:  0755' || fail "firstboot helper mode"
-firstboot_link=$(debugfs -R 'stat /etc/rc2.d/S01ws1608-amlenc-firstboot' "$ROOTFS_RAW" 2>/dev/null)
-grep -q 'Type: symlink' <<<"$firstboot_link" || fail "firstboot link type"
-grep -Fq 'Fast link dest: "../init.d/ws1608-amlenc-firstboot"' <<<"$firstboot_link" \
-  || fail "firstboot link target"
+for level in 2 3 4 5; do
+  rc_listing=$(debugfs -R "ls -p /etc/rc${level}.d" "$ROOTFS_RAW" 2>/dev/null)
+  firstboot_order=$(sed -nE 's#.*\/S([0-9]{2})ws1608-amlenc-firstboot(/.*)?#\1#p' <<<"$rc_listing" | head -n1)
+  ssh_order=$(sed -nE 's#.*\/S([0-9]{2})ssh(/.*)?#\1#p' <<<"$rc_listing" | head -n1)
+  [[ "$firstboot_order" =~ ^[0-9]{2}$ ]] || fail "missing firstboot rc${level} link"
+  [[ "$ssh_order" =~ ^[0-9]{2}$ ]] || fail "missing ssh rc${level} link"
+  ((10#$firstboot_order < 10#$ssh_order)) || fail "firstboot must precede ssh in rc${level}"
+  firstboot_path="/etc/rc${level}.d/S${firstboot_order}ws1608-amlenc-firstboot"
+  firstboot_link=$(debugfs -R "stat $firstboot_path" "$ROOTFS_RAW" 2>/dev/null)
+  grep -q 'Type: symlink' <<<"$firstboot_link" || fail "firstboot rc${level} link type"
+  grep -Fq 'Fast link dest: "../init.d/ws1608-amlenc-firstboot"' <<<"$firstboot_link" \
+    || fail "firstboot rc${level} link target"
+done
 ssh_directory=$(debugfs -R 'ls -p /etc/ssh' "$ROOTFS_RAW" 2>/dev/null)
 if grep -Eq '/ssh_host_[^/]+/' <<<"$ssh_directory"; then
   fail "preinstalled SSH host key"
@@ -128,7 +135,6 @@ fi
 for forbidden in \
   /etc/rcS.d/S99ws1608-amlenc-firstboot \
   /etc/rcS.d/S01ws1608-amlenc-firstboot \
-  /etc/rc2.d/S01ssh \
   /var/lib/ws1608-amlenc/firstboot-complete \
   /tmp/ws1608-amlenc-firstboot.complete; do
   if debugfs -R "stat $forbidden" "$ROOTFS_RAW" 2>/dev/null | grep -q 'Inode:'; then

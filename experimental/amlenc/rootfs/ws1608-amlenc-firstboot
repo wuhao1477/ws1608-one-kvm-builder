@@ -3,7 +3,8 @@
 # Provides:          ws1608-amlenc-firstboot
 # Required-Start:    $local_fs $remote_fs $syslog
 # Required-Stop:
-# Default-Start:     S
+# X-Start-Before:    sshd
+# Default-Start:     2 3 4 5
 # Default-Stop:
 ### END INIT INFO
 set -eu

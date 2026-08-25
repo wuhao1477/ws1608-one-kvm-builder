@@ -195,3 +195,10 @@ test('does not mark first boot complete when ssh service start fails', (t) => {
   assert.equal(result.status, 42);
   assert.equal(fs.existsSync(setup.env.STATUS_FILE), false);
 });
+
+test('declares firstboot before sshd in the SysV dependency graph', () => {
+  const script = fs.readFileSync(firstboot, 'utf8');
+
+  assert.match(script, /^# X-Start-Before:\s+sshd$/m);
+  assert.match(script, /^# Default-Start:\s+2 3 4 5$/m);
+});

@@ -79,8 +79,9 @@ function installVerifierStubs(directory) {
     '  "cat /etc/fstab") printf "LABEL=armbi_boot /boot vfat defaults 0 2\\n" ;;',
     '  "ls -p /etc/ssh") if [ "$LEGACY_TEST_FORBIDDEN" = host-key ]; then echo "/42/100600/0/0/ssh_host_test_key/16/"; else echo "/42/100644/0/0/sshd_config/3289/"; fi ;;',
     '  "stat /usr/bin/one-kvm") exit 1 ;;',
-    '  "stat /etc/rc2.d/S01ws1608-amlenc-firstboot") echo "Inode: 42   Type: symlink    Mode:  0777"; echo "Fast link dest: \\"../init.d/ws1608-amlenc-firstboot\\"" ;;',
-    '  "stat /etc/rcS.d/S99ws1608-amlenc-firstboot"|"stat /etc/rcS.d/S01ws1608-amlenc-firstboot"|"stat /etc/rc2.d/S01ssh"|"stat /etc/ssh/ssh_host_"*|"stat /var/lib/ws1608-amlenc/firstboot-complete") exit 0 ;;',
+    '  "ls -p /etc/rc2.d"|"ls -p /etc/rc3.d"|"ls -p /etc/rc4.d"|"ls -p /etc/rc5.d") if [ "$LEGACY_TEST_RC_ORDER" = reversed ]; then printf "/42/120777/0/0/S03ws1608-amlenc-firstboot/40/\\n/43/120777/0/0/S02ssh/20/\\n"; else printf "/42/120777/0/0/S01ws1608-amlenc-firstboot/40/\\n/43/120777/0/0/S02ssh/20/\\n"; fi ;;',
+    '  "stat /etc/rcS.d/S99ws1608-amlenc-firstboot"|"stat /etc/rcS.d/S01ws1608-amlenc-firstboot"|"stat /etc/ssh/ssh_host_"*|"stat /var/lib/ws1608-amlenc/firstboot-complete") exit 0 ;;',
+    '  "stat /etc/rc"*"/S01ws1608-amlenc-firstboot") echo "Inode: 42   Type: symlink    Mode:  0777"; echo "Fast link dest: \\"../init.d/ws1608-amlenc-firstboot\\"" ;;',
     '  "stat /tmp/ws1608-amlenc-firstboot.complete") if [ "$LEGACY_TEST_FORBIDDEN" = build-marker ]; then echo "Inode: 42   Type: regular    Mode:  0644"; fi ;;',
     '  "stat /etc/init.d/ws1608-amlenc-firstboot") echo "Inode: 42   Type: regular    Mode:  0755" ;;',
     '  "stat /usr/local/sbin/ws1608-amlenc-"*) echo "Inode: 42   Type: regular    Mode:  0755" ;;',
@@ -114,7 +115,7 @@ function writeAmlImgStub(filePath) {
   ].join('\n'));
 }
 
-function runLegacyVerifier(t, manifestKeySha256, authorizedKey, forbidden = '') {
+function runLegacyVerifier(t, manifestKeySha256, authorizedKey, forbidden = '', rcOrder = '') {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'amlenc-legacy-verify-'));
   t.after(() => fs.rmSync(root, { recursive: true, force: true }));
   const bin = path.join(root, 'bin');
@@ -163,6 +164,7 @@ function runLegacyVerifier(t, manifestKeySha256, authorizedKey, forbidden = '') 
       VERIFY_DIR: path.join(root, 'verify'),
       LEGACY_TEST_AUTHORIZED_KEYS: authorizedKey,
       LEGACY_TEST_FORBIDDEN: forbidden,
+      LEGACY_TEST_RC_ORDER: rcOrder,
     },
     encoding: 'utf8',
   });
@@ -224,8 +226,7 @@ test('independently verifies recovery identity, rootfs and untested status', () 
   assert.match(verify, /3\.10\.107/);
   assert.match(verify, /ws1608-amlenc-arm-trial/);
   assert.match(verify, /ws1608-amlenc-mark-success/);
-  assert.match(verify, /rc2\.d\/S01ws1608-amlenc-firstboot/);
-  assert.match(verify, /rcS\.d\/S99ws1608-amlenc-firstboot/);
+  assert.match(verify, /ls -p \/etc\/rc\$\{level\}\.d/);
   assert.match(verify, /ssh_host_\[\^\/\]\+/);
   for (const pattern of [/PasswordAuthentication yes/, /PermitRootLogin yes/, /cat \/etc\/shadow/, /root:\\\$\[\^:\]\+/]) assert.match(verify, pattern);
   assert.match(verify, /one-kvm/);
@@ -239,7 +240,7 @@ test('builds a Bullseye SysV rootfs for both kernels without One-KVM', () => {
     rootfs.indexOf('debugfs -R'),
   );
   assert.match(rootfs, /BULLSEYE_ARMV7_OCI_IMAGE/);
-  for (const packageName of ['sysvinit-core', 'udev', 'kmod', 'ifupdown', 'isc-dhcp-client', 'openssh-server']) {
+  for (const packageName of ['sysvinit-core', 'sysv-rc', 'insserv', 'udev', 'kmod', 'ifupdown', 'isc-dhcp-client', 'openssh-server']) {
     assert.match(rootfs, new RegExp(packageName));
   }
   for (const pattern of [/LEGACY_DEFAULT_LOGIN_PASSWORD/, /chpasswd/, /PasswordAuthentication yes/, /KbdInteractiveAuthentication yes/, /PermitRootLogin yes/, /PubkeyAuthentication yes/]) assert.match(rootfs, pattern);
@@ -251,8 +252,8 @@ test('builds a Bullseye SysV rootfs for both kernels without One-KVM', () => {
   assert.match(rootfs, /ws1608-amlenc-arm-trial/);
   assert.match(rootfs, /ws1608-amlenc-mark-success/);
   assert.match(rootfs, /ws1608-amlenc-firstboot/);
-  assert.match(rootfs, /rc2\.d\/S01ws1608-amlenc-firstboot/);
-  assert.match(rootfs, /rc2\.d\/S02ssh/);
+  for (const pattern of [/update-rc\.d ws1608-amlenc-firstboot defaults/, /update-rc\.d ssh defaults/]) assert.match(rootfs, pattern);
+  assert.doesNotMatch(rootfs, /ln -s \.\.\/init\.d\/ws1608-amlenc-firstboot/);
   assert.match(rootfs, /STATUS_FILE=.*ws1608-amlenc-firstboot/);
   assert.match(rootfs, /SSHD_START_BIN=\/bin\/true/);
   assert.match(rootfs, /LABEL=armbi_boot \/boot vfat/);
