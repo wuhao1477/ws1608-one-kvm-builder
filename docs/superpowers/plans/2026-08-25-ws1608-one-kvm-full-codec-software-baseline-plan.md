@@ -477,3 +477,13 @@ mode and hardware status before any Release or stable-channel change.
 - Compressed image: SHA-256 `54b575f01b28c698eada229bf25ea9bc73fcec05f3c0049feba4bc0d46f5783e`.
 - Local checks: exactly five regular files, `SHA256SUMS` valid, `xz -t` valid, compressed bytes equal raw image digest.
 - Manifest: `codec_baseline.software=[h264,h265,vp8,vp9]`, `codec_baseline.hardware=[]`, `runtime_verified=true`, `hardware_boot_tested=false`, `hardware_encoder_tested=false`, `one_kvm_included=true`, `stable_channel_modified=false`.
+
+#### Task 5 Evidence — 2026-08-25 Manual Candidate `b067001`
+
+- Actions run: [32848188015](https://github.com/wuhao1477/ws1608-one-kvm-builder/actions/runs/32848188015), commit `675b6ff`; contract and experimental artifact jobs succeeded.
+- Artifact: `9564628623` / `ws1608-amlenc-exp-release-67-1`; hosted artifact archive digest `c2b67e05a379c0741f0cb64df57d6dd1c75e0d032ffcb9ed0b5c7d6751acf257`.
+- Image: `WS1608-AMLENC_0.2.6+ws1608amlenc.run-67-1_Onecloud_trixie_6.12.28.burn.img`.
+- Build identity: `ws1608-amlenc-exp-0.2.6-v260802-k6.12.28-b067001`.
+- Cloud gates passed: ARMv7 package, four software codec runtime checks, burn image verification, diagnostic One-KVM image verification, five-file release verification and artifact upload.
+- Hosted manifest remains `codec_baseline.software=[h264,h265,vp8,vp9]`, `codec_baseline.hardware=[]`, `runtime_verified=true`, `hardware_boot_tested=false`, `hardware_encoder_tested=false`, `one_kvm_included=true`, `stable_channel_modified=false`.
+- The artifact has not been downloaded by the build agent; physical flashing and hardware encoder validation remain pending operator testing.
