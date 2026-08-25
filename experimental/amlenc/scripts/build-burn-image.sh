@@ -118,6 +118,7 @@ jq -n \
     one_kvm: {version: $one_kvm_version, sha256: $one_kvm_sha256,
       upstream_ref: $one_kvm_ref, upstream_commit: $one_kvm_commit},
     codec_baseline: {software: [$software_codecs[].id], hardware: [], runtime_verified: true},
+    default_login_user: "root", password_authentication: true, ssh_service_enabled: true,
     hardware_encoder_tested: false, hardware_boot_tested: false,
     one_kvm_included: true, stable_channel_modified: false}' >"$MANIFEST"
 

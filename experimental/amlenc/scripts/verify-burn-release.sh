@@ -45,6 +45,7 @@ jq -e --arg image "$image_name" --arg digest "$raw_sha256" '
   .kernel.source == "stable-base" and .kernel.version == "6.12.28-current-meson" and
   (.build_tag | test("^ws1608-amlenc-exp-0\\.2\\.6-v[0-9]+-k6\\.12\\.28-b[0-9]{6}$")) and
   .codec_baseline == {software:["h264","h265","vp8","vp9"],hardware:[],runtime_verified:true} and
+  .default_login_user == "root" and .password_authentication == true and .ssh_service_enabled == true and
   .one_kvm_included == true and .stable_channel_modified == false and
   .hardware_boot_tested == false and .hardware_encoder_tested == false and
   (.one_kvm.version | startswith("0.2.6+ws1608amlenc."))

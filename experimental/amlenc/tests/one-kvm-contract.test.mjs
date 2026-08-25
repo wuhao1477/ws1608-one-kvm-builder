@@ -71,6 +71,8 @@ const expectedMetadata = {
     { id: 'vp9', encoder: 'libvpx-vp9', decoder: 'vp9', hardware: false },
   ],
   amlenc_smoke_test_default: false,
+  default_login_user: 'root',
+  password_authentication: true,
   hardware_encoder_tested: false,
   stable_channel_modified: false,
   redistribution: 'local-test-only',

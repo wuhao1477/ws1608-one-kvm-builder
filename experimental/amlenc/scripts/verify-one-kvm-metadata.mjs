@@ -47,6 +47,8 @@ function verify(metadata, sources) {
     { id: 'vp9', encoder: 'libvpx-vp9', decoder: 'vp9', hardware: false },
   ], 'software codecs');
   requireEqual(metadata.amlenc_smoke_test_default, false, 'AMLENC smoke test default');
+  requireEqual(metadata.default_login_user, 'root', 'default login user');
+  requireEqual(metadata.password_authentication, true, 'password authentication');
   requireEqual(metadata.hardware_encoder_tested, false, 'hardware encoder status');
   requireEqual(metadata.stable_channel_modified, false, 'stable channel status');
   requireEqual(metadata.redistribution, 'local-test-only', 'redistribution');

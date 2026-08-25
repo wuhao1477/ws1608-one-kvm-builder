@@ -110,6 +110,7 @@ trap 'rm -rf "$package_dir" "$control_dir"' EXIT
 dpkg-deb -x "$base_deb" "$package_dir"
 dpkg-deb -e "$base_deb" "$control_dir"
 cp -a "$control_dir" "$package_dir/DEBIAN"
+"$ROOT_DIR/experimental/amlenc/scripts/configure-login-postinst.sh" "$package_dir"
 install -d "$package_dir/usr/lib/one-kvm" "$package_dir/usr/share/doc/one-kvm"
 install -m 0755 "$ROOT_DIR/out/amlenc/libvpcodec/amlenc-m8-diag" "$package_dir/usr/lib/one-kvm/amlenc-m8-diag"
 install -m 0644 "$ROOT_DIR/out/amlenc/libvpcodec/libvpcodec.so" "$package_dir/usr/lib/one-kvm/libvpcodec.so"
@@ -136,6 +137,7 @@ jq -cn \
     toolchain:{gcc:$gcc,binutils:$binutils},dependencies:{x264:$x264,libvpx:$libvpx,x265:$x265,rkmpp:$rkmpp,rkrga:$rkrga},
     platform:"WS1608/S805/Meson8b/armv7",codec:"h264_amlenc",amlenc_smoke_test_default:false,
     software_codecs:$software_codecs,
+    default_login_user:"root",password_authentication:true,
     hardware_encoder_tested:false,
     stable_channel_modified:false,redistribution:"local-test-only"}' >"$metadata"
 (cd "$package_dir" && sha256sum usr/bin/one-kvm usr/lib/one-kvm/libvpcodec.so usr/lib/one-kvm/amlenc-m8-diag usr/share/doc/one-kvm/ws1608-amlenc-build.json >usr/share/doc/one-kvm/SHA256SUMS)
