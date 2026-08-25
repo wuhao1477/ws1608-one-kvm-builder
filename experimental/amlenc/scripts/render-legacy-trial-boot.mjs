@@ -33,6 +33,10 @@ if fatload \${bootdev} 0x13000000 /amlenc-force-recovery; then
   run boot_recovery
   exit 1
 fi
+if fatload \${bootdev} 0x13000000 /amlenc-legacy-trial-armed; then
+  run boot_amlenc
+  exit 1
+fi
 if fatload \${bootdev} 0x13000000 /amlenc-3.10.ok; then
   run boot_amlenc
   exit 1
