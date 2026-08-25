@@ -83,7 +83,7 @@ test('publishes an explicitly acknowledged immutable experimental prerelease', (
   assert.match(workflow, /inputs\.publish && inputs\.acknowledge_experimental/);
   assert.match(workflow, /github\.ref == format\('refs\/heads\/\{0\}', github\.event\.repository\.default_branch\)/);
   assert.match(releaseJob, /^    permissions:\n      contents: write$/m);
-  assert.match(releaseJob, /needs: \[contract, build\]/);
+  assert.match(releaseJob, /needs: \[contract, build, reverify\]/);
   assert.match(buildJob, /path: out\/amlenc\/burn\//);
   assert.match(releaseJob, /actions\/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131/);
   assert.match(releaseJob, /experimental\/amlenc\/scripts\/verify-burn-release\.sh/);
@@ -93,4 +93,25 @@ test('publishes an explicitly acknowledged immutable experimental prerelease', (
   assert.match(releaseJob, /ws1608-amlenc-exp-0\.2\.6-v260802-k6\.12\.28-\$build_revision/);
   assert.doesNotMatch(releaseJob, /Kernel: 3\.10\.107/);
   assert.doesNotMatch(releaseJob, /--clobber|--latest/);
+});
+
+test('reverifies every uploaded candidate before handoff or publication', () => {
+  const workflow = fs.readFileSync(workflowPath, 'utf8');
+  const reverifyStart = workflow.indexOf('\n  reverify:');
+  const releaseStart = workflow.indexOf('\n  release:');
+
+  assert.ok(reverifyStart >= 0, 'a post-upload reverify job is required');
+  assert.ok(releaseStart > reverifyStart, 'reverify must precede release');
+  const reverifyJob = workflow.slice(reverifyStart, releaseStart);
+
+  assert.match(reverifyJob, /needs: build/);
+  assert.match(reverifyJob, /actions\/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131/);
+  assert.match(reverifyJob, /sha256sum --check SHA256SUMS/);
+  assert.match(reverifyJob, /xz -t/);
+  assert.match(reverifyJob, /experimental\/amlenc\/scripts\/verify-burn-release\.sh/);
+  assert.match(reverifyJob, /experimental\/amlenc\/scripts\/verify-burn-image\.sh/);
+  assert.match(reverifyJob, /hardware_encoder_tested == false/);
+  assert.match(reverifyJob, /hardware_boot_tested == false/);
+  assert.match(reverifyJob, /one_kvm_included == true/);
+  assert.match(workflow.slice(releaseStart), /needs: \[contract, build, reverify\]/);
 });
