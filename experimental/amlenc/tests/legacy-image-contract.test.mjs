@@ -43,7 +43,7 @@ function installVerifierStubs(directory) {
   writeExecutable(path.join(directory, 'realpath'), '#!/bin/sh\n[ "$1" = -m ] && shift\nprintf "%s\\n" "$1"\n');
   writeExecutable(path.join(directory, 'dumpe2fs'), [
     '#!/bin/sh',
-    'echo "Filesystem features: has_journal ext_attr resize_inode dir_index filetype needs_recovery extent flex_bg sparse_super large_file huge_file uninit_bg dir_nlink extra_isize"',
+    'printf "Filesystem features: has_journal ext_attr resize_inode dir_index filetype needs_recovery extent flex_bg sparse_super large_file huge_file uninit_bg dir_nlink extra_isize\\nBlock size: 4096\\nFree blocks: 100000\\n"',
   ].join('\n'));
   writeExecutable(path.join(directory, 'mkimage'), [
     '#!/bin/sh',
@@ -211,7 +211,6 @@ test('rejects preinstalled host keys and build-time firstboot markers', (t) => {
     assert.match(result.stderr, /host key|firstboot|forbidden/i);
   }
 });
-
 test('independently verifies recovery identity, rootfs and untested status', () => {
   const verify = readRequired(files.verify);
   assert.match(verify, /AmlImg|AMLIMG_BIN/);
@@ -219,6 +218,7 @@ test('independently verifies recovery identity, rootfs and untested status', () 
   assert.match(verify, /name.*!=.*boot.*name.*!=.*rootfs/);
   assert.match(verify, /sha1sum/);
   assert.match(verify, /e2fsck/);
+  assert.match(verify, /Free blocks/);
   assert.match(verify, /mcopy/);
   assert.match(verify, /mkimage -l/);
   assert.match(verify, /debugfs/);

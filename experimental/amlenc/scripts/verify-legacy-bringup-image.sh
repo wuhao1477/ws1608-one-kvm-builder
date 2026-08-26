@@ -79,6 +79,10 @@ node "$ROOT_DIR/scripts/sparse-to-raw.mjs" "$final_rootfs" "$ROOTFS_RAW"
 e2fsck -fn "$ROOTFS_RAW" >/dev/null || fail "rootfs filesystem check"
 features=$(dumpe2fs -h "$ROOTFS_RAW" 2>/dev/null | awk -F: '/Filesystem features/{print $2}')
 for feature in 64bit metadata_csum orphan_file; do [[ " $features " != *" $feature "* ]] || fail "unsupported ext4 feature $feature"; done
+block_size=$(dumpe2fs -h "$ROOTFS_RAW" 2>/dev/null | awk -F: '/Block size/{gsub(/[[:space:]]/, "", $2); print $2}')
+free_blocks=$(dumpe2fs -h "$ROOTFS_RAW" 2>/dev/null | awk -F: '/Free blocks/{gsub(/[[:space:]]/, "", $2); print $2}')
+[[ "$block_size" =~ ^[0-9]+$ && "$free_blocks" =~ ^[0-9]+$ ]] || fail "rootfs block statistics"
+((free_blocks * block_size >= 134217728)) || fail "rootfs has less than 128 MiB free"
 
 BOOT_FILES="$VERIFY_DIR/boot-files"
 BASE_BOOT_FILES="$VERIFY_DIR/base-boot-files"
