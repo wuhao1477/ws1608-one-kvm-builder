@@ -57,18 +57,22 @@ RECOVERY_ROOTFS_RAW="$BASE_ROOTFS_RAW" LEGACY_MODULES_TAR="$LEGACY_KERNEL_DIR/mo
   ENCODER_DIR="$ENCODER_DIR" \
   SSH_PUBLIC_KEY="$SSH_PUBLIC_KEY" OUTPUT_ROOTFS_RAW="$FINAL_ROOTFS_RAW" \
   WORK_DIR="$WORK_DIR/rootfs-work" "$ROOT_DIR/experimental/amlenc/scripts/build-legacy-rootfs.sh"
+LEGACY_INITRD="$WORK_DIR/rootfs-work/amlenc-initrd"
+require_file "$LEGACY_INITRD"
 
 mcopy -i "$BASE_BOOT_RAW" ::uImage "$BOOT_FILES/uImage.recovery"
 mcopy -i "$BASE_BOOT_RAW" ::uInitrd "$BOOT_FILES/uInitrd.recovery"
 mcopy -i "$BASE_BOOT_RAW" ::dtb/meson8b-onecloud.dtb "$BOOT_FILES/dtb/meson8b-onecloud.recovery.dtb"
 mkimage -A arm -O linux -T kernel -C none -a 0x00208000 -e 0x00208000 \
   -n Linux-3.10.107-WS1608-AMLENC -d "$LEGACY_KERNEL_DIR/zImage" "$BOOT_FILES/uImage.amlenc"
+mkimage -A arm -O linux -T ramdisk -C none \
+  -n Linux-3.10.107-WS1608-AMLENC-initrd -d "$LEGACY_INITRD" "$BOOT_FILES/uInitrd.amlenc"
 cp "$LEGACY_KERNEL_DIR/ws1608-s805.dtb" "$BOOT_FILES/dtb/meson8b-onecloud-amlenc.dtb"
 node "$ROOT_DIR/experimental/amlenc/scripts/render-legacy-trial-boot.mjs" \
   "$BOOT_FILES" "$LEGACY_ROOTFS_UUID" "$BUILD_REVISION"
 mkimage -A arm -O linux -T script -C none -n WS1608-AMLENC-Bringup \
   -d "$BOOT_FILES/boot.cmd" "$BOOT_FILES/boot.scr"
-for file in uImage.recovery uInitrd.recovery uImage.amlenc boot.cmd boot.scr armbianEnv.txt amlenc-force-recovery; do
+for file in uImage.recovery uInitrd.recovery uImage.amlenc uInitrd.amlenc boot.cmd boot.scr armbianEnv.txt amlenc-force-recovery; do
   mcopy -o -i "$FINAL_BOOT_RAW" "$BOOT_FILES/$file" "::$file"
 done
 mcopy -o -i "$FINAL_BOOT_RAW" "$BOOT_FILES/dtb/meson8b-onecloud.recovery.dtb" ::dtb/meson8b-onecloud.recovery.dtb
@@ -89,16 +93,18 @@ encoder_abi=$(jq -er '.abi' "$ENCODER_DIR/source-manifest.json")
 encoder_redistribution=$(jq -er '.redistribution' "$ENCODER_DIR/source-manifest.json")
 encoder_sha256=$(sha256sum "$ENCODER_DIR/libvpcodec.so" | awk '{print $1}')
 diagnostic_sha256=$(sha256sum "$ENCODER_DIR/amlenc-m8-diag" | awk '{print $1}')
+initrd_sha256=$(sha256sum "$BOOT_FILES/uInitrd.amlenc" | awk '{print $1}')
 jq -n --arg image "$IMAGE_NAME" --arg image_sha "$image_sha256" --arg revision "$BUILD_REVISION" \
   --arg base_tag "$BASE_RELEASE_TAG" --arg base_sha "$BASE_IMAGE_SHA256" --arg key_sha "$key_sha256" \
   --arg boot_sha "$boot_sha256" --arg rootfs_sha "$rootfs_sha256" --arg linux "$LINUX_COMMIT" \
   --arg encoder_commit "$encoder_commit" --arg encoder_sha "$encoder_sha256" \
-  --arg diagnostic_sha "$diagnostic_sha256" --argjson encoder_abi "$encoder_abi" \
+  --arg diagnostic_sha "$diagnostic_sha256" --arg initrd_sha "$initrd_sha256" \
+  --argjson encoder_abi "$encoder_abi" \
   --arg encoder_redistribution "$encoder_redistribution" \
   '{schema:1,kind:"ws1608-amlenc-legacy-bringup",image_name:$image,image_sha256:$image_sha,
     build_revision:$revision,base_release_tag:$base_tag,base_image_sha256:$base_sha,
     recovery:{kernel:"6.12.28-current-meson",source:"stable-base"},
-    legacy:{kernel:"3.10.107",commit:$linux,cma_mib:64},
+    legacy:{kernel:"3.10.107",commit:$linux,cma_mib:64,initrd_sha256:$initrd_sha},
     diagnostic_included:true,
     encoder:{commit:$encoder_commit,abi:$encoder_abi,redistribution:$encoder_redistribution,
       libvpcodec_sha256:$encoder_sha,diagnostic_sha256:$diagnostic_sha},

@@ -47,7 +47,8 @@ docker run --rm --platform linux/arm/v7 \
   "$BULLSEYE_ARMV7_OCI_IMAGE" sh -euxc '
     export DEBIAN_FRONTEND=noninteractive
     /build-tools/apt-install sysvinit-core sysv-rc insserv initscripts udev kmod ifupdown \
-      isc-dhcp-client openssh-server ca-certificates ffmpeg jq iproute2 procps psmisc util-linux
+      isc-dhcp-client openssh-server ca-certificates ffmpeg jq iproute2 procps psmisc util-linux \
+      busybox-static cpio gzip
     printf "onecloud-amlenc\n" >/etc/hostname
     cat >/etc/network/interfaces <<"EOF"
 auto lo
@@ -63,6 +64,8 @@ EOF
     install -D -m 0755 /assets/ws1608-amlenc-arm-trial /usr/local/sbin/ws1608-amlenc-arm-trial
     install -D -m 0755 /assets/ws1608-amlenc-mark-success /usr/local/sbin/ws1608-amlenc-mark-success
     install -D -m 0755 /assets/ws1608-amlenc-firstboot /etc/init.d/ws1608-amlenc-firstboot
+    mkdir -p /tmp/ws1608-amlenc-initrd
+    install -D -m 0755 /assets/ws1608-amlenc-initrd /tmp/ws1608-amlenc-initrd/init
     install -D -m 0755 /assets/ws1608-amlenc-probe /usr/local/sbin/ws1608-amlenc-probe
     install -D -m 0755 /encoder/amlenc-m8-diag /usr/local/libexec/ws1608-amlenc/amlenc-m8-diag
     install -D -m 0644 /encoder/libvpcodec.so /usr/local/lib/ws1608-amlenc/libvpcodec.so
@@ -85,6 +88,18 @@ EOF
       SSHD_START_BIN=/bin/true STATUS_FILE=/tmp/ws1608-amlenc-firstboot.complete \
       /etc/init.d/ws1608-amlenc-firstboot
     test -s /tmp/ws1608-amlenc-firstboot.complete
+    mkdir -p /tmp/ws1608-amlenc-initrd/bin /tmp/ws1608-amlenc-initrd/dev \
+      /tmp/ws1608-amlenc-initrd/proc /tmp/ws1608-amlenc-initrd/sys \
+      /tmp/ws1608-amlenc-initrd/run /tmp/ws1608-amlenc-initrd/newroot
+    install -m 0755 /bin/busybox /tmp/ws1608-amlenc-initrd/bin/busybox
+    for applet in sh mount umount mkdir sleep cat blkid switch_root reboot; do
+      ln -s busybox "/tmp/ws1608-amlenc-initrd/bin/$applet"
+    done
+    (
+      cd /tmp/ws1608-amlenc-initrd
+      find . -print | cpio -o -H newc --quiet | gzip -9 > /work/amlenc-initrd
+    )
+    test -s /work/amlenc-initrd
     rm -f /etc/ssh/ssh_host_* /tmp/ws1608-amlenc-firstboot.complete \
       /tmp/ws1608-amlenc-build-boot/amlenc-legacy-firstboot-started \
       /tmp/ws1608-amlenc-build-boot/amlenc-legacy-firstboot-ready \
@@ -131,4 +146,5 @@ EOF
   '
 
 install -m 0644 "$WORK_DIR/rootfs.raw" "$OUTPUT_ROOTFS_RAW"
+require_file "$WORK_DIR/amlenc-initrd"
 echo "built $OUTPUT_ROOTFS_RAW"

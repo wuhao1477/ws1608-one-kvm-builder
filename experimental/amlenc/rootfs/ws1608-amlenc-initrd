@@ -1,0 +1,68 @@
+#!/bin/sh
+set -eu
+
+PATH=/bin
+export PATH
+
+mkdir -p /dev /proc /sys /run/boot /newroot
+mount -t devtmpfs devtmpfs /dev 2>/dev/null || true
+mount -t proc proc /proc 2>/dev/null || true
+mount -t sysfs sysfs /sys 2>/dev/null || true
+
+resolve_device() {
+  target=$1
+  for device in /dev/mmcblk0p* /dev/mmcblk1p*; do
+    [ -b "$device" ] || continue
+    info=$(blkid "$device" 2>/dev/null || true)
+    case "$target" in
+      UUID=*) case "$info" in *"UUID=\"${target#UUID=}\""*) printf '%s\n' "$device"; return 0 ;; esac ;;
+      LABEL=*) case "$info" in *"LABEL=\"${target#LABEL=}\""*) printf '%s\n' "$device"; return 0 ;; esac ;;
+    esac
+  done
+  return 1
+}
+
+boot_device=
+attempt=0
+while [ "$attempt" -lt 10 ] && [ -z "$boot_device" ]; do
+  candidate=$(resolve_device LABEL=armbi_boot || true)
+  if [ -z "$candidate" ]; then
+    for device in /dev/mmcblk0p1 /dev/mmcblk1p1; do
+      [ -b "$device" ] && candidate=$device && break
+    done
+  fi
+  if [ -n "$candidate" ] && mount -t vfat -o rw "$candidate" /run/boot 2>/dev/null; then
+    boot_device=$candidate
+    printf 'recovery-first\n' >/run/boot/amlenc-force-recovery
+    sync
+    umount /run/boot 2>/dev/null || true
+    break
+  fi
+  attempt=$((attempt + 1))
+  sleep 1
+done
+
+root_spec=
+for argument in $(cat /proc/cmdline 2>/dev/null); do
+  case "$argument" in
+    root=*) root_spec=${argument#root=} ;;
+  esac
+done
+root_device=
+case "$root_spec" in
+  UUID=*|LABEL=*) root_device=$(resolve_device "$root_spec" || true) ;;
+  /dev/*) root_device=$root_spec ;;
+esac
+if [ -z "$root_device" ]; then
+  for device in /dev/mmcblk0p2 /dev/mmcblk1p2; do
+    if [ -b "$device" ]; then root_device=$device; break; fi
+  done
+fi
+
+if [ -n "$root_device" ]; then
+  mount -t ext4 -o rw "$root_device" /newroot 2>/dev/null || true
+fi
+if [ ! -x /newroot/sbin/init ]; then
+  exec sh -c 'echo "ws1608 initramfs: root filesystem unavailable" >&2; sleep 10; reboot -f'
+fi
+exec switch_root /newroot /sbin/init

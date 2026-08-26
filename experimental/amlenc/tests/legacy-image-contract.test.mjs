@@ -49,6 +49,7 @@ function installVerifierStubs(directory) {
     '#!/bin/sh',
     'case "$2" in',
     '  *uImage.amlenc*) echo "Image Name: Linux-3.10.107-WS1608-AMLENC" ;;',
+    '  *uInitrd.amlenc*) echo "Image Name: Linux-3.10.107-WS1608-AMLENC-initrd" ;;',
     '  *boot.scr*) echo "Image Name: WS1608-AMLENC-Bringup" ;;',
     'esac',
   ].join('\n'));
@@ -59,6 +60,7 @@ function installVerifierStubs(directory) {
     'case "$dest" in',
     '  *uImage|*uImage.recovery) printf "recovery-kernel\\n" >"$dest" ;;',
     '  *uInitrd|*uInitrd.recovery) printf "recovery-initrd\\n" >"$dest" ;;',
+    '  *uInitrd.amlenc) printf "legacy-initrd\\n" >"$dest" ;;',
     '  *meson8b-onecloud.dtb|*meson8b-onecloud.recovery.dtb) printf "recovery-dtb\\n" >"$dest" ;;',
     '  *uImage.amlenc) printf "legacy-kernel\\n" >"$dest" ;;',
     '  *boot.cmd) printf "amlenc-force-recovery\\namlenc-3.10.ok\\namlenc_trial_revision\\n" >"$dest" ;;',
@@ -138,11 +140,8 @@ function runLegacyVerifier(t, manifestKeySha256, authorizedKey, forbidden = '', 
     base_release_tag: envValue('config/base.env', 'BASE_RELEASE_TAG'),
     base_image_sha256: envValue('config/base.env', 'BASE_IMAGE_SHA256'),
     recovery: { kernel: '6.12.28-current-meson', source: 'stable-base' },
-    legacy: { kernel: '3.10.107', commit: envValue('experimental/amlenc/config/sources.env', 'LINUX_COMMIT'), cma_mib: 64 },
-    partitions: {
-      boot_sha256: sha256Text('final-boot\n'),
-      rootfs_sha256: sha256Text('final-rootfs\n'),
-    },
+    legacy: { kernel: '3.10.107', commit: envValue('experimental/amlenc/config/sources.env', 'LINUX_COMMIT'), cma_mib: 64, initrd_sha256: sha256Text('legacy-initrd\\n') },
+    partitions: { boot_sha256: sha256Text('final-boot\n'), rootfs_sha256: sha256Text('final-rootfs\n') },
     ssh_public_key_sha256: manifestKeySha256,
     default_login_user: 'root',
     password_authentication: true,
@@ -255,6 +254,7 @@ test('builds a Bullseye SysV rootfs for both kernels without One-KVM', () => {
   assert.match(rootfs, /ws1608-amlenc-arm-trial/);
   assert.match(rootfs, /ws1608-amlenc-mark-success/);
   assert.match(rootfs, /ws1608-amlenc-firstboot/);
+  for (const pattern of [/ws1608-amlenc-initrd/, /busybox-static/, /cpio/]) assert.match(rootfs, pattern);
   for (const pattern of [/update-rc\.d ws1608-amlenc-firstboot defaults/, /update-rc\.d ssh defaults/]) assert.match(rootfs, pattern);
   assert.doesNotMatch(rootfs, /ln -s \.\.\/init\.d\/ws1608-amlenc-firstboot/);
   assert.match(rootfs, /STATUS_FILE=.*ws1608-amlenc-firstboot/);
@@ -290,7 +290,7 @@ test('assembles dual boot and rootfs partitions inside the stable AmlImg package
   assert.match(image, /render-legacy-trial-boot\.mjs/);
   for (const asset of [
     'uImage.recovery', 'uInitrd.recovery', 'meson8b-onecloud.recovery.dtb',
-    'uImage.amlenc', 'meson8b-onecloud-amlenc.dtb', 'amlenc-force-recovery',
+    'uImage.amlenc', 'uInitrd.amlenc', 'meson8b-onecloud-amlenc.dtb', 'amlenc-force-recovery',
   ]) assert.match(image, new RegExp(asset.replaceAll('.', '\\.')));
   assert.match(image, /mkimage.*Linux-3\.10\.107-WS1608-AMLENC/s);
   assert.match(image, /sha1sum/);

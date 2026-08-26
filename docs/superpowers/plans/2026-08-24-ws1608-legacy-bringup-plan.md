@@ -110,6 +110,7 @@ git commit -S -m "fix(amlenc): 修正玩客云电压与编码内存"
 - Create: `experimental/amlenc/scripts/render-legacy-trial-boot.mjs`
 - Create: `experimental/amlenc/rootfs/ws1608-amlenc-arm-trial`
 - Create: `experimental/amlenc/rootfs/ws1608-amlenc-mark-success`
+- Create: `experimental/amlenc/rootfs/ws1608-amlenc-initrd`
 - Create: `experimental/amlenc/tests/legacy-boot-contract.test.mjs`
 **Interfaces:**
 - Consumes: `OUTPUT_DIR ROOTFS_UUID BUILD_REVISION`.
@@ -131,8 +132,10 @@ Run: `node --test experimental/amlenc/tests/legacy-boot-contract.test.mjs`
 Expected: FAIL because renderer and helpers do not exist.
 - [x] **Step 3: Implement renderer and helpers**
 The renderer validates UUID and `b[0-9]{6}` revision. The candidate ships a
-nonempty `amlenc-force-recovery`. `ws1608-amlenc-arm-trial` removes only that
-file after recovery checks. `ws1608-amlenc-mark-success` writes
+nonempty `amlenc-force-recovery` and a 3.10 initramfs that restores this marker
+before rootfs handoff. `ws1608-amlenc-arm-trial` removes the initial marker
+only after recovery checks. `ws1608-amlenc-firstboot` removes it only after a
+healthy 3.10 userspace start; `ws1608-amlenc-mark-success` writes
 `amlenc-3.10.ok` only after all 3.10 checks and `sync`.
 - [x] **Step 4: Verify and commit**
 Run: `node --test experimental/amlenc/tests/legacy-boot-contract.test.mjs && bash -n experimental/amlenc/rootfs/*`

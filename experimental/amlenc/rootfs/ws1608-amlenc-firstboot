@@ -21,6 +21,7 @@ STARTED_MARKER="$BOOT_DIR/amlenc-legacy-firstboot-started"
 READY_MARKER="$BOOT_DIR/amlenc-legacy-firstboot-ready"
 FAILED_MARKER="$BOOT_DIR/amlenc-legacy-firstboot-failed"
 ARMED_MARKER="$BOOT_DIR/amlenc-legacy-trial-armed"
+FORCE_RECOVERY_MARKER="$BOOT_DIR/amlenc-force-recovery"
 DMESG_LOG="$BOOT_DIR/amlenc-legacy-dmesg.log"
 stage=initialization
 
@@ -57,4 +58,7 @@ printf 'host-keys-ready\n' >"$STATUS_FILE"
 chmod 0644 "$STATUS_FILE"
 printf 'kernel=%s\n' "$(uname -r 2>/dev/null || printf unknown)" >"$READY_MARKER"
 rm -f -- "$ARMED_MARKER"
+case "$(uname -r 2>/dev/null || printf unknown)" in
+  3.10.107*) rm -f -- "$FORCE_RECOVERY_MARKER" ;;
+esac
 sync

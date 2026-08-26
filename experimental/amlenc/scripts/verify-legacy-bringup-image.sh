@@ -86,7 +86,7 @@ mkdir -p "$BOOT_FILES" "$BASE_BOOT_FILES"
 mcopy -i "$BASE_BOOT_RAW" ::uImage "$BASE_BOOT_FILES/uImage"
 mcopy -i "$BASE_BOOT_RAW" ::uInitrd "$BASE_BOOT_FILES/uInitrd"
 mcopy -i "$BASE_BOOT_RAW" ::dtb/meson8b-onecloud.dtb "$BASE_BOOT_FILES/meson8b-onecloud.dtb"
-for file in uImage.recovery uInitrd.recovery uImage.amlenc boot.cmd boot.scr armbianEnv.txt amlenc-force-recovery; do
+for file in uImage.recovery uInitrd.recovery uImage.amlenc uInitrd.amlenc boot.cmd boot.scr armbianEnv.txt amlenc-force-recovery; do
   mcopy -i "$BOOT_RAW" "::$file" "$BOOT_FILES/$file"
 done
 mcopy -i "$BOOT_RAW" ::dtb/meson8b-onecloud.recovery.dtb "$BOOT_FILES/meson8b-onecloud.recovery.dtb"
@@ -95,6 +95,8 @@ cmp "$BASE_BOOT_FILES/uImage" "$BOOT_FILES/uImage.recovery" || fail "recovery uI
 cmp "$BASE_BOOT_FILES/uInitrd" "$BOOT_FILES/uInitrd.recovery" || fail "recovery uInitrd changed"
 cmp "$BASE_BOOT_FILES/meson8b-onecloud.dtb" "$BOOT_FILES/meson8b-onecloud.recovery.dtb" || fail "recovery DTB changed"
 mkimage -l "$BOOT_FILES/uImage.amlenc" | grep -q 'Linux-3.10.107-WS1608-AMLENC' || fail "legacy uImage identity"
+mkimage -l "$BOOT_FILES/uInitrd.amlenc" | grep -q 'Linux-3.10.107-WS1608-AMLENC-initrd' || fail "legacy initrd identity"
+legacy_initrd_sha256=$(sha256sum "$BOOT_FILES/uInitrd.amlenc" | awk '{print $1}')
 mkimage -l "$BOOT_FILES/boot.scr" | grep -q 'WS1608-AMLENC-Bringup' || fail "boot script identity"
 [[ "$(<"$BOOT_FILES/amlenc-force-recovery")" == recovery-first ]] || fail "force-recovery marker"
 force_line=$(grep -n -m1 amlenc-force-recovery "$BOOT_FILES/boot.cmd" | cut -d: -f1)
@@ -190,11 +192,13 @@ limits=$(debugfs -R 'cat /usr/local/share/ws1608-amlenc/hardware-limits.json' "$
 jq -e '.schema == 1 and .codec == "h264" and .pixel_format == "nv12" and .hardware_encoder_tested == false' <<<"$limits" >/dev/null \
   || fail "hardware limits metadata"
 
-jq -e --arg base_tag "$BASE_RELEASE_TAG" --arg base_sha "$BASE_IMAGE_SHA256" --arg linux "$LINUX_COMMIT" '
+jq -e --arg base_tag "$BASE_RELEASE_TAG" --arg base_sha "$BASE_IMAGE_SHA256" \
+  --arg linux "$LINUX_COMMIT" --arg initrd_sha "$legacy_initrd_sha256" '
   .schema == 1 and .kind == "ws1608-amlenc-legacy-bringup" and
   .base_release_tag == $base_tag and .base_image_sha256 == $base_sha and
   .recovery == {kernel:"6.12.28-current-meson",source:"stable-base"} and
-  .legacy == {kernel:"3.10.107",commit:$linux,cma_mib:64} and .recovery_first == true and
+  .legacy.kernel == "3.10.107" and .legacy.commit == $linux and .legacy.cma_mib == 64 and
+  .legacy.initrd_sha256 == $initrd_sha and .recovery_first == true and
   .diagnostic_included == true and .encoder.abi == 1 and
   (.encoder.commit | test("^[a-f0-9]{40}$")) and
   (.encoder.libvpcodec_sha256 | test("^[a-f0-9]{64}$")) and

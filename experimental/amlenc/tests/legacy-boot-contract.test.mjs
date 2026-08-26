@@ -9,6 +9,7 @@ const renderer = 'experimental/amlenc/scripts/render-legacy-trial-boot.mjs';
 const armTrial = 'experimental/amlenc/rootfs/ws1608-amlenc-arm-trial';
 const markSuccess = 'experimental/amlenc/rootfs/ws1608-amlenc-mark-success';
 const firstboot = 'experimental/amlenc/rootfs/ws1608-amlenc-firstboot';
+const initrd = 'experimental/amlenc/rootfs/ws1608-amlenc-initrd';
 const uuid = '7c59bb76-d17e-4a9c-9ff8-031b35133010';
 
 function fixture(t) {
@@ -105,6 +106,8 @@ test('renders a recovery-first revision-isolated boot flow', (t) => {
   assert.match(command, /uImage\.recovery/);
   assert.match(command, /uInitrd\.recovery/);
   assert.match(command, /uImage\.amlenc/);
+  assert.match(command, /uInitrd\.amlenc/);
+  assert.match(command, /bootm 0x20800000 0x22000000 0x21800000/);
   assert.match(command, /panic=10/);
   assert.equal(fs.readFileSync(path.join(output, 'amlenc-force-recovery'), 'utf8'), 'recovery-first\n');
   assert.match(fs.readFileSync(path.join(output, 'armbianEnv.txt'), 'utf8'), new RegExp(`rootdev=UUID=${uuid}`));
@@ -191,6 +194,23 @@ test('generates host keys and validates sshd before marking first boot complete'
   assert.equal(fs.existsSync(path.join(setup.env.BOOT_DIR, 'amlenc-legacy-trial-armed')), false);
 });
 
+test('clears recovery force only after a healthy legacy userspace boot', (t) => {
+  const legacy = firstbootFixture(t);
+  fs.writeFileSync(path.join(legacy.env.BOOT_DIR, 'amlenc-force-recovery'), 'recovery-first\n');
+  const legacyResult = spawnSync('sh', [firstboot], { encoding: 'utf8', env: legacy.env });
+  assert.equal(legacyResult.status, 0, legacyResult.stderr || legacyResult.stdout);
+  assert.equal(fs.existsSync(path.join(legacy.env.BOOT_DIR, 'amlenc-force-recovery')), false);
+
+  const recovery = firstbootFixture(t);
+  fs.writeFileSync(path.join(recovery.env.BOOT_DIR, 'amlenc-force-recovery'), 'recovery-first\n');
+  const recoveryResult = spawnSync('sh', [firstboot], {
+    encoding: 'utf8',
+    env: { ...recovery.env, UNAME_RELEASE: '6.12.28-current-meson' },
+  });
+  assert.equal(recoveryResult.status, 0, recoveryResult.stderr || recoveryResult.stdout);
+  assert.equal(fs.existsSync(path.join(recovery.env.BOOT_DIR, 'amlenc-force-recovery')), true);
+});
+
 test('does not mark first boot complete when sshd validation fails', (t) => {
   const setup = firstbootFixture(t, 42);
 
@@ -225,4 +245,12 @@ test('records a persistent legacy userspace boot milestone', () => {
   assert.match(helper, /legacy-firstboot-ready/);
   assert.match(helper, /legacy-firstboot-failed/);
   assert.match(helper, /dmesg/);
+});
+
+test('ships an early initramfs recovery guard', () => {
+  assert.equal(fs.existsSync(initrd), true, 'legacy initramfs helper is required');
+  const script = fs.readFileSync(initrd, 'utf8');
+  assert.match(script, /amlenc-force-recovery/);
+  assert.match(script, /mount/);
+  assert.match(script, /switch_root/);
 });

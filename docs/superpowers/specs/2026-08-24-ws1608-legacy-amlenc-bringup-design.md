@@ -141,9 +141,19 @@ Every new candidate ships with `/amlenc-force-recovery`. After the recovery
 kernel has DHCP and SSH, the operator runs
 `/usr/local/sbin/ws1608-amlenc-arm-trial`; it verifies recovery health, removes
 that marker, syncs the FAT filesystem and reboots into the one-shot 3.10 trial.
+The 3.10 `uInitrd.amlenc` restores the marker before mounting the rootfs. The
+SysV `firstboot` helper removes it only after a 3.10 userspace boot has created
+host keys, validated `sshd` and started the service.
 
-The 3.10 kernel uses `panic=10`. If it panics, it reboots and the next boot
-selects recovery. If it hangs, a power cycle selects recovery.
+The pinned OneCloud U-Boot has no FAT write/delete command and the board
+partition table has no `env` partition, so `saveenv` is not a reliable trial
+counter. The initramfs marker is therefore the early-failure guard. A failure
+before initramfs execution remains an unverified hardware risk and must not be
+treated as a successful bring-up.
+
+The 3.10 kernel uses `panic=10`; after the initramfs guard has run, a panic
+reboot selects recovery. If it hangs before the guard, a power cycle or USB
+reflash is required.
 
 The success marker is not written automatically. After DHCP, SSH, eMMC and
 60-second stability checks pass, the operator runs:
