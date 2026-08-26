@@ -170,7 +170,7 @@ grep -Fqx 'KbdInteractiveAuthentication yes' <<<"$ssh_config" || fail "SSH keybo
 grep -Fqx 'PubkeyAuthentication yes' <<<"$ssh_config" || fail "SSH public-key policy"
 grep -Fqx 'PermitRootLogin yes' <<<"$ssh_config" || fail "SSH root login policy"
 root_shadow=$(debugfs -R 'cat /etc/shadow' "$ROOTFS_RAW" 2>/dev/null)
-grep -Eq '^root:\$[^:]+:' <<<"$root_shadow" || fail "root password is locked or missing"
+grep -Eq '^root:\$6\$[^:]+:' <<<"$root_shadow" || fail "root password is not SHA-512 or is missing"
 authorized_keys=$(debugfs -R 'cat /root/.ssh/authorized_keys' "$ROOTFS_RAW" 2>/dev/null) || fail "SSH authorized_keys missing"
 ssh_key_count=0
 ssh_key_line=

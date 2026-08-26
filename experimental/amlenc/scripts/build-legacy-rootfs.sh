@@ -59,7 +59,7 @@ EOF
     install -d -m 0700 /root/.ssh
     printf "%s\n" "$SSH_PUBLIC_KEY" >/root/.ssh/authorized_keys
     chmod 0600 /root/.ssh/authorized_keys
-    printf "%s:%s\n" "$LEGACY_DEFAULT_LOGIN_USER" "$LEGACY_DEFAULT_LOGIN_PASSWORD" | chpasswd
+    printf "%s:%s\n" "$LEGACY_DEFAULT_LOGIN_USER" "$LEGACY_DEFAULT_LOGIN_PASSWORD" | chpasswd --crypt-method SHA512
     passwd -u "$LEGACY_DEFAULT_LOGIN_USER"
     install -D -m 0755 /assets/ws1608-amlenc-arm-trial /usr/local/sbin/ws1608-amlenc-arm-trial
     install -D -m 0755 /assets/ws1608-amlenc-mark-success /usr/local/sbin/ws1608-amlenc-mark-success
@@ -128,9 +128,18 @@ docker run --rm --platform linux/arm64 \
     mkdir -p /work/rootfs-tree/lib/modules /work/rootfs-tree/lib/firmware
     cp -a /work/recovery-tree/modules/'"$RECOVERY_KERNEL"' /work/rootfs-tree/lib/modules/
     test -d /work/rootfs-tree/lib/modules/6.12.28-current-meson
-    if test -d /work/recovery-tree/firmware; then cp -a /work/recovery-tree/firmware/. /work/rootfs-tree/lib/firmware/; fi
+    if test -d /work/recovery-tree/firmware; then
+      for firmware_dir in arm cnm edid meson updates video vpu; do
+        if test -d "/work/recovery-tree/firmware/$firmware_dir"; then
+          cp -a "/work/recovery-tree/firmware/$firmware_dir" /work/rootfs-tree/lib/firmware/
+        fi
+      done
+    fi
+    test ! -e /work/rootfs-tree/lib/firmware/qcom
     tar -xzf /legacy/'"${LEGACY_MODULES_TAR##*/}"' -C /work/rootfs-tree
     test -d /work/rootfs-tree/lib/modules
+    rm -rf /work/rootfs-tree/lib/modules/3.10.107/kernel/backports
+    test ! -e /work/rootfs-tree/lib/modules/3.10.107/kernel/backports
     cat >/work/rootfs-tree/etc/fstab <<"EOF"
 UUID='"$LEGACY_ROOTFS_UUID"' / ext4 defaults,errors=remount-ro 0 1
 LABEL=armbi_boot /boot vfat defaults 0 2

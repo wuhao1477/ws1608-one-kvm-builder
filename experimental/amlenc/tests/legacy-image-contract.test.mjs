@@ -230,7 +230,7 @@ test('independently verifies recovery identity, rootfs and untested status', () 
   assert.match(verify, /ws1608-amlenc-mark-success/);
   assert.match(verify, /ls -p \/etc\/rc\$\{level\}\.d/);
   assert.match(verify, /ssh_host_\[\^\/\]\+/);
-  for (const pattern of [/PasswordAuthentication yes/, /PermitRootLogin yes/, /cat \/etc\/shadow/, /root:\\\$\[\^:\]\+/]) assert.match(verify, pattern);
+  for (const pattern of [/PasswordAuthentication yes/, /PermitRootLogin yes/, /cat \/etc\/shadow/, /root:\\\$6\\\$\[\^:\]\+/]) assert.match(verify, pattern);
   assert.match(verify, /one-kvm/);
   for (const field of ['hardware_boot_tested', 'hardware_encoder_tested', 'one_kvm_included', 'hid_tested', 'msd_tested']) assert.match(verify, new RegExp(`${field}.*false`));
 });
@@ -245,7 +245,7 @@ test('builds a Bullseye SysV rootfs for both kernels without One-KVM', () => {
   for (const packageName of ['sysvinit-core', 'sysv-rc', 'insserv', 'udev', 'kmod', 'ifupdown', 'isc-dhcp-client', 'openssh-server']) {
     assert.match(rootfs, new RegExp(packageName));
   }
-  for (const pattern of [/LEGACY_DEFAULT_LOGIN_PASSWORD/, /chpasswd/, /PasswordAuthentication yes/, /KbdInteractiveAuthentication yes/, /PermitRootLogin yes/, /PubkeyAuthentication yes/]) assert.match(rootfs, pattern);
+  for (const pattern of [/LEGACY_DEFAULT_LOGIN_PASSWORD/, /chpasswd --crypt-method SHA512/, /PasswordAuthentication yes/, /KbdInteractiveAuthentication yes/, /PermitRootLogin yes/, /PubkeyAuthentication yes/]) assert.match(rootfs, pattern);
   assert.doesNotMatch(rootfs, /passwd -l root/);
   assert.match(rootfs, /authorized_keys/);
   assert.match(rootfs, /RECOVERY_ROOTFS_RAW/);
@@ -254,7 +254,7 @@ test('builds a Bullseye SysV rootfs for both kernels without One-KVM', () => {
   assert.match(rootfs, /ws1608-amlenc-arm-trial/);
   assert.match(rootfs, /ws1608-amlenc-mark-success/);
   assert.match(rootfs, /ws1608-amlenc-firstboot/);
-  for (const pattern of [/ws1608-amlenc-initrd/, /busybox-static/, /cpio/]) assert.match(rootfs, pattern);
+  for (const pattern of [/ws1608-amlenc-initrd/, /busybox-static/, /cpio/, /backports/, /qcom/]) assert.match(rootfs, pattern);
   for (const pattern of [/update-rc\.d ws1608-amlenc-firstboot defaults/, /update-rc\.d ssh defaults/]) assert.match(rootfs, pattern);
   assert.doesNotMatch(rootfs, /ln -s \.\.\/init\.d\/ws1608-amlenc-firstboot/);
   assert.match(rootfs, /STATUS_FILE=.*ws1608-amlenc-firstboot/);

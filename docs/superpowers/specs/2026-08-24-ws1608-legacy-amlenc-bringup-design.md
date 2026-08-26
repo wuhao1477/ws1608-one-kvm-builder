@@ -169,7 +169,10 @@ cannot make 3.10 permanent.
 ### Rootfs and access
 
 - Debian Bullseye armhf with SysV, udev, kmod, ifupdown, DHCP and OpenSSH
-- password login locked; operator-supplied SSH public key required
+- root password uses SHA-512 rather than yescrypt because yescrypt verification
+  is too slow on the S805
+- the fixed 1,400,897,536-byte rootfs prunes legacy Wi-Fi backports and
+  unrelated SoC firmware; WS1608 Ethernet, eMMC, HDMI and USB inputs remain
 - PR builds use a CI-only key with no retained private key and are not flashable
 
 The manual workflow accepts a base64 public key and records only its SHA-256.

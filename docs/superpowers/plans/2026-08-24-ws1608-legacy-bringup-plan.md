@@ -167,7 +167,9 @@ Build a 1,400,897,536-byte ext4 rootfs with old-kernel-compatible features.
 Copy the recovery module tree and firmware from the stable rootfs, install the
 3.10 modules, DHCP, sshd and both helpers, then create a 256 MiB FAT boot image.
 Replace only boot/rootfs sparse entries and their VERIFY files in the stable
-AmlImg package. Record the SSH public-key digest, source commits, CMA size,
+AmlImg package. Keep the fixed rootfs within its partition by pruning unused
+legacy backports and unrelated recovery firmware. Force SHA-512 for the
+operator password. Record the SSH public-key digest, source commits, CMA size,
 trial revision and all artifact SHA-256 values.
 - [x] **Step 4: Verify contracts and commit**
 Run: `node --test experimental/amlenc/tests/legacy-image-contract.test.mjs && bash -n experimental/amlenc/scripts/build-legacy-rootfs.sh experimental/amlenc/scripts/build-legacy-bringup-image.sh`
