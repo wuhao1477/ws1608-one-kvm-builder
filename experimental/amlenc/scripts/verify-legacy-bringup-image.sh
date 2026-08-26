@@ -122,7 +122,8 @@ for path in \
   /usr/local/share/ws1608-amlenc/hardware-limits.json \
   /usr/local/share/ws1608-amlenc/frame-640x480.nv12 \
   /usr/local/share/ws1608-amlenc/frame-1280x720.nv12 \
-  /etc/init.d/ws1608-amlenc-firstboot; do
+  /etc/init.d/ws1608-amlenc-firstboot \
+  /usr/local/sbin/ws1608-amlenc-kexec-trial; do
   debugfs -R "stat $path" "$ROOTFS_RAW" 2>/dev/null | grep -q 'Inode:' || fail "missing rootfs path $path"
 done
 for helper in ws1608-amlenc-arm-trial ws1608-amlenc-mark-success; do

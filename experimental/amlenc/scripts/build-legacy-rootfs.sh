@@ -48,7 +48,7 @@ docker run --rm --platform linux/arm/v7 \
     export DEBIAN_FRONTEND=noninteractive
     /build-tools/apt-install sysvinit-core sysv-rc insserv initscripts udev kmod ifupdown \
       isc-dhcp-client openssh-server ca-certificates ffmpeg jq iproute2 procps psmisc util-linux \
-      busybox-static cpio gzip
+      busybox-static cpio gzip kexec-tools
     printf "onecloud-amlenc\n" >/etc/hostname
     cat >/etc/network/interfaces <<"EOF"
 auto lo
@@ -64,6 +64,7 @@ EOF
     install -D -m 0755 /assets/ws1608-amlenc-arm-trial /usr/local/sbin/ws1608-amlenc-arm-trial
     install -D -m 0755 /assets/ws1608-amlenc-mark-success /usr/local/sbin/ws1608-amlenc-mark-success
     install -D -m 0755 /assets/ws1608-amlenc-firstboot /etc/init.d/ws1608-amlenc-firstboot
+    install -D -m 0755 /assets/ws1608-amlenc-kexec-trial /usr/local/sbin/ws1608-amlenc-kexec-trial
     mkdir -p /tmp/ws1608-amlenc-initrd
     install -D -m 0755 /assets/ws1608-amlenc-initrd /tmp/ws1608-amlenc-initrd/init
     install -D -m 0755 /assets/ws1608-amlenc-probe /usr/local/sbin/ws1608-amlenc-probe
@@ -82,6 +83,8 @@ EOF
     rm -f /etc/rcS.d/S99ws1608-amlenc-firstboot /etc/rc2.d/S01ws1608-amlenc-firstboot
     update-rc.d ws1608-amlenc-firstboot defaults
     update-rc.d ssh defaults
+    update-rc.d -f kexec remove || true
+    update-rc.d -f kexec-load remove || true
     rm -f /etc/ssh/ssh_host_* /etc/machine-id
     mkdir -p /tmp/ws1608-amlenc-build-boot
     BOOT_DIR=/tmp/ws1608-amlenc-build-boot DMESG_BIN=/bin/true \

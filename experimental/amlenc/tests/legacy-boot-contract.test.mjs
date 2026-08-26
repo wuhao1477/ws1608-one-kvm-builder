@@ -10,6 +10,7 @@ const armTrial = 'experimental/amlenc/rootfs/ws1608-amlenc-arm-trial';
 const markSuccess = 'experimental/amlenc/rootfs/ws1608-amlenc-mark-success';
 const firstboot = 'experimental/amlenc/rootfs/ws1608-amlenc-firstboot';
 const initrd = 'experimental/amlenc/rootfs/ws1608-amlenc-initrd';
+const kexecTrial = 'experimental/amlenc/rootfs/ws1608-amlenc-kexec-trial';
 const uuid = '7c59bb76-d17e-4a9c-9ff8-031b35133010';
 
 function fixture(t) {
@@ -254,4 +255,30 @@ test('ships an early initramfs recovery guard', () => {
   assert.match(script, /amlenc-force-recovery/);
   assert.match(script, /mount/);
   assert.match(script, /switch_root/);
+});
+
+test('loads the legacy kernel through recovery kexec without removing recovery force', (t) => {
+  assert.equal(fs.existsSync(kexecTrial), true, 'kexec trial helper is required');
+  const boot = fixture(t);
+  for (const file of ['uImage.amlenc', 'uInitrd.amlenc', 'dtb/meson8b-onecloud-amlenc.dtb']) {
+    fs.mkdirSync(path.dirname(path.join(boot, file)), { recursive: true });
+    fs.writeFileSync(path.join(boot, file), 'asset\n');
+  }
+  fs.writeFileSync(path.join(boot, 'amlenc-force-recovery'), 'recovery-first\n');
+  const log = path.join(boot, 'kexec.log');
+  const kexec = path.join(boot, 'kexec');
+  writeExecutable(kexec, '#!/bin/sh\nprintf "%s\\n" "$*" >>"$KEXEC_LOG"\n');
+  const result = helper(kexecTrial, boot, {
+    KEXEC_BIN: kexec, KEXEC_LOG: log, UNAME_RELEASE: '6.12.28-current-meson',
+    CMDLINE: 'root=UUID=7c59bb76-d17e-4a9c-9ff8-031b35133010 rootfstype=ext4 rw',
+  });
+
+  assert.equal(result.status, 0, result.stderr || result.stdout);
+  assert.equal(fs.existsSync(path.join(boot, 'amlenc-force-recovery')), true);
+  assert.equal(fs.existsSync(path.join(boot, 'amlenc-legacy-trial-armed')), true);
+  const commands = fs.readFileSync(log, 'utf8');
+  assert.match(commands, /--load .*uImage\.amlenc/);
+  assert.match(commands, /--initrd=.*uInitrd\.amlenc/);
+  assert.match(commands, /--dtb=.*meson8b-onecloud-amlenc\.dtb/);
+  assert.match(commands, /--exec/);
 });

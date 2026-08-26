@@ -6,17 +6,33 @@ UNAME_RELEASE=${UNAME_RELEASE-$(uname -r)}
 IP_OUTPUT=${IP_OUTPUT-$(ip -4 -o addr show scope global)}
 SSHD_ACTIVE=${SSHD_ACTIVE-$(pgrep -x sshd >/dev/null && echo true || echo false)}
 ROOT_MOUNT_OPTIONS=${ROOT_MOUNT_OPTIONS-$(findmnt -no OPTIONS /)}
+KEXEC_BIN=${KEXEC_BIN:-kexec}
+CMDLINE=${CMDLINE-$(cat /proc/cmdline 2>/dev/null || true)}
 
-fail() { echo "cannot arm legacy trial: $*" >&2; exit 1; }
+fail() { echo "cannot kexec legacy trial: $*" >&2; exit 1; }
 [[ "$UNAME_RELEASE" == 6.12.28-current-meson ]] || fail "recovery kernel is not active"
 [[ "$IP_OUTPUT" == *' inet '* ]] || fail "no global IPv4 address"
 [[ "$SSHD_ACTIVE" == true ]] || fail "sshd is not active"
 [[ ",$ROOT_MOUNT_OPTIONS," == *,rw,* ]] || fail "root filesystem is not read-write"
+command -v "$KEXEC_BIN" >/dev/null 2>&1 || fail "kexec is not installed"
 [[ -d "$BOOT_DIR" && ! -L "$BOOT_DIR" && -w "$BOOT_DIR" ]] || fail "boot filesystem is unsafe"
+for file in \
+  "$BOOT_DIR/uImage.amlenc" \
+  "$BOOT_DIR/uInitrd.amlenc" \
+  "$BOOT_DIR/dtb/meson8b-onecloud-amlenc.dtb"; do
+  [[ -f "$file" && ! -L "$file" && -s "$file" ]] || fail "missing legacy boot asset: $file"
+done
 marker="$BOOT_DIR/amlenc-force-recovery"
 [[ -f "$marker" && ! -L "$marker" && -s "$marker" ]] || fail "recovery marker is missing"
 
 printf 'kernel=%s\n' "$UNAME_RELEASE" >"$BOOT_DIR/amlenc-legacy-trial-armed"
 chmod 0644 "$BOOT_DIR/amlenc-legacy-trial-armed"
 sync
-echo "armed one Linux 3.10.107 trial; run ws1608-amlenc-kexec-trial"
+cmdline=$CMDLINE
+[[ -n "$cmdline" ]] || fail "current kernel command line is empty"
+"$KEXEC_BIN" --load "$BOOT_DIR/uImage.amlenc" \
+  --initrd="$BOOT_DIR/uInitrd.amlenc" \
+  --dtb="$BOOT_DIR/dtb/meson8b-onecloud-amlenc.dtb" \
+  --append="$cmdline panic=10 loglevel=8 ignore_loglevel"
+echo "loaded Linux 3.10.107 trial through kexec"
+"$KEXEC_BIN" --exec

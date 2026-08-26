@@ -12,9 +12,12 @@ ONE_KVM_AMLENC_SMOKE_TEST=1 /usr/bin/one-kvm
 
 ## 1. 可恢复启动
 
-1. 使用可移除介质或可恢复的临时启动方式加载 `out/amlenc/kernel/` 中的 Linux 3.10.107 内核、WS1608 DTB 和模块。
-2. 保留当前已验证镜像和 USB Burning Tool 恢复路径。
-3. 启动后确认 `uname -r` 为 `3.10.107`，且 `/dev/amvenc_avc` 存在。当前稳定版 6.12 内核不能作为本门禁的测试环境。
+1. 先在 recovery 中确认 `uname -r` 为 `6.12.28-current-meson`、网络和 SSH 正常。
+2. 执行 `/usr/local/sbin/ws1608-amlenc-arm-trial`，再执行
+   `/usr/local/sbin/ws1608-amlenc-kexec-trial`；该 helper 通过 recovery
+   内核加载 Linux 3.10.107、DTB 和 initrd。
+3. 保留当前已验证镜像和 USB Burning Tool 恢复路径。启动后确认
+   `uname -r` 为 `3.10.107`，且 `/dev/amvenc_avc` 存在。
 
 在设备上采集不含网络地址、密码和序列号的只读信息：
 

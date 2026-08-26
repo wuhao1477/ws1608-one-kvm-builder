@@ -154,6 +154,12 @@ counter. The initramfs marker is therefore the early-failure guard. A failure
 before initramfs execution remains an unverified hardware risk and must not be
 treated as a successful bring-up.
 
+The recovery rootfs also provides `/usr/local/sbin/ws1608-amlenc-kexec-trial`.
+It loads the 3.10 uImage, initrd and DTB through the recovery kernel's
+`CONFIG_KEXEC` path while leaving `amlenc-force-recovery` present. This is
+the preferred trial entry because a 3.10 reset returns to U-Boot recovery
+without a physical button.
+
 The 3.10 kernel uses `panic=10`; after the initramfs guard has run, a panic
 reboot selects recovery. If it hangs before the guard, a power cycle or USB
 reflash is required.

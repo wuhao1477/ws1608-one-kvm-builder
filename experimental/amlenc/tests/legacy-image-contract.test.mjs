@@ -219,7 +219,7 @@ test('independently verifies recovery identity, rootfs and untested status', () 
   assert.match(verify, /sha1sum/);
   assert.match(verify, /e2fsck/);
   assert.match(verify, /Free blocks/);
-  assert.match(verify, /button reset/);
+  for (const pattern of [/button reset/, /kexec/]) assert.match(verify, pattern);
   assert.match(verify, /mcopy/);
   assert.match(verify, /mkimage -l/);
   assert.match(verify, /debugfs/);
@@ -242,7 +242,7 @@ test('builds a Bullseye SysV rootfs for both kernels without One-KVM', () => {
     rootfs.indexOf('debugfs -R'),
   );
   assert.match(rootfs, /BULLSEYE_ARMV7_OCI_IMAGE/);
-  for (const packageName of ['sysvinit-core', 'sysv-rc', 'insserv', 'udev', 'kmod', 'ifupdown', 'isc-dhcp-client', 'openssh-server']) {
+  for (const packageName of ['sysvinit-core', 'sysv-rc', 'insserv', 'udev', 'kmod', 'ifupdown', 'isc-dhcp-client', 'openssh-server', 'kexec-tools']) {
     assert.match(rootfs, new RegExp(packageName));
   }
   for (const pattern of [/LEGACY_DEFAULT_LOGIN_PASSWORD/, /chpasswd --crypt-method SHA512/, /PasswordAuthentication yes/, /KbdInteractiveAuthentication yes/, /PermitRootLogin yes/, /PubkeyAuthentication yes/]) assert.match(rootfs, pattern);
@@ -254,8 +254,8 @@ test('builds a Bullseye SysV rootfs for both kernels without One-KVM', () => {
   assert.match(rootfs, /ws1608-amlenc-arm-trial/);
   assert.match(rootfs, /ws1608-amlenc-mark-success/);
   assert.match(rootfs, /ws1608-amlenc-firstboot/);
-  for (const pattern of [/ws1608-amlenc-initrd/, /busybox-static/, /cpio/, /backports/, /qcom/]) assert.match(rootfs, pattern);
-  for (const pattern of [/update-rc\.d ws1608-amlenc-firstboot defaults/, /update-rc\.d ssh defaults/]) assert.match(rootfs, pattern);
+  for (const pattern of [/ws1608-amlenc-initrd/, /ws1608-amlenc-kexec-trial/, /busybox-static/, /cpio/, /backports/, /qcom/]) assert.match(rootfs, pattern);
+  for (const pattern of [/update-rc\.d ws1608-amlenc-firstboot defaults/, /update-rc\.d ssh defaults/, /update-rc\.d -f kexec remove/]) assert.match(rootfs, pattern);
   assert.doesNotMatch(rootfs, /ln -s \.\.\/init\.d\/ws1608-amlenc-firstboot/);
   assert.match(rootfs, /STATUS_FILE=.*ws1608-amlenc-firstboot/);
   assert.match(rootfs, /SSHD_START_BIN=\/bin\/true/);
