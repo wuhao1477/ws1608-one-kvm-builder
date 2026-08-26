@@ -16,6 +16,7 @@ SSH_KEYGEN_BIN=${SSH_KEYGEN_BIN:-ssh-keygen}
 SSHD_BIN=${SSHD_BIN:-sshd}
 SSHD_START_BIN=${SSHD_START_BIN:-/etc/init.d/ssh}
 DMESG_BIN=${DMESG_BIN:-dmesg}
+UNAME_RELEASE=${UNAME_RELEASE-$(uname -r 2>/dev/null || printf unknown)}
 
 STARTED_MARKER="$BOOT_DIR/amlenc-legacy-firstboot-started"
 READY_MARKER="$BOOT_DIR/amlenc-legacy-firstboot-ready"
@@ -30,7 +31,7 @@ on_exit() {
   trap - EXIT
   if [ "$status" -ne 0 ]; then
     {
-      printf 'stage=%s\nstatus=%s\nkernel=%s\n' "$stage" "$status" "$(uname -r 2>/dev/null || printf unknown)"
+      printf 'stage=%s\nstatus=%s\nkernel=%s\n' "$stage" "$status" "$UNAME_RELEASE"
     } >"$FAILED_MARKER" 2>/dev/null || true
     "$DMESG_BIN" 2>/dev/null | grep -Ei 'amvenc|encoder|codec_mm|cma|ion|oops|panic|timeout|corrupt|mmc|ethernet|usb' \
       >"$DMESG_LOG" 2>/dev/null || true
@@ -44,7 +45,7 @@ status_dir=${STATUS_FILE%/*}
 rm -f -- "$STATUS_FILE"
 mkdir -p -- "$RUN_DIR" "$status_dir" "$BOOT_DIR"
 chmod 0755 "$RUN_DIR"
-printf 'kernel=%s\n' "$(uname -r 2>/dev/null || printf unknown)" >"$STARTED_MARKER"
+printf 'kernel=%s\n' "$UNAME_RELEASE" >"$STARTED_MARKER"
 rm -f -- "$READY_MARKER" "$FAILED_MARKER"
 sync
 stage=host-key-generation
@@ -56,9 +57,9 @@ stage=ssh-service-start
 stage=ready
 printf 'host-keys-ready\n' >"$STATUS_FILE"
 chmod 0644 "$STATUS_FILE"
-printf 'kernel=%s\n' "$(uname -r 2>/dev/null || printf unknown)" >"$READY_MARKER"
+printf 'kernel=%s\n' "$UNAME_RELEASE" >"$READY_MARKER"
 rm -f -- "$ARMED_MARKER"
-case "$(uname -r 2>/dev/null || printf unknown)" in
+case "$UNAME_RELEASE" in
   3.10.107*) rm -f -- "$FORCE_RECOVERY_MARKER" ;;
 esac
 sync
