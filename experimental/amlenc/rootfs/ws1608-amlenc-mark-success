@@ -1,0 +1,26 @@
+#!/usr/bin/env bash
+set -Eeuo pipefail
+
+BOOT_DIR=${BOOT_DIR:-/boot}
+UNAME_RELEASE=${UNAME_RELEASE-$(uname -r)}
+UPTIME_SECONDS=${UPTIME_SECONDS-$(awk '{print int($1)}' /proc/uptime)}
+IP_OUTPUT=${IP_OUTPUT-$(ip -4 -o addr show scope global)}
+SSHD_ACTIVE=${SSHD_ACTIVE-$(pgrep -x sshd >/dev/null && echo true || echo false)}
+ROOT_MOUNT_OPTIONS=${ROOT_MOUNT_OPTIONS-$(findmnt -no OPTIONS /)}
+
+fail() { echo "cannot mark legacy success: $*" >&2; exit 1; }
+[[ "$UNAME_RELEASE" == 3.10.107* ]] || fail "legacy kernel is not active"
+[[ "$UPTIME_SECONDS" =~ ^[0-9]+$ && "$UPTIME_SECONDS" -ge 60 ]] || fail "uptime is below 60 seconds"
+[[ "$IP_OUTPUT" == *' inet '* ]] || fail "no global IPv4 address"
+[[ "$SSHD_ACTIVE" == true ]] || fail "sshd is not active"
+[[ ",$ROOT_MOUNT_OPTIONS," == *,rw,* ]] || fail "root filesystem is not read-write"
+[[ -d "$BOOT_DIR" && ! -L "$BOOT_DIR" && -w "$BOOT_DIR" ]] || fail "boot filesystem is unsafe"
+[[ ! -e "$BOOT_DIR/amlenc-force-recovery" ]] || fail "recovery is still forced"
+
+temporary="$BOOT_DIR/.amlenc-3.10.ok.tmp"
+printf 'kernel=%s\nuptime=%s\n' "$UNAME_RELEASE" "$UPTIME_SECONDS" >"$temporary"
+chmod 0644 "$temporary"
+sync
+mv "$temporary" "$BOOT_DIR/amlenc-3.10.ok"
+sync
+echo "marked Linux 3.10.107 trial successful"

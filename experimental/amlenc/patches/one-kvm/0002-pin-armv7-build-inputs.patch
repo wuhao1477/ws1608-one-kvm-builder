@@ -11,9 +11,14 @@ index 63ab64b..855e1c8 100644
  ARG CHINAMIRRO=0
  ARG GH_PROXY=https://gh-proxy.com/
  ARG RUSTUP_DIST_SERVER_CN=https://rsproxy.cn
-@@ -15,8 +16,9 @@ ARG LIBYUV_REV=957f295ea946cbbd13fcfc46e7066f2efa801233
- ARG LIBVPX_VERSION=1.16.0
- ARG X265_VERSION=3.4
+@@ -12,11 +13,12 @@ ARG CARGO_INDEX_CN=https://rsproxy.cn/crates.io-index
+ ARG CARGO_REGISTRY_CN=sparse+https://rsproxy.cn/index/
+ ARG LIBJPEG_TURBO_VERSION=3.1.4.1
+ ARG LIBYUV_REV=957f295ea946cbbd13fcfc46e7066f2efa801233
+-ARG LIBVPX_VERSION=1.16.0
+-ARG X265_VERSION=3.4
++ARG LIBVPX_REV=1024874c5919305883187e2953de8fcb4c3d7fa6
++ARG X265_REV=07295ba7ab551bb9c1580fdaee3200f1b45711b7
  ARG OPUS_VERSION=1.5.2
 -ARG RKMPP_BRANCH=jellyfin-mpp
 -ARG RKRGA_BRANCH=jellyfin-rga
@@ -43,6 +48,15 @@ index 63ab64b..855e1c8 100644
      && if [ "$CHINAMIRRO" = "1" ]; then \
          mkdir -p /root/.cargo; \
          printf '%s\n' \
+@@ -143,7 +147,7 @@ RUN github_prefix="" \
+     && git init /tmp/libvpx \
+     && cd /tmp/libvpx \
+     && git remote add origin "${github_prefix}https://github.com/webmproject/libvpx.git" \
+-    && git fetch --depth 1 origin "refs/tags/v${LIBVPX_VERSION}" \
++    && git fetch --depth 1 origin "${LIBVPX_REV}" \
+     && git checkout --detach FETCH_HEAD \
+     && export CC=arm-linux-gnueabihf-gcc \
+     && export CXX=arm-linux-gnueabihf-g++ \
 @@ -163,8 +167,11 @@ RUN github_prefix="" \
  # Build static libx264 from source (cross-compile for ARMv7)
  RUN github_prefix="" \
@@ -56,6 +70,15 @@ index 63ab64b..855e1c8 100644
      && export CC=arm-linux-gnueabihf-gcc \
      && export AR=arm-linux-gnueabihf-ar \
      && export RANLIB=arm-linux-gnueabihf-ranlib \
+@@ -185,7 +192,7 @@ RUN github_prefix="" \
+     && git init /tmp/x265 \
+     && cd /tmp/x265 \
+     && git remote add origin "${github_prefix}https://github.com/videolan/x265.git" \
+-    && git fetch --depth 1 origin "refs/tags/${X265_VERSION}" \
++    && git fetch --depth 1 origin "${X265_REV}" \
+     && git checkout --detach FETCH_HEAD \
+     && cd source \
+     && mkdir -p build \
 @@ -243,8 +250,14 @@ RUN github_prefix="" \
  RUN mkdir -p /tmp/ffmpeg-build && cd /tmp/ffmpeg-build \
      && github_prefix="" \
@@ -73,3 +96,14 @@ index 63ab64b..855e1c8 100644
      && git init ffmpeg-rockchip \
      && cd ffmpeg-rockchip \
      && git remote add origin "${github_prefix}https://github.com/nyanmisaka/ffmpeg-rockchip.git" \
+@@ -347,6 +360,10 @@ RUN mkdir -p /tmp/ffmpeg-build && cd /tmp/ffmpeg-build \
+         --disable-decoders \
+         --enable-decoder=mjpeg \
+         --enable-decoder=mjpeg_rkmpp \
++        --enable-decoder=h264 \
++        --enable-decoder=hevc \
++        --enable-decoder=vp8 \
++        --enable-decoder=vp9 \
+         # Disable all encoders, enable only needed ones
+         --disable-encoders \
+         --enable-encoder=h264_rkmpp \

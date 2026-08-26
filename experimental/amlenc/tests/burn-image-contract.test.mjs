@@ -9,6 +9,8 @@ const builderPath = 'experimental/amlenc/scripts/build-burn-image.sh';
 const verifierPath = 'experimental/amlenc/scripts/verify-burn-image.sh';
 const packagerPath = 'experimental/amlenc/scripts/package-burn-release.sh';
 const releaseVerifierPath = 'experimental/amlenc/scripts/verify-burn-release.sh';
+const loginConfiguratorPath = 'experimental/amlenc/scripts/configure-login-postinst.sh';
+const loginConfigPath = 'experimental/amlenc/config/login.env';
 const workflowPath = '.github/workflows/amlenc-experimental.yml';
 
 function read(path) {
@@ -19,9 +21,13 @@ test('defines an isolated burn image build and verification chain', () => {
   assert.equal(fs.existsSync(builderPath), true, 'burn image builder is required');
   assert.equal(fs.existsSync(verifierPath), true, 'burn image verifier is required');
   assert.equal(fs.existsSync(packagerPath), true, 'burn release packager is required');
+  assert.equal(fs.existsSync(loginConfiguratorPath), true, 'burn login configurator is required');
+  assert.equal(fs.existsSync(loginConfigPath), true, 'burn login config is required');
   const builder = read(builderPath);
+  const oneKvmBuilder = read('experimental/amlenc/scripts/build-one-kvm.sh');
   const verifier = read(verifierPath);
   const packager = read(packagerPath);
+  const loginConfigurator = read(loginConfiguratorPath);
   assert.match(builder, /AmlImg/);
   assert.match(builder, /build-image\.sh/);
   assert.match(builder, /one_kvm/);
@@ -33,6 +39,16 @@ test('defines an isolated burn image build and verification chain', () => {
   assert.match(verifier, /hardware_encoder_tested/);
   assert.match(packager, /xz/);
   assert.match(packager, /SHA256SUMS/);
+  assert.match(oneKvmBuilder, /configure-login-postinst\.sh/);
+  const loginConfig = read(loginConfigPath);
+  assert.match(loginConfigurator, /config\/login\.env/);
+  assert.match(loginConfig, /^DEFAULT_LOGIN_USER=root$/m);
+  assert.match(loginConfig, /^DEFAULT_LOGIN_PASSWORD=ws1608$/m);
+  assert.match(loginConfigurator, /chpasswd/);
+  assert.match(loginConfigurator, /passwd -u/);
+  assert.match(loginConfigurator, /last_exit/);
+  assert.match(loginConfigurator, /PasswordAuthentication yes/);
+  assert.match(loginConfigurator, /PermitRootLogin yes/);
 });
 
 test('builds the flashable experiment from the verified stable boot chain', () => {
@@ -54,11 +70,33 @@ test('builds the flashable experiment from the verified stable boot chain', () =
   assert.match(verifier, /stable_base_preserved/);
   assert.match(verifier, /BASE_KERNEL/);
   assert.match(verifier, /3\.10\.107/);
+  assert.match(verifier, /PasswordAuthentication yes/);
+  assert.match(verifier, /PermitRootLogin yes/);
+  assert.match(verifier, /cat \/etc\/shadow/);
 
   assert.match(workflow, /ONE_KVM_DEB:/);
   assert.match(workflow, /IMAGE_NAME="\$AMLENC_IMAGE_NAME"[\s\S]{0,200}build-burn-image\.sh/);
   assert.doesNotMatch(workflow, /DIAGNOSTIC_IMAGE:|DIAGNOSTIC_MANIFEST:/);
   assert.doesNotMatch(workflow, /bullseye_3\.10\.107\.burn\.img/);
+});
+
+test('inserts login setup before an existing Debian postinst exit', (t) => {
+  const fixture = fs.mkdtempSync(path.join(os.tmpdir(), 'ws1608-login-postinst-'));
+  t.after(() => fs.rmSync(fixture, { recursive: true, force: true }));
+  const packageDir = path.join(fixture, 'package');
+  fs.mkdirSync(path.join(packageDir, 'DEBIAN'), { recursive: true });
+  fs.writeFileSync(path.join(packageDir, 'DEBIAN', 'postinst'), '#!/bin/sh\nset -e\necho original\nexit 0\n', { mode: 0o755 });
+
+  const result = spawnSync('bash', ['experimental/amlenc/scripts/configure-login-postinst.sh', packageDir], {
+    cwd: process.cwd(), encoding: 'utf8',
+  });
+
+  assert.equal(result.status, 0, result.stderr || result.stdout);
+  const postinst = fs.readFileSync(path.join(packageDir, 'DEBIAN', 'postinst'), 'utf8');
+  assert.match(postinst, /chpasswd/);
+  assert.ok(postinst.indexOf('chpasswd') < postinst.indexOf('exit 0'));
+  assert.match(postinst, /PasswordAuthentication yes/);
+  assert.equal(spawnSync('sh', ['-n', path.join(packageDir, 'DEBIAN', 'postinst')]).status, 0);
 });
 
 test('runs burn image gates before metadata upload and keeps hardware gate explicit', () => {
@@ -72,6 +110,22 @@ test('runs burn image gates before metadata upload and keeps hardware gate expli
   const verifyIndex = workflow.indexOf('Verify experimental burn image');
   const uploadIndex = workflow.indexOf('Upload experimental release artifact');
   assert.ok(buildIndex >= 0 && diagnosticIndex > buildIndex && verifyIndex > buildIndex && uploadIndex > verifyIndex);
+});
+
+test('records the verified four-codec software baseline in the burn candidate', () => {
+  const builder = read(builderPath);
+  const verifier = read(verifierPath);
+  const packager = read(packagerPath);
+  const releaseVerifier = read(releaseVerifierPath);
+  const workflow = read(workflowPath);
+
+  for (const source of [builder, verifier, packager, releaseVerifier]) assert.match(source, /codec_baseline/);
+  assert.match(builder, /SOFTWARE_CODECS_RUNTIME_VERIFIED/);
+  assert.match(builder, /software_codecs/);
+  assert.match(verifier, /ws1608-amlenc-build\.json/);
+  assert.match(verifier, /runtime_verified:true/);
+  assert.match(workflow, /SOFTWARE_CODECS_RUNTIME_VERIFIED=true/);
+  assert.match(workflow, /GITHUB_ENV/);
 });
 
 test('keeps untested hardware status explicit in the experimental prerelease', () => {
@@ -102,6 +156,10 @@ test('verifies exactly five packaged burn release assets', (t) => {
     base_image_sha256: 'b'.repeat(64),
     kernel: { version: '6.12.28-current-meson', source: 'stable-base' },
     one_kvm: { version: '0.2.6+ws1608amlenc.run-1-1', sha256: 'a'.repeat(64) },
+    codec_baseline: { software: ['h264', 'h265', 'vp8', 'vp9'], hardware: [], runtime_verified: true },
+    default_login_user: 'root',
+    password_authentication: true,
+    ssh_service_enabled: true,
     hardware_boot_tested: false,
     hardware_encoder_tested: false,
     one_kvm_included: true,

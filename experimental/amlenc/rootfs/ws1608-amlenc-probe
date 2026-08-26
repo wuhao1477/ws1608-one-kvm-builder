@@ -1,0 +1,41 @@
+#!/bin/sh
+set -eu
+
+probe=${1:-}
+case "$probe" in
+  640x480-300f)
+    width=640 height=480 bitrate=1000000 frames=300
+    input=/usr/local/share/ws1608-amlenc/frame-640x480.nv12
+    ;;
+  1280x720-1800f)
+    width=1280 height=720 bitrate=4000000 frames=1800
+    input=/usr/local/share/ws1608-amlenc/frame-1280x720.nv12
+    ;;
+  1280x720-8h)
+    width=1280 height=720 bitrate=4000000 frames=864000
+    input=/usr/local/share/ws1608-amlenc/frame-1280x720.nv12
+    ;;
+  *)
+    echo "usage: $0 640x480-300f|1280x720-1800f|1280x720-8h" >&2
+    exit 2
+    ;;
+esac
+
+output_root=/var/lib/ws1608-amlenc/results
+output="$output_root/$probe.h264"
+kernel_log="$output_root/$probe.dmesg"
+evidence="$output_root/$probe-evidence"
+mkdir -p "$output_root"
+if [ -d "$evidence" ]; then
+  find "$evidence" -mindepth 1 -maxdepth 1 -delete
+fi
+
+LD_LIBRARY_PATH=/usr/local/lib/ws1608-amlenc \
+  /usr/local/libexec/ws1608-amlenc/amlenc-m8-diag \
+  --input "$input" --width "$width" --height "$height" --fps 30 \
+  --bitrate "$bitrate" --frames "$frames" --output "$output"
+dmesg >"$kernel_log"
+AMLENC_HARDWARE_LIMITS=/usr/local/share/ws1608-amlenc/hardware-limits.json \
+  /usr/local/libexec/ws1608-amlenc/validate-h264.sh \
+  --probe "$probe" --input "$output" --kernel-log "$kernel_log" \
+  --output-dir "$evidence"

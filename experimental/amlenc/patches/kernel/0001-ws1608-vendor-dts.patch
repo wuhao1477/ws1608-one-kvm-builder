@@ -1,14 +1,14 @@
-From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From fdf84e78ef6cb611a5755f0fc361a383b9f249f7 Mon Sep 17 00:00:00 2001
 From: WS1608 One-KVM Builder <noreply@github.com>
-Date: Thu, 13 Aug 2026 15:24:14 +0000
-Subject: [PATCH 1/2] ARM: dts: adapt Meson8b board and storage for WS1608
+Date: Mon, 24 Aug 2026 13:40:44 +0800
+Subject: [PATCH 1/2] ARM: dts: correct OneCloud board wiring
 
 ---
- arch/arm/boot/dts/meson8b_odroidc.dts | 129 +++-------------------------------
- 1 file changed, 10 insertions(+), 119 deletions(-)
+ arch/arm/boot/dts/meson8b_odroidc.dts | 150 ++++++--------------------
+ 1 file changed, 30 insertions(+), 120 deletions(-)
 
 diff --git a/arch/arm/boot/dts/meson8b_odroidc.dts b/arch/arm/boot/dts/meson8b_odroidc.dts
-index 0609574..4e8795b 100755
+index 0609574..de0407e 100755
 --- a/arch/arm/boot/dts/meson8b_odroidc.dts
 +++ b/arch/arm/boot/dts/meson8b_odroidc.dts
 @@ -1,7 +1,8 @@
@@ -22,7 +22,7 @@ index 0609574..4e8795b 100755
          interrupt-parent = <&gic>;
          #address-cells = <1>;
          #size-cells = <1>;
-@@ -192,21 +192,6 @@
+@@ -192,21 +193,6 @@
          pinctrl-5 = <&sdio_all_pins>;
          pinctrl-6 = <&sd_1bit_pins>;
  
@@ -94,7 +94,19 @@ index 0609574..4e8795b 100755
          };
  
      i2c@c11087e0{ /*I2C-C*/
-@@ -446,7 +430,6 @@
+@@ -386,9 +336,9 @@
+         dev_name = "meson_vcck_dvfs_driver";
+         status = "ok";
+         pinctrl-names = "default";
+-        pinctrl-0 = <&aml_pwm_pins>;
++        pinctrl-0 = <&aml_pwm_d_pins>;
+         use_pwm = <1>;
+-        pmw_controller = "PWM_C";
++        pmw_controller = "PWM_D";
+         table_count = <29>;
+         cs_voltage_table = <
+ 		0x10f001b        860000
+@@ -446,7 +396,6 @@
                          port-config = <0>; /** 0: default */
                          port-dma = <0>; /** 0: default, 1: single, 2: incr, 3: incr4, 4: incr8, 5: incr16, 6: disable*/
                          port-id-mode = <1>; /** 0: hardware, 1: sw_host, 2: sw_slave*/
@@ -102,7 +114,7 @@ index 0609574..4e8795b 100755
                          status = "okay";
                  };
  
-@@ -460,7 +443,6 @@
+@@ -460,7 +409,6 @@
                          port-config = <0>; /** 0: default */
                          port-dma = <0>; /** 0: default, 1: single, 2: incr, 3: incr4, 4: incr8, 5: incr16, 6: disable*/
                          port-id-mode = <0>; /** 0: hardware, 1: sw_host, 2: sw_slave*/
@@ -110,7 +122,7 @@ index 0609574..4e8795b 100755
                          gpio-work-mask  = <1>; /**0: work on pulldown,1:work on pullup*/
                          status = "okay";
                  };
-@@ -503,35 +485,13 @@
+@@ -503,35 +451,13 @@
          status = "okay";
      };
  
@@ -147,7 +159,7 @@ index 0609574..4e8795b 100755
          saradc{
                  compatible = "amlogic,saradc";
                  status = "okay";
-@@ -698,10 +658,10 @@
+@@ -698,10 +624,10 @@
          pwr-ctrl = <&pwr_ctrl>;
  
          vend_data: vend_data{
@@ -161,8 +173,20 @@ index 0609574..4e8795b 100755
              ao_cec = <0x000001>;
          };
  
-@@ -1018,21 +978,6 @@
- 			amlogic,pins="GPIODV_9";
+@@ -1011,28 +937,13 @@
+                         amlogic,pins = "GPIOX_8","GPIOX_9","GPIOX_10";
+                 };
+ 
+-		aml_pwm_pins:aml_pwm{
+-			amlogic,setmask=<3 0x1000000>;
+-			amlogic,clrmask=<0 0x48
+-					 7 0x10000020>;
+-			amlogic,pins="GPIODV_9";
++		aml_pwm_d_pins:aml_pwm_d{
++			amlogic,setmask=<3 0x04000000>;
++			amlogic,clrmask=<7 0x08000000
++					 9 0x08000000>;
++			amlogic,pins="GPIODV_28";
  		};
  
 -		odroid_pwm0:odroid_pwm0{
@@ -183,7 +207,7 @@ index 0609574..4e8795b 100755
      };
      meson-eth{
                  compatible = "amlogic,meson-eth";
-@@ -1043,32 +988,12 @@
+@@ -1043,30 +954,29 @@
                  savepowermode = <0>;
                  phy_interface = <0>;
                  new_maclogic = <1>;
@@ -196,15 +220,28 @@ index 0609574..4e8795b 100755
                  disable_phyrefclk;
          };
  
--    leds {
--        compatible = "gpio-leds";
+     leds {
+         compatible = "gpio-leds";
 -        /* Blue LED */
 -        hearbeat {
 -            label = "blue:heartbeat";
 -            gpios = "GPIOAO_13";
--            default-state = "off";
++        status_red {
++            label = "red:status";
++            gpios = "GPIOAO_2";
++            default-state = "off";
++        };
++        status_green {
++            label = "green:status";
++            gpios = "GPIOAO_3";
++            default-state = "off";
++        };
++        status_blue {
++            label = "blue:status";
++            gpios = "GPIOAO_4";
+             default-state = "off";
 -            linux,default-trigger = "heartbeat";
--        };
+         };
 -    };
 -
 -    pwm{
@@ -214,8 +251,9 @@ index 0609574..4e8795b 100755
 -        pinctrl-names = "odroid_pwm0","odroid_pwm1";
 -        pinctrl-0 = <&odroid_pwm0>;
 -        pinctrl-1 = <&odroid_pwm1>;
--    };
--
+     };
+ 
      pwm-ctrl {
-         compatible = "amlogic, pwm-ctrl";
-         dev_name = "pwm-ctrl";
+-- 
+2.50.1 (Apple Git-155)
+

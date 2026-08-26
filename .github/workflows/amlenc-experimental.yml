@@ -33,6 +33,7 @@ jobs:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7
         with:
           persist-credentials: false
+          fetch-depth: 0
       - name: Install validation tools
         run: sudo apt-get update && sudo apt-get install -y jq
       - name: Run contract tests
@@ -115,6 +116,11 @@ jobs:
         run: experimental/amlenc/scripts/build-one-kvm.sh
       - name: Verify One-KVM armhf package
         run: experimental/amlenc/scripts/verify-one-kvm.sh out/amlenc/one-kvm/one-kvm_0.2.6+ws1608amlenc.run-${{ github.run_number }}-${{ github.run_attempt }}_armhf.deb
+      - name: Verify armhf software codecs
+        run: |
+          experimental/amlenc/scripts/verify-one-kvm-software-codecs.sh out/amlenc/one-kvm/one-kvm_0.2.6+ws1608amlenc.run-${{ github.run_number }}-${{ github.run_attempt }}_armhf.deb >"$RUNNER_TEMP/software-codecs.json"
+          jq -e '.backend == "software" and all(.rows[].cells[]; .ok == true)' "$RUNNER_TEMP/software-codecs.json" >/dev/null
+          echo "SOFTWARE_CODECS_RUNTIME_VERIFIED=true" >>"$GITHUB_ENV"
       - name: Prepare experimental image identity
         run: |
           build_number=$((GITHUB_RUN_NUMBER * 1000 + GITHUB_RUN_ATTEMPT))
@@ -132,6 +138,7 @@ jobs:
           ONE_KVM_DEB: ${{ github.workspace }}/out/amlenc/one-kvm/one-kvm_0.2.6+ws1608amlenc.run-${{ github.run_number }}-${{ github.run_attempt }}_armhf.deb
           AMLIMG_BIN: ${{ github.workspace }}/.tools/AmlImg
           BUILDER_COMMIT: ${{ github.sha }}
+          SOFTWARE_CODECS_RUNTIME_VERIFIED: ${{ env.SOFTWARE_CODECS_RUNTIME_VERIFIED }}
           OUTPUT_DIR: ${{ github.workspace }}/out/amlenc/burn
           WORK_DIR: ${{ github.workspace }}/.build/amlenc/burn
         run: |
@@ -166,7 +173,7 @@ jobs:
       - name: Record untested experimental status
         run: |
           jq -e '.hardware_encoder_tested == false and .one_kvm_included == true and .stable_channel_modified == false' out/amlenc/diagnostic-image/manifest.json
-          jq -e --arg tag "$EXPERIMENTAL_BUILD_TAG" '.build_tag == $tag and .stable_base_preserved == true and .kernel.version == "6.12.28-current-meson" and .hardware_encoder_tested == false and .hardware_boot_tested == false and .one_kvm_included == true' out/amlenc/burn/manifest.json
+          jq -e --arg tag "$EXPERIMENTAL_BUILD_TAG" '.build_tag == $tag and .stable_base_preserved == true and .kernel.version == "6.12.28-current-meson" and .codec_baseline == {software:["h264","h265","vp8","vp9"],hardware:[],runtime_verified:true} and .hardware_encoder_tested == false and .hardware_boot_tested == false and .one_kvm_included == true' out/amlenc/burn/manifest.json
       - name: Verify packaged experimental release
         run: |
           experimental/amlenc/scripts/verify-stable-chain.sh
@@ -190,9 +197,74 @@ jobs:
           retention-days: 14
           compression-level: 0
 
+  reverify:
+    name: Recheck uploaded experimental artifact
+    needs: build
+    if: always() && needs.build.result == 'success'
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7
+        with:
+          persist-credentials: false
+      - name: Install verification tools
+        run: sudo apt-get update && sudo apt-get install -y curl e2fsprogs file jq mtools u-boot-tools xz-utils
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7
+        with:
+          go-version: "1.24.x"
+          cache: false
+      - name: Build pinned AmlImg tool
+        env:
+          TOOLS_DIR: ${{ github.workspace }}/.tools
+        run: echo "AMLIMG_BIN=$(./scripts/build-tools.sh)" >>"$GITHUB_ENV"
+      - name: Prepare candidate identity
+        id: candidate_identity
+        env:
+          RUN_NUMBER: ${{ github.run_number }}
+          RUN_ATTEMPT: ${{ github.run_attempt }}
+        run: |
+          build_number=$((RUN_NUMBER * 1000 + RUN_ATTEMPT))
+          build_revision=$(printf 'b%06d' "$build_number")
+          image_name="WS1608-AMLENC_0.2.6+ws1608amlenc.run-${RUN_NUMBER}-${RUN_ATTEMPT}_Onecloud_trixie_6.12.28.burn.img"
+          {
+            echo "artifact_name=ws1608-amlenc-exp-release-${RUN_NUMBER}-${RUN_ATTEMPT}"
+            echo "build_tag=ws1608-amlenc-exp-0.2.6-v260802-k6.12.28-$build_revision"
+            echo "image_name=$image_name"
+          } >>"$GITHUB_OUTPUT"
+      - name: Download uploaded experimental artifact
+        uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7
+        with:
+          name: ${{ steps.candidate_identity.outputs.artifact_name }}
+          path: ${{ runner.temp }}/candidate
+      - name: Reverify downloaded candidate
+        env:
+          BASE_IMAGE: ${{ runner.temp }}/base.burn.img
+          IMAGE: ${{ runner.temp }}/candidate/${{ steps.candidate_identity.outputs.image_name }}
+          MANIFEST: ${{ runner.temp }}/candidate/manifest.json
+          AMLIMG_BIN: ${{ github.workspace }}/.tools/AmlImg
+          VERIFY_DIR: ${{ runner.temp }}/burn-verify
+          EXPECTED_BUILD_TAG: ${{ steps.candidate_identity.outputs.build_tag }}
+        run: |
+          source config/base.env
+          curl --fail --location --retry 5 "$BASE_IMAGE_URL" -o "$RUNNER_TEMP/base.burn.img.xz"
+          echo "$BASE_IMAGE_SHA256  $RUNNER_TEMP/base.burn.img.xz" | sha256sum --check
+          xz -dc "$RUNNER_TEMP/base.burn.img.xz" >"$BASE_IMAGE"
+          (cd "$RUNNER_TEMP/candidate" && sha256sum --check SHA256SUMS)
+          jq -e --arg tag "$EXPECTED_BUILD_TAG" '
+            .build_tag == $tag and .stable_base_preserved == true and
+            .codec_baseline == {software:["h264","h265","vp8","vp9"],hardware:[],runtime_verified:true} and
+            .hardware_boot_tested == false and .hardware_encoder_tested == false and
+            .one_kvm_included == true and .stable_channel_modified == false
+          ' "$MANIFEST" >/dev/null
+          jq -e '.schema == 1 and .result == "pending" and
+            .hardware_boot_tested == false and .hardware_encoder_tested == false' \
+            "$RUNNER_TEMP/candidate/validation-report.json" >/dev/null
+          xz -t "$IMAGE.xz"
+          experimental/amlenc/scripts/verify-burn-release.sh "$RUNNER_TEMP/candidate"
+          experimental/amlenc/scripts/verify-burn-image.sh
+
   release:
     name: Publish immutable experimental prerelease
-    needs: [contract, build]
+    needs: [contract, build, reverify]
     if: >-
       github.event_name == 'workflow_dispatch' && inputs.publish && inputs.acknowledge_experimental &&
       github.ref == format('refs/heads/{0}', github.event.repository.default_branch)

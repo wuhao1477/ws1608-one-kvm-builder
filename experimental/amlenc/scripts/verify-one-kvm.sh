@@ -56,7 +56,15 @@ if ! jq -e \
   "$tmp/usr/share/doc/one-kvm/ws1608-amlenc-build.json" >/dev/null; then
   fail "build provenance metadata does not match source locks"
 fi
-if ! jq -e '.hardware_encoder_tested == false and .stable_channel_modified == false and .codec == "h264_amlenc"' "$tmp/usr/share/doc/one-kvm/ws1608-amlenc-build.json" >/dev/null; then
+if ! jq -e '
+  .hardware_encoder_tested == false and .stable_channel_modified == false and .codec == "h264_amlenc" and
+  .software_codecs == [
+    {id:"h264",encoder:"libx264",decoder:"h264",hardware:false},
+    {id:"h265",encoder:"libx265",decoder:"hevc",hardware:false},
+    {id:"vp8",encoder:"libvpx",decoder:"vp8",hardware:false},
+    {id:"vp9",encoder:"libvpx-vp9",decoder:"vp9",hardware:false}
+  ]
+' "$tmp/usr/share/doc/one-kvm/ws1608-amlenc-build.json" >/dev/null; then
   fail "hardware encoder metadata contract failed"
 fi
 if ! node "$ROOT_DIR/experimental/amlenc/scripts/verify-one-kvm-metadata.mjs" \

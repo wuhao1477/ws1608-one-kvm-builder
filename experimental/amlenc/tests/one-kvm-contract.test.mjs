@@ -6,6 +6,7 @@ import path from 'node:path';
 import test from 'node:test';
 
 const files = {
+  softwareCodecs: 'experimental/amlenc/config/software-codecs.json',
   patch: 'experimental/amlenc/patches/one-kvm/0001-detect-meson8b-armv7.patch',
   buildEnvPatch: 'experimental/amlenc/patches/one-kvm/0002-pin-armv7-build-inputs.patch',
   cargoLock: 'experimental/amlenc/locks/one-kvm/Cargo.lock',
@@ -17,6 +18,26 @@ const files = {
   prepareCrossImage: 'experimental/amlenc/scripts/prepare-one-kvm-cross-image.sh',
   sources: 'experimental/amlenc/config/sources.env',
 };
+
+test('locks the four software codec inputs and FFmpeg decoder gates', () => {
+  const manifest = JSON.parse(readRequired(files.softwareCodecs));
+  assert.deepEqual(manifest, {
+    schema: 1,
+    codecs: [
+      { id: 'h264', encoder: 'libx264', decoder: 'h264' },
+      { id: 'h265', encoder: 'libx265', decoder: 'hevc' },
+      { id: 'vp8', encoder: 'libvpx', decoder: 'vp8' },
+      { id: 'vp9', encoder: 'libvpx-vp9', decoder: 'vp9' },
+    ],
+  });
+  const sources = readRequired(files.sources);
+  assert.match(sources, /^ONE_KVM_LIBVPX_COMMIT=1024874c5919305883187e2953de8fcb4c3d7fa6$/m);
+  assert.match(sources, /^ONE_KVM_X265_COMMIT=07295ba7ab551bb9c1580fdaee3200f1b45711b7$/m);
+  const patch = readRequired(files.buildEnvPatch);
+  assert.match(patch, /ARG LIBVPX_REV=1024874c5919305883187e2953de8fcb4c3d7fa6/);
+  assert.match(patch, /ARG X265_REV=07295ba7ab551bb9c1580fdaee3200f1b45711b7/);
+  for (const decoder of ['h264', 'hevc', 'vp8', 'vp9']) assert.match(patch, new RegExp(`--enable-decoder=${decoder}`));
+});
 
 const expectedMetadata = {
   schema: 1,
@@ -36,12 +57,22 @@ const expectedMetadata = {
   toolchain: { gcc: '10.2.1', binutils: '2.35.2' },
   dependencies: {
     x264: 'c24e06c2e184345ceb33eb20a15d1024d9fd3497',
+    libvpx: '1024874c5919305883187e2953de8fcb4c3d7fa6',
+    x265: '07295ba7ab551bb9c1580fdaee3200f1b45711b7',
     rkmpp: 'a9380ef333102ac318628f83b5f7a460d377749e',
     rkrga: '1d330cc28551943bed3380261a5a9c6fbd58ff53',
   },
   platform: 'WS1608/S805/Meson8b/armv7',
   codec: 'h264_amlenc',
+  software_codecs: [
+    { id: 'h264', encoder: 'libx264', decoder: 'h264', hardware: false },
+    { id: 'h265', encoder: 'libx265', decoder: 'hevc', hardware: false },
+    { id: 'vp8', encoder: 'libvpx', decoder: 'vp8', hardware: false },
+    { id: 'vp9', encoder: 'libvpx-vp9', decoder: 'vp9', hardware: false },
+  ],
   amlenc_smoke_test_default: false,
+  default_login_user: 'root',
+  password_authentication: true,
   hardware_encoder_tested: false,
   stable_channel_modified: false,
   redistribution: 'local-test-only',
@@ -183,6 +214,7 @@ test('rejects modified dependency and compiler provenance', (t) => {
 
   for (const [name, metadata] of [
     ['x264', { ...expectedMetadata, dependencies: { ...expectedMetadata.dependencies, x264: '0'.repeat(40) } }],
+    ['software codecs', { ...expectedMetadata, software_codecs: expectedMetadata.software_codecs.slice(0, 3) }],
     ['gcc', { ...expectedMetadata, toolchain: { ...expectedMetadata.toolchain, gcc: '12.2.0' } }],
   ]) {
     const metadataPath = path.join(fixture, `${name}.json`);

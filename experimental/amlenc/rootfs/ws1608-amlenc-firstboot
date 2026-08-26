@@ -1,0 +1,65 @@
+#!/bin/sh
+### BEGIN INIT INFO
+# Provides:          ws1608-amlenc-firstboot
+# Required-Start:    $local_fs $remote_fs $syslog
+# Required-Stop:
+# X-Start-Before:    sshd
+# Default-Start:     2 3 4 5
+# Default-Stop:
+### END INIT INFO
+set -eu
+
+RUN_DIR=${RUN_DIR:-/run/sshd}
+BOOT_DIR=${BOOT_DIR:-/boot}
+STATUS_FILE=${STATUS_FILE:-/var/lib/ws1608-amlenc/firstboot-complete}
+SSH_KEYGEN_BIN=${SSH_KEYGEN_BIN:-ssh-keygen}
+SSHD_BIN=${SSHD_BIN:-sshd}
+SSHD_START_BIN=${SSHD_START_BIN:-/etc/init.d/ssh}
+DMESG_BIN=${DMESG_BIN:-dmesg}
+UNAME_RELEASE=${UNAME_RELEASE-$(uname -r 2>/dev/null || printf unknown)}
+
+STARTED_MARKER="$BOOT_DIR/amlenc-legacy-firstboot-started"
+READY_MARKER="$BOOT_DIR/amlenc-legacy-firstboot-ready"
+FAILED_MARKER="$BOOT_DIR/amlenc-legacy-firstboot-failed"
+ARMED_MARKER="$BOOT_DIR/amlenc-legacy-trial-armed"
+FORCE_RECOVERY_MARKER="$BOOT_DIR/amlenc-force-recovery"
+DMESG_LOG="$BOOT_DIR/amlenc-legacy-dmesg.log"
+stage=initialization
+
+on_exit() {
+  status=$?
+  trap - EXIT
+  if [ "$status" -ne 0 ]; then
+    {
+      printf 'stage=%s\nstatus=%s\nkernel=%s\n' "$stage" "$status" "$UNAME_RELEASE"
+    } >"$FAILED_MARKER" 2>/dev/null || true
+    "$DMESG_BIN" 2>/dev/null | grep -Ei 'amvenc|encoder|codec_mm|cma|ion|oops|panic|timeout|corrupt|mmc|ethernet|usb' \
+      >"$DMESG_LOG" 2>/dev/null || true
+    sync 2>/dev/null || true
+  fi
+  exit "$status"
+}
+trap on_exit EXIT
+
+status_dir=${STATUS_FILE%/*}
+rm -f -- "$STATUS_FILE"
+mkdir -p -- "$RUN_DIR" "$status_dir" "$BOOT_DIR"
+chmod 0755 "$RUN_DIR"
+printf 'kernel=%s\n' "$UNAME_RELEASE" >"$STARTED_MARKER"
+rm -f -- "$READY_MARKER" "$FAILED_MARKER"
+sync
+stage=host-key-generation
+"$SSH_KEYGEN_BIN" -A
+stage=sshd-configuration
+"$SSHD_BIN" -t
+stage=ssh-service-start
+"$SSHD_START_BIN" start
+stage=ready
+printf 'host-keys-ready\n' >"$STATUS_FILE"
+chmod 0644 "$STATUS_FILE"
+printf 'kernel=%s\n' "$UNAME_RELEASE" >"$READY_MARKER"
+rm -f -- "$ARMED_MARKER"
+case "$UNAME_RELEASE" in
+  3.10.107*) rm -f -- "$FORCE_RECOVERY_MARKER" ;;
+esac
+sync

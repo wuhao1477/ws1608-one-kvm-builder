@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 
 import fs from 'node:fs';
+import { isDeepStrictEqual } from 'node:util';
 
 function parseEnvironment(contents) {
   return Object.fromEntries(contents.split(/\r?\n/).filter((line) => line && !line.startsWith('#')).map((line) => {
@@ -11,7 +12,7 @@ function parseEnvironment(contents) {
 }
 
 function requireEqual(actual, expected, name) {
-  if (actual !== expected) throw new Error(`${name} does not match its immutable source lock`);
+  if (!isDeepStrictEqual(actual, expected)) throw new Error(`${name} does not match its immutable source lock`);
 }
 
 function verify(metadata, sources) {
@@ -29,6 +30,8 @@ function verify(metadata, sources) {
   requireEqual(metadata.toolchain?.gcc, sources.ONE_KVM_ARMV7_GCC_VERSION, 'gcc');
   requireEqual(metadata.toolchain?.binutils, sources.ONE_KVM_ARMV7_BINUTILS_VERSION, 'binutils');
   requireEqual(metadata.dependencies?.x264, sources.ONE_KVM_X264_COMMIT, 'x264');
+  requireEqual(metadata.dependencies?.libvpx, sources.ONE_KVM_LIBVPX_COMMIT, 'libvpx');
+  requireEqual(metadata.dependencies?.x265, sources.ONE_KVM_X265_COMMIT, 'x265');
   requireEqual(metadata.dependencies?.rkmpp, sources.ONE_KVM_RKMPP_COMMIT, 'rkmpp');
   requireEqual(metadata.dependencies?.rkrga, sources.ONE_KVM_RKRGA_COMMIT, 'rkrga');
   if (!new RegExp(`^${sources.ONE_KVM_VERSION.replaceAll('.', '\\.')}\\+ws1608amlenc\\.[A-Za-z0-9][A-Za-z0-9.-]{0,31}$`).test(metadata.package_version)) throw new Error('invalid package version');
@@ -37,7 +40,15 @@ function verify(metadata, sources) {
   }
   requireEqual(metadata.platform, 'WS1608/S805/Meson8b/armv7', 'platform');
   requireEqual(metadata.codec, 'h264_amlenc', 'codec');
+  requireEqual(metadata.software_codecs, [
+    { id: 'h264', encoder: 'libx264', decoder: 'h264', hardware: false },
+    { id: 'h265', encoder: 'libx265', decoder: 'hevc', hardware: false },
+    { id: 'vp8', encoder: 'libvpx', decoder: 'vp8', hardware: false },
+    { id: 'vp9', encoder: 'libvpx-vp9', decoder: 'vp9', hardware: false },
+  ], 'software codecs');
   requireEqual(metadata.amlenc_smoke_test_default, false, 'AMLENC smoke test default');
+  requireEqual(metadata.default_login_user, 'root', 'default login user');
+  requireEqual(metadata.password_authentication, true, 'password authentication');
   requireEqual(metadata.hardware_encoder_tested, false, 'hardware encoder status');
   requireEqual(metadata.stable_channel_modified, false, 'stable channel status');
   requireEqual(metadata.redistribution, 'local-test-only', 'redistribution');

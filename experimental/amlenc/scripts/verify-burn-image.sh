@@ -39,6 +39,8 @@ jq -e \
   .kernel == {version: $base_kernel, source: "stable-base"} and
   .kernel.version != "3.10.107" and
   .encoder.driver_status == "research-only" and
+  .codec_baseline == {software:["h264","h265","vp8","vp9"],hardware:[],runtime_verified:true} and
+  .default_login_user == "root" and .password_authentication == true and .ssh_service_enabled == true and
   .hardware_encoder_tested == false and .hardware_boot_tested == false and
   .one_kvm_included == true and .stable_channel_modified == false
 ' "$MANIFEST" >/dev/null || fail "manifest gate"
@@ -75,6 +77,13 @@ debugfs -R 'stat /usr/lib/one-kvm/libvpcodec.so' "$rootfs_raw" 2>/dev/null | gre
 debugfs -R 'stat /usr/lib/one-kvm/amlenc-m8-diag' "$rootfs_raw" 2>/dev/null | grep -q 'Type: regular' || fail "AMLENC diagnostic missing"
 debugfs -R 'stat /lib/systemd/system/one-kvm.service' "$rootfs_raw" 2>/dev/null | grep -q 'Type: regular' || fail "One-KVM service missing"
 debugfs -R 'stat /etc/systemd/system/multi-user.target.wants/one-kvm.service' "$rootfs_raw" 2>/dev/null | grep -q 'Type: symlink' || fail "One-KVM boot link missing"
+debugfs -R 'stat /lib/systemd/system/ssh.service' "$rootfs_raw" 2>/dev/null | grep -q 'Type: regular' || fail "SSH service missing"
+debugfs -R 'stat /etc/systemd/system/multi-user.target.wants/ssh.service' "$rootfs_raw" 2>/dev/null | grep -q 'Type: symlink' || fail "SSH boot link missing"
+ssh_config=$(debugfs -R 'cat /etc/ssh/sshd_config.d/ws1608-amlenc.conf' "$rootfs_raw" 2>/dev/null)
+grep -Fqx 'PasswordAuthentication yes' <<<"$ssh_config" || fail "SSH password policy missing"
+grep -Fqx 'PermitRootLogin yes' <<<"$ssh_config" || fail "SSH root policy missing"
+root_shadow=$(debugfs -R 'cat /etc/shadow' "$rootfs_raw" 2>/dev/null)
+grep -Eq '^root:[^!*:][^:]*:' <<<"$root_shadow" || fail "root password is locked or missing"
 service_contents=$(debugfs -R 'cat /lib/systemd/system/one-kvm.service' "$rootfs_raw" 2>/dev/null)
 grep -Fqx 'Environment=ONE_KVM_AMLENC_H264_LIB=/usr/lib/one-kvm/libvpcodec.so' <<<"$service_contents" || fail "AMLENC library environment missing"
 if grep -Fq 'ONE_KVM_AMLENC_SMOKE_TEST' <<<"$service_contents"; then fail "hardware smoke test enabled by default"; fi
@@ -93,7 +102,12 @@ done
 metadata="$files_dir/usr/share/doc/one-kvm/ws1608-amlenc-build.json"
 jq -e --arg version "$(jq -er '.one_kvm.version' "$MANIFEST")" '
   .package_version == $version and .amlenc_smoke_test_default == false and
-  .hardware_encoder_tested == false and .stable_channel_modified == false
+  .software_codecs == [
+    {id:"h264",encoder:"libx264",decoder:"h264",hardware:false},
+    {id:"h265",encoder:"libx265",decoder:"hevc",hardware:false},
+    {id:"vp8",encoder:"libvpx",decoder:"vp8",hardware:false},
+    {id:"vp9",encoder:"libvpx-vp9",decoder:"vp9",hardware:false}
+  ] and .hardware_encoder_tested == false and .stable_channel_modified == false
 ' "$metadata" >/dev/null || fail "installed package provenance mismatch"
 
 binary="$files_dir/usr/bin/one-kvm"
