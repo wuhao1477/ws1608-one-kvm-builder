@@ -109,10 +109,10 @@ mkimage -l "$BOOT_FILES/boot.scr" | grep -q 'WS1608-AMLENC-Bringup' || fail "boo
 armed_line=$(grep -n -m1 amlenc-legacy-trial-armed "$BOOT_FILES/boot.cmd" | cut -d: -f1)
 force_line=$(grep -n -m1 amlenc-force-recovery "$BOOT_FILES/boot.cmd" | cut -d: -f1)
 success_line=$(grep -n -m1 amlenc-3.10.ok "$BOOT_FILES/boot.cmd" | cut -d: -f1)
-trial_line=$(grep -n -m1 amlenc_trial_revision "$BOOT_FILES/boot.cmd" | cut -d: -f1)
+trial_set_line=$(grep -n -m1 -F "setenv amlenc_trial_revision ${BUILD_REVISION}" "$BOOT_FILES/boot.cmd" | cut -d: -f1)
 ! grep -Eq 'button[[:space:]]+reset' "$BOOT_FILES/boot.cmd" || fail "boot path must not require the reset button"
-[[ "$armed_line" -lt "$force_line" && "$force_line" -lt "$success_line" && "$success_line" -lt "$trial_line" ]] || fail "boot branch order"
-grep -Fq "setenv amlenc_trial_revision ${BUILD_REVISION}" "$BOOT_FILES/boot.cmd" || fail "armed trial revision missing"
+[[ "$armed_line" -lt "$trial_set_line" && "$trial_set_line" -lt "$force_line" && "$force_line" -lt "$success_line" ]] || fail "boot branch order"
+[[ -n "$trial_set_line" ]] || fail "armed trial revision missing"
 grep -Fq 'if saveenv; then' "$BOOT_FILES/boot.cmd" || fail "armed saveenv gate missing"
 
 for path in \

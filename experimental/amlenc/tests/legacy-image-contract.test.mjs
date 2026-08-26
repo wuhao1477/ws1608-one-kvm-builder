@@ -54,7 +54,7 @@ function installVerifierStubs(directory) {
     '  *uInitrd.amlenc) printf "legacy-initrd\\n" >"$dest" ;;',
     '  *meson8b-onecloud.dtb|*meson8b-onecloud.recovery.dtb) printf "recovery-dtb\\n" >"$dest" ;;',
     '  *uImage.amlenc) printf "legacy-kernel\\n" >"$dest" ;;',
-    '  *boot.cmd) printf "amlenc-legacy-trial-armed\\namlenc-force-recovery\\namlenc-3.10.ok\\namlenc_trial_revision\\nsetenv amlenc_trial_revision b001001\\nif saveenv; then\\nrun boot_amlenc\\nfi\\n" >"$dest" ;;',
+    '  *boot.cmd) printf "amlenc-legacy-trial-armed\\namlenc_trial_revision\\nsetenv amlenc_trial_revision b001001\\nif saveenv; then\\nrun boot_amlenc\\nfi\\namlenc-force-recovery\\namlenc-3.10.ok\\n" >"$dest" ;;',
     '  *boot.scr) printf "boot-script\\n" >"$dest" ;;',
     '  *armbianEnv.txt) printf "env\\n" >"$dest" ;;',
     '  *amlenc-force-recovery) printf "recovery-first" >"$dest" ;;',

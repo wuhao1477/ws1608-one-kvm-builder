@@ -23,7 +23,7 @@ function fixture(t, order) {
   executable(path.join(bin, 'realpath'), '#!/bin/sh\n[ "$1" = -m ] && shift\nprintf "%s\\n" "$1"\n');
   executable(path.join(bin, 'dumpe2fs'), '#!/bin/sh\nprintf "Filesystem features: ext_attr\\nBlock size: 4096\\nFree blocks: 100000\\n"\n');
   executable(path.join(bin, 'mkimage'), '#!/bin/sh\ncase "$2" in *uImage.amlenc*) echo Linux-3.10.107-WS1608-AMLENC ;; *uInitrd.amlenc*) echo Linux-3.10.107-AMLENC-initrd ;; *boot.scr*) echo WS1608-AMLENC-Bringup ;; esac\n');
-  executable(path.join(bin, 'mcopy'), '#!/usr/bin/env bash\ndest="${@: -1}"\nprintf "x\\n" >"$dest"\ncase "$dest" in *uImage|*uImage.recovery|*uInitrd|*uInitrd.recovery|*meson8b-onecloud.dtb|*meson8b-onecloud.recovery.dtb) printf "recovery\\n" >"$dest" ;; *amlenc-force-recovery) printf "recovery-first" >"$dest" ;; *boot.cmd) printf "amlenc-legacy-trial-armed\\namlenc-force-recovery\\namlenc-3.10.ok\\namlenc_trial_revision\\nsetenv amlenc_trial_revision b001001\\nif saveenv; then\\nrun boot_amlenc\\nfi\\n" >"$dest" ;; esac\n');
+  executable(path.join(bin, 'mcopy'), '#!/usr/bin/env bash\ndest="${@: -1}"\nprintf "x\\n" >"$dest"\ncase "$dest" in *uImage|*uImage.recovery|*uInitrd|*uInitrd.recovery|*meson8b-onecloud.dtb|*meson8b-onecloud.recovery.dtb) printf "recovery\\n" >"$dest" ;; *amlenc-force-recovery) printf "recovery-first" >"$dest" ;; *boot.cmd) printf "amlenc-legacy-trial-armed\\namlenc_trial_revision\\nsetenv amlenc_trial_revision b001001\\nif saveenv; then\\nrun boot_amlenc\\nfi\\namlenc-force-recovery\\namlenc-3.10.ok\\n" >"$dest" ;; esac\n');
   executable(path.join(bin, 'debugfs'), [
     '#!/bin/sh',
     'command=$2',
