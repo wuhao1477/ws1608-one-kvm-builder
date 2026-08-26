@@ -139,11 +139,14 @@ else:
 
 Every new candidate ships with `/amlenc-force-recovery`. After the recovery
 kernel has DHCP and SSH, the operator runs
-`/usr/local/sbin/ws1608-amlenc-arm-trial`; it verifies recovery health, removes
-that marker, syncs the FAT filesystem and reboots into the one-shot 3.10 trial.
-The 3.10 `uInitrd.amlenc` restores the marker before mounting the rootfs. The
-SysV `firstboot` helper removes it only after a 3.10 userspace boot has created
-host keys, validated `sshd` and started the service.
+`/usr/local/sbin/ws1608-amlenc-arm-trial`; it verifies recovery health and
+writes an armed marker without removing the recovery marker. The operator holds
+the physical reset button while rebooting; U-Boot boots 3.10 only when both the
+armed marker and `button reset` are present. Without the button, every reboot
+selects recovery.
+The 3.10 `uInitrd.amlenc` keeps the marker available before mounting the rootfs.
+The SysV `firstboot` helper removes it only after a 3.10 userspace boot has
+created host keys, validated `sshd` and started the service.
 
 The pinned OneCloud U-Boot has no FAT write/delete command and the board
 partition table has no `env` partition, so `saveenv` is not a reliable trial

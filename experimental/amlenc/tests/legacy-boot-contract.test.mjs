@@ -98,10 +98,11 @@ test('renders a recovery-first revision-isolated boot flow', (t) => {
   const command = fs.readFileSync(path.join(output, 'boot.cmd'), 'utf8');
   const force = command.indexOf('amlenc-force-recovery');
   const armed = command.indexOf('amlenc-legacy-trial-armed');
+  const button = command.indexOf('button reset');
   const success = command.indexOf('amlenc-3.10.ok');
   const attempted = command.indexOf('amlenc_trial_revision');
-  assert.ok(force >= 0 && armed > force && success > armed && attempted > success);
-  assert.match(command, /amlenc-legacy-trial-armed[\s\S]*run boot_amlenc/);
+  assert.ok(armed >= 0 && button > armed && force > button && success > force && attempted > success);
+  assert.match(command, /amlenc-legacy-trial-armed[\s\S]*button reset[\s\S]*run boot_amlenc/);
   assert.match(command, /saveenv[\s\S]*run boot_recovery/);
   assert.match(command, /uImage\.recovery/);
   assert.match(command, /uInitrd\.recovery/);
@@ -129,7 +130,7 @@ test('arms one legacy trial only from healthy recovery', (t) => {
   const result = helper(armTrial, boot, { UNAME_RELEASE: '6.12.28-current-meson' });
 
   assert.equal(result.status, 0, result.stderr || result.stdout);
-  assert.equal(fs.existsSync(path.join(boot, 'amlenc-force-recovery')), false);
+  assert.equal(fs.existsSync(path.join(boot, 'amlenc-force-recovery')), true);
   assert.match(result.stdout, /armed one Linux 3\.10\.107 trial/);
 });
 

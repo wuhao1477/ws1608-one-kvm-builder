@@ -103,10 +103,12 @@ mkimage -l "$BOOT_FILES/uInitrd.amlenc" | grep -q 'Linux-3.10.107-AMLENC-initrd'
 legacy_initrd_sha256=$(sha256sum "$BOOT_FILES/uInitrd.amlenc" | awk '{print $1}')
 mkimage -l "$BOOT_FILES/boot.scr" | grep -q 'WS1608-AMLENC-Bringup' || fail "boot script identity"
 [[ "$(<"$BOOT_FILES/amlenc-force-recovery")" == recovery-first ]] || fail "force-recovery marker"
+armed_line=$(grep -n -m1 amlenc-legacy-trial-armed "$BOOT_FILES/boot.cmd" | cut -d: -f1)
+button_line=$(grep -n -m1 'button reset' "$BOOT_FILES/boot.cmd" | cut -d: -f1)
 force_line=$(grep -n -m1 amlenc-force-recovery "$BOOT_FILES/boot.cmd" | cut -d: -f1)
 success_line=$(grep -n -m1 amlenc-3.10.ok "$BOOT_FILES/boot.cmd" | cut -d: -f1)
 trial_line=$(grep -n -m1 amlenc_trial_revision "$BOOT_FILES/boot.cmd" | cut -d: -f1)
-[[ "$force_line" -lt "$success_line" && "$success_line" -lt "$trial_line" ]] || fail "boot branch order"
+[[ "$armed_line" -lt "$button_line" && "$button_line" -lt "$force_line" && "$force_line" -lt "$success_line" && "$success_line" -lt "$trial_line" ]] || fail "boot branch order"
 
 for path in \
   /lib/modules/6.12.28-current-meson \

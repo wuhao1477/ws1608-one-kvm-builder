@@ -132,10 +132,11 @@ Run: `node --test experimental/amlenc/tests/legacy-boot-contract.test.mjs`
 Expected: FAIL because renderer and helpers do not exist.
 - [x] **Step 3: Implement renderer and helpers**
 The renderer validates UUID and `b[0-9]{6}` revision. The candidate ships a
-nonempty `amlenc-force-recovery` and a 3.10 initramfs that restores this marker
-before rootfs handoff. `ws1608-amlenc-arm-trial` removes the initial marker
-only after recovery checks. `ws1608-amlenc-firstboot` removes it only after a
-healthy 3.10 userspace start; `ws1608-amlenc-mark-success` writes
+nonempty `amlenc-force-recovery` and a 3.10 initramfs that preserves this
+marker before rootfs handoff. `ws1608-amlenc-arm-trial` writes an armed marker
+but leaves recovery forced; U-Boot requires the physical reset button for the
+trial. `ws1608-amlenc-firstboot` removes recovery force only after a healthy
+3.10 userspace start; `ws1608-amlenc-mark-success` writes
 `amlenc-3.10.ok` only after all 3.10 checks and `sync`.
 - [x] **Step 4: Verify and commit**
 Run: `node --test experimental/amlenc/tests/legacy-boot-contract.test.mjs && bash -n experimental/amlenc/rootfs/*`

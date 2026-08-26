@@ -63,7 +63,7 @@ function installVerifierStubs(directory) {
     '  *uInitrd.amlenc) printf "legacy-initrd\\n" >"$dest" ;;',
     '  *meson8b-onecloud.dtb|*meson8b-onecloud.recovery.dtb) printf "recovery-dtb\\n" >"$dest" ;;',
     '  *uImage.amlenc) printf "legacy-kernel\\n" >"$dest" ;;',
-    '  *boot.cmd) printf "amlenc-force-recovery\\namlenc-3.10.ok\\namlenc_trial_revision\\n" >"$dest" ;;',
+    '  *boot.cmd) printf "amlenc-legacy-trial-armed\\nbutton reset\\namlenc-force-recovery\\namlenc-3.10.ok\\namlenc_trial_revision\\n" >"$dest" ;;',
     '  *boot.scr) printf "boot-script\\n" >"$dest" ;;',
     '  *armbianEnv.txt) printf "env\\n" >"$dest" ;;',
     '  *amlenc-force-recovery) printf "recovery-first" >"$dest" ;;',
@@ -219,6 +219,7 @@ test('independently verifies recovery identity, rootfs and untested status', () 
   assert.match(verify, /sha1sum/);
   assert.match(verify, /e2fsck/);
   assert.match(verify, /Free blocks/);
+  assert.match(verify, /button reset/);
   assert.match(verify, /mcopy/);
   assert.match(verify, /mkimage -l/);
   assert.match(verify, /debugfs/);
@@ -234,7 +235,6 @@ test('independently verifies recovery identity, rootfs and untested status', () 
   assert.match(verify, /one-kvm/);
   for (const field of ['hardware_boot_tested', 'hardware_encoder_tested', 'one_kvm_included', 'hid_tested', 'msd_tested']) assert.match(verify, new RegExp(`${field}.*false`));
 });
-
 test('builds a Bullseye SysV rootfs for both kernels without One-KVM', () => {
   const rootfs = readRequired(files.rootfs);
   const offlineMountpoints = rootfs.slice(
