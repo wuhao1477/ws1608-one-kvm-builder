@@ -66,7 +66,7 @@ mcopy -i "$BASE_BOOT_RAW" ::dtb/meson8b-onecloud.dtb "$BOOT_FILES/dtb/meson8b-on
 mkimage -A arm -O linux -T kernel -C none -a 0x00208000 -e 0x00208000 \
   -n Linux-3.10.107-WS1608-AMLENC -d "$LEGACY_KERNEL_DIR/zImage" "$BOOT_FILES/uImage.amlenc"
 mkimage -A arm -O linux -T ramdisk -C none \
-  -n Linux-3.10.107-WS1608-AMLENC-initrd -d "$LEGACY_INITRD" "$BOOT_FILES/uInitrd.amlenc"
+  -n Linux-3.10.107-AMLENC-initrd -d "$LEGACY_INITRD" "$BOOT_FILES/uInitrd.amlenc"
 cp "$LEGACY_KERNEL_DIR/ws1608-s805.dtb" "$BOOT_FILES/dtb/meson8b-onecloud-amlenc.dtb"
 node "$ROOT_DIR/experimental/amlenc/scripts/render-legacy-trial-boot.mjs" \
   "$BOOT_FILES" "$LEGACY_ROOTFS_UUID" "$BUILD_REVISION"

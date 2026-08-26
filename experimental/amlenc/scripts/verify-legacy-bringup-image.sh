@@ -95,7 +95,7 @@ cmp "$BASE_BOOT_FILES/uImage" "$BOOT_FILES/uImage.recovery" || fail "recovery uI
 cmp "$BASE_BOOT_FILES/uInitrd" "$BOOT_FILES/uInitrd.recovery" || fail "recovery uInitrd changed"
 cmp "$BASE_BOOT_FILES/meson8b-onecloud.dtb" "$BOOT_FILES/meson8b-onecloud.recovery.dtb" || fail "recovery DTB changed"
 mkimage -l "$BOOT_FILES/uImage.amlenc" | grep -q 'Linux-3.10.107-WS1608-AMLENC' || fail "legacy uImage identity"
-mkimage -l "$BOOT_FILES/uInitrd.amlenc" | grep -q 'Linux-3.10.107-WS1608-AMLENC-initrd' || fail "legacy initrd identity"
+mkimage -l "$BOOT_FILES/uInitrd.amlenc" | grep -q 'Linux-3.10.107-AMLENC-initrd' || fail "legacy initrd identity"
 legacy_initrd_sha256=$(sha256sum "$BOOT_FILES/uInitrd.amlenc" | awk '{print $1}')
 mkimage -l "$BOOT_FILES/boot.scr" | grep -q 'WS1608-AMLENC-Bringup' || fail "boot script identity"
 [[ "$(<"$BOOT_FILES/amlenc-force-recovery")" == recovery-first ]] || fail "force-recovery marker"

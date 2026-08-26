@@ -49,7 +49,7 @@ function installVerifierStubs(directory) {
     '#!/bin/sh',
     'case "$2" in',
     '  *uImage.amlenc*) echo "Image Name: Linux-3.10.107-WS1608-AMLENC" ;;',
-    '  *uInitrd.amlenc*) echo "Image Name: Linux-3.10.107-WS1608-AMLENC-initrd" ;;',
+    '  *uInitrd.amlenc*) echo "Image Name: Linux-3.10.107-AMLENC-initrd" ;;',
     '  *boot.scr*) echo "Image Name: WS1608-AMLENC-Bringup" ;;',
     'esac',
   ].join('\n'));
@@ -293,6 +293,7 @@ test('assembles dual boot and rootfs partitions inside the stable AmlImg package
     'uImage.amlenc', 'uInitrd.amlenc', 'meson8b-onecloud-amlenc.dtb', 'amlenc-force-recovery',
   ]) assert.match(image, new RegExp(asset.replaceAll('.', '\\.')));
   assert.match(image, /mkimage.*Linux-3\.10\.107-WS1608-AMLENC/s);
+  assert.match(image, /mkimage.*Linux-3\.10\.107-AMLENC-initrd/s);
   assert.match(image, /sha1sum/);
   for (const pattern of [/stable_channel_modified:\s*false/, /hardware_boot_tested:\s*false/, /hardware_encoder_tested:\s*false/, /one_kvm_included:\s*false/]) assert.match(image, pattern);
   assert.doesNotMatch(image, /DIAGNOSTIC_IMAGE|DIAGNOSTIC_MANIFEST/);
