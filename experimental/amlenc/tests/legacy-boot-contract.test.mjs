@@ -277,8 +277,6 @@ test('loads the legacy kernel through recovery kexec without removing recovery f
   assert.equal(fs.existsSync(path.join(boot, 'amlenc-force-recovery')), true);
   assert.equal(fs.existsSync(path.join(boot, 'amlenc-legacy-trial-armed')), true);
   const commands = fs.readFileSync(log, 'utf8');
-  assert.match(commands, /--load .*uImage\.amlenc/);
-  assert.match(commands, /--initrd=.*uInitrd\.amlenc/);
-  assert.match(commands, /--dtb=.*meson8b-onecloud-amlenc\.dtb/);
+  for (const pattern of [/--kexec-syscall --load/, /--load .*uImage\.amlenc/, /--initrd=.*uInitrd\.amlenc/, /--dtb=.*meson8b-onecloud-amlenc\.dtb/]) assert.match(commands, pattern);
   assert.match(commands, /--exec/);
 });

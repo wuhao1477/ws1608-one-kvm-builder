@@ -30,7 +30,7 @@ chmod 0644 "$BOOT_DIR/amlenc-legacy-trial-armed"
 sync
 cmdline=$CMDLINE
 [[ -n "$cmdline" ]] || fail "current kernel command line is empty"
-"$KEXEC_BIN" --load "$BOOT_DIR/uImage.amlenc" \
+"$KEXEC_BIN" --kexec-syscall --load "$BOOT_DIR/uImage.amlenc" \
   --initrd="$BOOT_DIR/uInitrd.amlenc" \
   --dtb="$BOOT_DIR/dtb/meson8b-onecloud-amlenc.dtb" \
   --append="$cmdline panic=10 loglevel=8 ignore_loglevel"

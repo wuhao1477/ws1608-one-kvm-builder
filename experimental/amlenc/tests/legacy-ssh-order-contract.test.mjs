@@ -57,6 +57,7 @@ function fixture(t, order) {
     schema: 1, kind: 'ws1608-amlenc-legacy-bringup', image_sha256: 'x',
     recovery: { kernel: '6.12.28-current-meson', source: 'stable-base' },
     legacy: { kernel: '3.10.107', commit: '5aed95d35d252cafc75ce613a3a0052285662de2', cma_mib: 64 },
+    kexec_tools: { version: '1:2.0.18-1', package_sha256: 'c26b0c61d50bfc3a05b9eef5f1952cf1ccb08402b1b073c820480c28507a3f45', binary_sha256: '3502d39565954c8e4b3d123e5d4f32f0e56a7f13d8a471ff5b88fb85bfbf61d1' },
     partitions: {}, ssh_public_key_sha256: 'x', default_login_user: 'root', password_authentication: true,
     recovery_first: true, hardware_boot_tested: false, hardware_encoder_tested: false,
     one_kvm_included: false, hid_tested: false, msd_tested: false, stable_channel_modified: false,

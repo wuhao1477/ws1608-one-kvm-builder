@@ -4,6 +4,7 @@ set -Eeuo pipefail
 ROOT_DIR=$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd -P)
 source "$ROOT_DIR/config/base.env"
 source "$ROOT_DIR/experimental/amlenc/config/sources.env"
+source "$ROOT_DIR/experimental/amlenc/config/legacy-bringup.env"
 
 IMAGE=${IMAGE:?IMAGE is required}
 MANIFEST=${MANIFEST:?MANIFEST is required}
@@ -113,6 +114,7 @@ trial_line=$(grep -n -m1 amlenc_trial_revision "$BOOT_FILES/boot.cmd" | cut -d: 
 for path in \
   /lib/modules/6.12.28-current-meson \
   /lib/modules/3.10.107 \
+  /sbin/kexec \
   /usr/local/sbin/ws1608-amlenc-arm-trial \
   /usr/local/sbin/ws1608-amlenc-mark-success \
   /usr/local/sbin/ws1608-amlenc-probe \
@@ -198,6 +200,11 @@ if debugfs -R 'stat /usr/bin/one-kvm' "$ROOTFS_RAW" 2>/dev/null | grep -q 'Inode
 limits=$(debugfs -R 'cat /usr/local/share/ws1608-amlenc/hardware-limits.json' "$ROOTFS_RAW" 2>/dev/null)
 jq -e '.schema == 1 and .codec == "h264" and .pixel_format == "nv12" and .hardware_encoder_tested == false' <<<"$limits" >/dev/null \
   || fail "hardware limits metadata"
+
+jq -e --arg version "$KEXEC_TOOLS_VERSION" --arg package_sha "$KEXEC_TOOLS_DEB_SHA256" \
+  --arg binary_sha "$KEXEC_TOOLS_BINARY_SHA256" '
+  .kexec_tools == {version:$version,package_sha256:$package_sha,binary_sha256:$binary_sha}
+' "$MANIFEST" >/dev/null || fail "kexec-tools lock"
 
 jq -e --arg base_tag "$BASE_RELEASE_TAG" --arg base_sha "$BASE_IMAGE_SHA256" \
   --arg linux "$LINUX_COMMIT" --arg initrd_sha "$legacy_initrd_sha256" '
