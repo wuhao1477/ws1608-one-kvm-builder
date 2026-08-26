@@ -24,8 +24,6 @@ function sha256Text(text) {
 
 function sha256Identity(line) { return sha256Text(`${line}\n`); }
 
-function legacyKexecConfig() { return { version: envValue('experimental/amlenc/config/legacy-bringup.env', 'KEXEC_TOOLS_VERSION'), package_sha256: envValue('experimental/amlenc/config/legacy-bringup.env', 'KEXEC_TOOLS_DEB_SHA256'), binary_sha256: envValue('experimental/amlenc/config/legacy-bringup.env', 'KEXEC_TOOLS_BINARY_SHA256') }; }
-
 function writeExecutable(filePath, content) {
   fs.writeFileSync(filePath, content, { mode: 0o755 });
 }
@@ -56,7 +54,7 @@ function installVerifierStubs(directory) {
     '  *uInitrd.amlenc) printf "legacy-initrd\\n" >"$dest" ;;',
     '  *meson8b-onecloud.dtb|*meson8b-onecloud.recovery.dtb) printf "recovery-dtb\\n" >"$dest" ;;',
     '  *uImage.amlenc) printf "legacy-kernel\\n" >"$dest" ;;',
-    '  *boot.cmd) printf "amlenc-legacy-trial-armed\\nbutton reset\\namlenc-force-recovery\\namlenc-3.10.ok\\namlenc_trial_revision\\n" >"$dest" ;;',
+    '  *boot.cmd) printf "amlenc-legacy-trial-armed\\namlenc-force-recovery\\namlenc-3.10.ok\\namlenc_trial_revision\\nsetenv amlenc_trial_revision b001001\\nif saveenv; then\\nrun boot_amlenc\\nfi\\n" >"$dest" ;;',
     '  *boot.scr) printf "boot-script\\n" >"$dest" ;;',
     '  *armbianEnv.txt) printf "env\\n" >"$dest" ;;',
     '  *amlenc-force-recovery) printf "recovery-first" >"$dest" ;;',
@@ -130,11 +128,12 @@ function runLegacyVerifier(t, manifestKeySha256, authorizedKey, forbidden = '', 
   fs.writeFileSync(manifest, JSON.stringify({
     schema: 1,
     kind: 'ws1608-amlenc-legacy-bringup',
+    build_revision: 'b001001',
     image_sha256: sha256Text('final image\n'),
     base_release_tag: envValue('config/base.env', 'BASE_RELEASE_TAG'),
     base_image_sha256: envValue('config/base.env', 'BASE_IMAGE_SHA256'),
     recovery: { kernel: '6.12.28-current-meson', source: 'stable-base' },
-    legacy: { kernel: '3.10.107', commit: envValue('experimental/amlenc/config/sources.env', 'LINUX_COMMIT'), cma_mib: 64, initrd_sha256: 'caa732c300ab3cf56d05100423e04901252ac60a9b75e74562f492690717c421' }, kexec_tools: legacyKexecConfig(), diagnostic_included: true, encoder: { abi: 1, commit: '5aed95d35d252cafc75ce613a3a0052285662de2', libvpcodec_sha256: '0'.repeat(64), diagnostic_sha256: '0'.repeat(64) },
+    legacy: { kernel: '3.10.107', commit: envValue('experimental/amlenc/config/sources.env', 'LINUX_COMMIT'), cma_mib: 64, initrd_sha256: 'caa732c300ab3cf56d05100423e04901252ac60a9b75e74562f492690717c421' }, boot_method: 'uboot-cold-start', kexec: false, diagnostic_included: true, encoder: { abi: 1, commit: '5aed95d35d252cafc75ce613a3a0052285662de2', libvpcodec_sha256: '0'.repeat(64), diagnostic_sha256: '0'.repeat(64) },
     partitions: { boot_sha256: sha256Text('final-boot\n'), rootfs_sha256: sha256Text('final-rootfs\n') },
     ssh_public_key_sha256: manifestKeySha256,
     default_login_user: 'root',
@@ -213,7 +212,9 @@ test('independently verifies recovery identity, rootfs and untested status', () 
   assert.match(verify, /sha1sum/);
   assert.match(verify, /e2fsck/);
   assert.match(verify, /Free blocks/);
-  for (const pattern of [/button reset/, /kexec/]) assert.match(verify, pattern);
+  assert.doesNotMatch(verify, /button reset/);
+  assert.match(verify, /boot_method.*uboot-cold-start/);
+  assert.match(verify, /kexec.*false/);
   assert.match(verify, /mcopy/);
   assert.match(verify, /mkimage -l/);
   assert.match(verify, /debugfs/);
@@ -235,10 +236,10 @@ test('builds a Bullseye SysV rootfs for both kernels without One-KVM', () => {
     rootfs.indexOf('tar --numeric-owner'),
     rootfs.indexOf('debugfs -R'),
   );
-  for (const pattern of [/BULLSEYE_ARMV7_OCI_IMAGE/, /KEXEC_TOOLS_DEB/, /dpkg-deb -x/, /KEXEC_TOOLS_BINARY_SHA256/]) assert.match(rootfs, pattern);
-  assert.match(rootfs, /kexec_sha=\$\(sha256sum \/sbin\/kexec\)/);
-  for (const pattern of [/^KEXEC_TOOLS_VERSION=1:2\.0\.18-1$/m, /^KEXEC_TOOLS_DEB_URL=https:\/\/archive\.debian\.org\//m, /^KEXEC_TOOLS_DEB_SHA256=[a-f0-9]{64}$/m, /^KEXEC_TOOLS_BINARY_SHA256=[a-f0-9]{64}$/m]) assert.match(config, pattern);
-  for (const packageName of ['sysvinit-core', 'sysv-rc', 'insserv', 'udev', 'kmod', 'ifupdown', 'isc-dhcp-client', 'openssh-server', 'kexec-tools']) {
+  assert.match(rootfs, /BULLSEYE_ARMV7_OCI_IMAGE/);
+  for (const pattern of [/KEXEC_TOOLS_DEB/, /dpkg-deb -x/, /KEXEC_TOOLS_BINARY_SHA256/, /kexec-tools/, /\/sbin\/kexec/]) assert.doesNotMatch(rootfs, pattern);
+  for (const pattern of [/KEXEC_TOOLS_VERSION/, /KEXEC_TOOLS_DEB_URL/, /KEXEC_TOOLS_DEB_SHA256/, /KEXEC_TOOLS_BINARY_SHA256/]) assert.doesNotMatch(config, new RegExp(pattern));
+  for (const packageName of ['sysvinit-core', 'sysv-rc', 'insserv', 'udev', 'kmod', 'ifupdown', 'isc-dhcp-client', 'openssh-server']) {
     assert.match(rootfs, new RegExp(packageName));
   }
   for (const pattern of [/LEGACY_DEFAULT_LOGIN_PASSWORD/, /chpasswd --crypt-method SHA512/, /PasswordAuthentication yes/, /KbdInteractiveAuthentication yes/, /PermitRootLogin yes/, /PubkeyAuthentication yes/]) assert.match(rootfs, pattern);
@@ -250,8 +251,9 @@ test('builds a Bullseye SysV rootfs for both kernels without One-KVM', () => {
   assert.match(rootfs, /ws1608-amlenc-arm-trial/);
   assert.match(rootfs, /ws1608-amlenc-mark-success/);
   assert.match(rootfs, /ws1608-amlenc-firstboot/);
-  for (const pattern of [/ws1608-amlenc-initrd/, /ws1608-amlenc-kexec-trial/, /busybox-static/, /cpio/, /backports/, /qcom/]) assert.match(rootfs, pattern);
-  for (const pattern of [/update-rc\.d ws1608-amlenc-firstboot defaults/, /update-rc\.d ssh defaults/, /update-rc\.d -f kexec remove/]) assert.match(rootfs, pattern);
+  for (const pattern of [/ws1608-amlenc-initrd/, /busybox-static/, /cpio/, /backports/, /qcom/]) assert.match(rootfs, pattern);
+  for (const pattern of [/update-rc\.d ws1608-amlenc-firstboot defaults/, /update-rc\.d ssh defaults/]) assert.match(rootfs, pattern);
+  for (const pattern of [/ws1608-amlenc-kexec-trial/, /update-rc\.d -f kexec remove/]) assert.doesNotMatch(rootfs, pattern);
   assert.doesNotMatch(rootfs, /ln -s \.\.\/init\.d\/ws1608-amlenc-firstboot/);
   assert.match(rootfs, /STATUS_FILE=.*ws1608-amlenc-firstboot/);
   assert.match(rootfs, /SSHD_START_BIN=\/bin\/true/);
@@ -263,7 +265,7 @@ test('builds a Bullseye SysV rootfs for both kernels without One-KVM', () => {
   assert.doesNotMatch(rootfs, /one-kvm\.deb|\/usr\/bin\/one-kvm/);
 });
 
-test('accepts a complete legacy image with the locked kexec tool', (t) => { const key = 'ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAITestOnlyKey ws1608-test'; const result = runLegacyVerifier(t, sha256Identity(key), key); assert.equal(result.status, 0, result.stderr || result.stdout); assert.match(result.stdout, /verified WS1608 recovery-first legacy bring-up image/); });
+test('accepts a complete legacy image with the U-Boot cold-start entry', (t) => { const key = 'ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAITestOnlyKey ws1608-test'; const result = runLegacyVerifier(t, sha256Identity(key), key); assert.equal(result.status, 0, result.stderr || result.stdout); assert.match(result.stdout, /verified WS1608 recovery-first legacy bring-up image/); });
 
 test('creates offline rootfs mountpoints with POSIX shell semantics', (t) => {
   const rootfs = readRequired(files.rootfs);

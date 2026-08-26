@@ -111,7 +111,6 @@ git commit -S -m "fix(amlenc): 修正玩客云电压与编码内存"
 - Create: `experimental/amlenc/rootfs/ws1608-amlenc-arm-trial`
 - Create: `experimental/amlenc/rootfs/ws1608-amlenc-mark-success`
 - Create: `experimental/amlenc/rootfs/ws1608-amlenc-initrd`
-- Create: `experimental/amlenc/rootfs/ws1608-amlenc-kexec-trial`
 - Create: `experimental/amlenc/tests/legacy-boot-contract.test.mjs`
 **Interfaces:**
 - Consumes: `OUTPUT_DIR ROOTFS_UUID BUILD_REVISION`.
@@ -135,11 +134,13 @@ Expected: FAIL because renderer and helpers do not exist.
 The renderer validates UUID and `b[0-9]{6}` revision. The candidate ships a
 nonempty `amlenc-force-recovery` and a 3.10 initramfs that preserves this
 marker before rootfs handoff. `ws1608-amlenc-arm-trial` writes an armed marker
-but leaves recovery forced. The preferred `ws1608-amlenc-kexec-trial` helper
-loads the old kernel through recovery `CONFIG_KEXEC`; the U-Boot reset-button
-path remains a fallback. `ws1608-amlenc-firstboot` removes recovery force only
-after a healthy 3.10 userspace start; `ws1608-amlenc-mark-success` writes
-`amlenc-3.10.ok` only after all 3.10 checks and `sync`.
+but leaves recovery forced; U-Boot consumes it with a revisioned `saveenv`
+gate before a cold 3.10 boot, and repeats go to recovery. The recovery rootfs
+does not install kexec-tools because both 3.10 and same-kernel kexec trials
+lost the SoC cold-start state on WS1608. `ws1608-amlenc-firstboot` removes
+recovery force only after a healthy 3.10 userspace start;
+`ws1608-amlenc-mark-success` writes `amlenc-3.10.ok` only after all 3.10
+checks and `sync`.
 - [x] **Step 4: Verify and commit**
 Run: `node --test experimental/amlenc/tests/legacy-boot-contract.test.mjs && bash -n experimental/amlenc/rootfs/*`
 Commit:
@@ -333,6 +334,21 @@ git push
   entries valid, and `xz -t` valid. Its manifest remains
   `hardware_boot_tested=false`, `hardware_encoder_tested=false`,
   `one_kvm_included=false`, `hid_tested=false`, and `msd_tested=false`.
+
+#### kexec Rejection And Cold-Start Fix — 2026-08-27
+
+- The recovery device was reachable over SSH on
+  `6.12.28-current-meson`; loading the 3.10 image with the pinned kexec
+  syscall completed, but the device lost HDMI progress and SSH before the
+  initramfs marker could be observed.
+- A same-kernel recovery-to-recovery kexec comparison produced the same loss
+  of SSH and did not return on the LAN. This isolates the failure to the
+  Amlogic cold-start boundary rather than the 3.10 DTB or encoder driver.
+- The candidate now removes `kexec-tools`, deletes the kexec helper, and uses
+  the U-Boot `amlenc-legacy-trial-armed` marker plus a revisioned `saveenv`
+  gate for one cold 3.10 boot. Repeated or failed trials select recovery.
+- The local contract suite and shell syntax checks pass after this change;
+  hosted hardware fields remain false until a new burn image is flashed.
 
 ## Deferred Plans
 

@@ -19,6 +19,8 @@ for command in awk cmp cut debugfs dumpe2fs e2fsck file grep jq mcopy mkimage no
 done
 for artifact in "$IMAGE" "$MANIFEST" "$BASE_IMAGE"; do [[ -f "$artifact" && ! -L "$artifact" ]] || fail "invalid artifact"; done
 [[ -x "$AMLIMG_BIN" ]] || fail "AmlImg is not executable"
+BUILD_REVISION=$(jq -er '.build_revision' "$MANIFEST") || fail "build revision is missing"
+[[ "$BUILD_REVISION" =~ ^b[0-9]{6}$ ]] || fail "invalid build revision"
 resolved=$(realpath -m -- "$VERIFY_DIR")
 [[ "$resolved" != / && "$resolved" != "$ROOT_DIR" && ! -L "$VERIFY_DIR" ]] || fail "unsafe verify directory"
 
@@ -105,16 +107,17 @@ legacy_initrd_sha256=$(sha256sum "$BOOT_FILES/uInitrd.amlenc" | awk '{print $1}'
 mkimage -l "$BOOT_FILES/boot.scr" | grep -q 'WS1608-AMLENC-Bringup' || fail "boot script identity"
 [[ "$(<"$BOOT_FILES/amlenc-force-recovery")" == recovery-first ]] || fail "force-recovery marker"
 armed_line=$(grep -n -m1 amlenc-legacy-trial-armed "$BOOT_FILES/boot.cmd" | cut -d: -f1)
-button_line=$(grep -n -m1 'button reset' "$BOOT_FILES/boot.cmd" | cut -d: -f1)
 force_line=$(grep -n -m1 amlenc-force-recovery "$BOOT_FILES/boot.cmd" | cut -d: -f1)
 success_line=$(grep -n -m1 amlenc-3.10.ok "$BOOT_FILES/boot.cmd" | cut -d: -f1)
 trial_line=$(grep -n -m1 amlenc_trial_revision "$BOOT_FILES/boot.cmd" | cut -d: -f1)
-[[ "$armed_line" -lt "$button_line" && "$button_line" -lt "$force_line" && "$force_line" -lt "$success_line" && "$success_line" -lt "$trial_line" ]] || fail "boot branch order"
+! grep -Eq 'button[[:space:]]+reset' "$BOOT_FILES/boot.cmd" || fail "boot path must not require the reset button"
+[[ "$armed_line" -lt "$force_line" && "$force_line" -lt "$success_line" && "$success_line" -lt "$trial_line" ]] || fail "boot branch order"
+grep -Fq "setenv amlenc_trial_revision ${BUILD_REVISION}" "$BOOT_FILES/boot.cmd" || fail "armed trial revision missing"
+grep -Fq 'if saveenv; then' "$BOOT_FILES/boot.cmd" || fail "armed saveenv gate missing"
 
 for path in \
   /lib/modules/6.12.28-current-meson \
   /lib/modules/3.10.107 \
-  /sbin/kexec \
   /usr/local/sbin/ws1608-amlenc-arm-trial \
   /usr/local/sbin/ws1608-amlenc-mark-success \
   /usr/local/sbin/ws1608-amlenc-probe \
@@ -124,8 +127,7 @@ for path in \
   /usr/local/share/ws1608-amlenc/hardware-limits.json \
   /usr/local/share/ws1608-amlenc/frame-640x480.nv12 \
   /usr/local/share/ws1608-amlenc/frame-1280x720.nv12 \
-  /etc/init.d/ws1608-amlenc-firstboot \
-  /usr/local/sbin/ws1608-amlenc-kexec-trial; do
+  /etc/init.d/ws1608-amlenc-firstboot; do
   debugfs -R "stat $path" "$ROOTFS_RAW" 2>/dev/null | grep -q 'Inode:' || fail "missing rootfs path $path"
 done
 for helper in ws1608-amlenc-arm-trial ws1608-amlenc-mark-success; do
@@ -201,18 +203,14 @@ limits=$(debugfs -R 'cat /usr/local/share/ws1608-amlenc/hardware-limits.json' "$
 jq -e '.schema == 1 and .codec == "h264" and .pixel_format == "nv12" and .hardware_encoder_tested == false' <<<"$limits" >/dev/null \
   || fail "hardware limits metadata"
 
-jq -e --arg version "$KEXEC_TOOLS_VERSION" --arg package_sha "$KEXEC_TOOLS_DEB_SHA256" \
-  --arg binary_sha "$KEXEC_TOOLS_BINARY_SHA256" '
-  .kexec_tools == {version:$version,package_sha256:$package_sha,binary_sha256:$binary_sha}
-' "$MANIFEST" >/dev/null || fail "kexec-tools lock"
-
 jq -e --arg base_tag "$BASE_RELEASE_TAG" --arg base_sha "$BASE_IMAGE_SHA256" \
   --arg linux "$LINUX_COMMIT" --arg initrd_sha "$legacy_initrd_sha256" '
   .schema == 1 and .kind == "ws1608-amlenc-legacy-bringup" and
   .base_release_tag == $base_tag and .base_image_sha256 == $base_sha and
   .recovery == {kernel:"6.12.28-current-meson",source:"stable-base"} and
   .legacy.kernel == "3.10.107" and .legacy.commit == $linux and .legacy.cma_mib == 64 and
-  .legacy.initrd_sha256 == $initrd_sha and .recovery_first == true and
+  .legacy.initrd_sha256 == $initrd_sha and .boot_method == "uboot-cold-start" and
+  .kexec == false and .recovery_first == true and
   .diagnostic_included == true and .encoder.abi == 1 and
   (.encoder.commit | test("^[a-f0-9]{40}$")) and
   (.encoder.libvpcodec_sha256 | test("^[a-f0-9]{64}$")) and

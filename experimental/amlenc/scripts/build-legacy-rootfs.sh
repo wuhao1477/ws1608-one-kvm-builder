@@ -10,16 +10,12 @@ LEGACY_MODULES_TAR=${LEGACY_MODULES_TAR:?LEGACY_MODULES_TAR is required}
 ENCODER_DIR=${ENCODER_DIR:?ENCODER_DIR is required}
 SSH_PUBLIC_KEY=${SSH_PUBLIC_KEY:?SSH_PUBLIC_KEY is required}
 OUTPUT_ROOTFS_RAW=${OUTPUT_ROOTFS_RAW:?OUTPUT_ROOTFS_RAW is required}
-KEXEC_TOOLS_DEB=${KEXEC_TOOLS_DEB:?KEXEC_TOOLS_DEB is required}
 WORK_DIR=${WORK_DIR:-$ROOT_DIR/.build/amlenc/legacy-rootfs}
 
 fail() { echo "legacy rootfs build failed: $*" >&2; exit 1; }
 require_file() { [[ -f "$1" && ! -L "$1" && -s "$1" ]] || fail "invalid file: $1"; }
 require_file "$RECOVERY_ROOTFS_RAW"
 require_file "$LEGACY_MODULES_TAR"
-require_file "$KEXEC_TOOLS_DEB"
-[[ "$(sha256sum "$KEXEC_TOOLS_DEB" | awk '{print $1}')" == "$KEXEC_TOOLS_DEB_SHA256" ]] \
-  || fail "kexec-tools package checksum failed"
 for encoder_file in libvpcodec.so amlenc-m8-diag source-manifest.json SHA256SUMS; do
   require_file "$ENCODER_DIR/$encoder_file"
 done
@@ -37,13 +33,11 @@ for command in awk docker realpath sha256sum; do command -v "$command" >/dev/nul
 mkdir -p "$WORK_DIR" "$(dirname "$OUTPUT_ROOTFS_RAW")"
 find "$WORK_DIR" -mindepth 1 -delete
 export SSH_PUBLIC_KEY
-export LEGACY_DEFAULT_LOGIN_USER LEGACY_DEFAULT_LOGIN_PASSWORD KEXEC_TOOLS_BINARY_SHA256
+export LEGACY_DEFAULT_LOGIN_USER LEGACY_DEFAULT_LOGIN_PASSWORD
 
 docker run --rm --platform linux/arm/v7 \
   -e SSH_PUBLIC_KEY -e LEGACY_DEFAULT_LOGIN_USER -e LEGACY_DEFAULT_LOGIN_PASSWORD \
-  -e KEXEC_TOOLS_BINARY_SHA256 \
   -v "$WORK_DIR:/work" \
-  -v "$KEXEC_TOOLS_DEB:/build-input/kexec-tools.deb:ro" \
   -v "$ROOT_DIR/experimental/amlenc/rootfs:/assets:ro" \
   -v "$ENCODER_DIR:/encoder:ro" \
   -v "$ROOT_DIR/experimental/amlenc/scripts/apt-install.sh:/build-tools/apt-install:ro" \
@@ -55,10 +49,6 @@ docker run --rm --platform linux/arm/v7 \
     /build-tools/apt-install sysvinit-core sysv-rc insserv initscripts udev kmod ifupdown \
       isc-dhcp-client openssh-server ca-certificates ffmpeg jq iproute2 procps psmisc util-linux \
       busybox-static cpio gzip
-    dpkg-deb -x /build-input/kexec-tools.deb /
-    test -x /sbin/kexec
-    kexec_sha=$(sha256sum /sbin/kexec)
-    test "${kexec_sha%% *}" = "$KEXEC_TOOLS_BINARY_SHA256"
     printf "onecloud-amlenc\n" >/etc/hostname
     cat >/etc/network/interfaces <<"EOF"
 auto lo
@@ -74,7 +64,6 @@ EOF
     install -D -m 0755 /assets/ws1608-amlenc-arm-trial /usr/local/sbin/ws1608-amlenc-arm-trial
     install -D -m 0755 /assets/ws1608-amlenc-mark-success /usr/local/sbin/ws1608-amlenc-mark-success
     install -D -m 0755 /assets/ws1608-amlenc-firstboot /etc/init.d/ws1608-amlenc-firstboot
-    install -D -m 0755 /assets/ws1608-amlenc-kexec-trial /usr/local/sbin/ws1608-amlenc-kexec-trial
     mkdir -p /tmp/ws1608-amlenc-initrd
     install -D -m 0755 /assets/ws1608-amlenc-initrd /tmp/ws1608-amlenc-initrd/init
     install -D -m 0755 /assets/ws1608-amlenc-probe /usr/local/sbin/ws1608-amlenc-probe
@@ -93,8 +82,6 @@ EOF
     rm -f /etc/rcS.d/S99ws1608-amlenc-firstboot /etc/rc2.d/S01ws1608-amlenc-firstboot
     update-rc.d ws1608-amlenc-firstboot defaults
     update-rc.d ssh defaults
-    update-rc.d -f kexec remove || true
-    update-rc.d -f kexec-load remove || true
     rm -f /etc/ssh/ssh_host_* /etc/machine-id
     mkdir -p /tmp/ws1608-amlenc-build-boot
     BOOT_DIR=/tmp/ws1608-amlenc-build-boot DMESG_BIN=/bin/true \

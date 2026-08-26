@@ -99,11 +99,11 @@ test('renders a recovery-first revision-isolated boot flow', (t) => {
   const command = fs.readFileSync(path.join(output, 'boot.cmd'), 'utf8');
   const force = command.indexOf('amlenc-force-recovery');
   const armed = command.indexOf('amlenc-legacy-trial-armed');
-  const button = command.indexOf('button reset');
   const success = command.indexOf('amlenc-3.10.ok');
   const attempted = command.indexOf('amlenc_trial_revision');
-  assert.ok(armed >= 0 && button > armed && force > button && success > force && attempted > success);
-  assert.match(command, /amlenc-legacy-trial-armed[\s\S]*button reset[\s\S]*run boot_amlenc/);
+  assert.ok(armed >= 0 && force > armed && success > force && attempted > armed);
+  assert.doesNotMatch(command, /button reset/);
+  assert.match(command, /amlenc-legacy-trial-armed[\s\S]*setenv amlenc_trial_revision b001001[\s\S]*saveenv[\s\S]*run boot_amlenc/);
   assert.match(command, /saveenv[\s\S]*run boot_recovery/);
   assert.match(command, /uImage\.recovery/);
   assert.match(command, /uInitrd\.recovery/);
@@ -257,26 +257,6 @@ test('ships an early initramfs recovery guard', () => {
   assert.match(script, /switch_root/);
 });
 
-test('loads the legacy kernel through recovery kexec without removing recovery force', (t) => {
-  assert.equal(fs.existsSync(kexecTrial), true, 'kexec trial helper is required');
-  const boot = fixture(t);
-  for (const file of ['uImage.amlenc', 'uInitrd.amlenc', 'dtb/meson8b-onecloud-amlenc.dtb']) {
-    fs.mkdirSync(path.dirname(path.join(boot, file)), { recursive: true });
-    fs.writeFileSync(path.join(boot, file), 'asset\n');
-  }
-  fs.writeFileSync(path.join(boot, 'amlenc-force-recovery'), 'recovery-first\n');
-  const log = path.join(boot, 'kexec.log');
-  const kexec = path.join(boot, 'kexec');
-  writeExecutable(kexec, '#!/bin/sh\nprintf "%s\\n" "$*" >>"$KEXEC_LOG"\n');
-  const result = helper(kexecTrial, boot, {
-    KEXEC_BIN: kexec, KEXEC_LOG: log, UNAME_RELEASE: '6.12.28-current-meson',
-    CMDLINE: 'root=UUID=7c59bb76-d17e-4a9c-9ff8-031b35133010 rootfstype=ext4 rw',
-  });
-
-  assert.equal(result.status, 0, result.stderr || result.stdout);
-  assert.equal(fs.existsSync(path.join(boot, 'amlenc-force-recovery')), true);
-  assert.equal(fs.existsSync(path.join(boot, 'amlenc-legacy-trial-armed')), true);
-  const commands = fs.readFileSync(log, 'utf8');
-  for (const pattern of [/--kexec-syscall --load/, /--load .*uImage\.amlenc/, /--initrd=.*uInitrd\.amlenc/, /--dtb=.*meson8b-onecloud-amlenc\.dtb/]) assert.match(commands, pattern);
-  assert.match(commands, /--exec/);
+test('does not ship the unsupported kexec entry point', () => {
+  assert.equal(fs.existsSync(kexecTrial), false, 'kexec trial helper must be removed');
 });

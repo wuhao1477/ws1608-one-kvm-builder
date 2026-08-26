@@ -19,7 +19,7 @@ IMAGE_NAME="WS1608-AMLENC-Bringup_${BUILD_REVISION}_Onecloud_bullseye_3.10.107-r
 fail() { echo "legacy bring-up image failed: $*" >&2; exit 1; }
 require_file() { [[ -f "$1" && ! -L "$1" && -s "$1" ]] || fail "invalid file: $1"; }
 basename_only() { [[ -n "$1" && "$1" != */* && "$1" != *'\\'* && "$1" != . && "$1" != .. ]] || fail "unsafe package entry"; }
-for command in awk curl jq mcopy mkimage node sha1sum sha256sum xz; do command -v "$command" >/dev/null || fail "missing command: $command"; done
+for command in awk jq mcopy mkimage node sha1sum sha256sum xz; do command -v "$command" >/dev/null || fail "missing command: $command"; done
 require_file "$BASE_IMAGE_XZ"
 for file in zImage ws1608-s805.dtb modules.tar.gz source-manifest.json; do require_file "$LEGACY_KERNEL_DIR/$file"; done
 for file in libvpcodec.so amlenc-m8-diag source-manifest.json SHA256SUMS; do require_file "$ENCODER_DIR/$file"; done
@@ -41,9 +41,6 @@ MANIFEST="$OUTPUT_DIR/manifest.json"
 mkdir -p "$WORK_DIR" "$OUTPUT_DIR"
 find "$WORK_DIR" -mindepth 1 -delete
 find "$OUTPUT_DIR" -mindepth 1 -delete
-KEXEC_TOOLS_DEB="$WORK_DIR/kexec-tools.deb"
-curl --fail --location --retry 5 "$KEXEC_TOOLS_DEB_URL" -o "$KEXEC_TOOLS_DEB"
-echo "$KEXEC_TOOLS_DEB_SHA256  $KEXEC_TOOLS_DEB" | sha256sum --check --status
 xz -dc "$BASE_IMAGE_XZ" >"$BASE_IMAGE"
 mkdir -p "$PACKAGE_DIR" "$BOOT_FILES/dtb"
 "$AMLIMG_BIN" unpack "$BASE_IMAGE" "$PACKAGE_DIR"
@@ -58,7 +55,7 @@ cp "$BASE_BOOT_RAW" "$FINAL_BOOT_RAW"
 
 RECOVERY_ROOTFS_RAW="$BASE_ROOTFS_RAW" LEGACY_MODULES_TAR="$LEGACY_KERNEL_DIR/modules.tar.gz" \
   ENCODER_DIR="$ENCODER_DIR" \
-  SSH_PUBLIC_KEY="$SSH_PUBLIC_KEY" KEXEC_TOOLS_DEB="$KEXEC_TOOLS_DEB" \
+  SSH_PUBLIC_KEY="$SSH_PUBLIC_KEY" \
   OUTPUT_ROOTFS_RAW="$FINAL_ROOTFS_RAW" \
   WORK_DIR="$WORK_DIR/rootfs-work" "$ROOT_DIR/experimental/amlenc/scripts/build-legacy-rootfs.sh"
 LEGACY_INITRD="$WORK_DIR/rootfs-work/amlenc-initrd"
@@ -103,15 +100,13 @@ jq -n --arg image "$IMAGE_NAME" --arg image_sha "$image_sha256" --arg revision "
   --arg boot_sha "$boot_sha256" --arg rootfs_sha "$rootfs_sha256" --arg linux "$LINUX_COMMIT" \
   --arg encoder_commit "$encoder_commit" --arg encoder_sha "$encoder_sha256" \
   --arg diagnostic_sha "$diagnostic_sha256" --arg initrd_sha "$initrd_sha256" \
-  --arg kexec_version "$KEXEC_TOOLS_VERSION" --arg kexec_package_sha "$KEXEC_TOOLS_DEB_SHA256" \
-  --arg kexec_binary_sha "$KEXEC_TOOLS_BINARY_SHA256" \
   --argjson encoder_abi "$encoder_abi" \
   --arg encoder_redistribution "$encoder_redistribution" \
   '{schema:1,kind:"ws1608-amlenc-legacy-bringup",image_name:$image,image_sha256:$image_sha,
     build_revision:$revision,base_release_tag:$base_tag,base_image_sha256:$base_sha,
     recovery:{kernel:"6.12.28-current-meson",source:"stable-base"},
     legacy:{kernel:"3.10.107",commit:$linux,cma_mib:64,initrd_sha256:$initrd_sha},
-    kexec_tools:{version:$kexec_version,package_sha256:$kexec_package_sha,binary_sha256:$kexec_binary_sha},
+    boot_method:"uboot-cold-start",kexec:false,
     diagnostic_included:true,
     encoder:{commit:$encoder_commit,abi:$encoder_abi,redistribution:$encoder_redistribution,
       libvpcodec_sha256:$encoder_sha,diagnostic_sha256:$diagnostic_sha},
