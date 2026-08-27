@@ -92,7 +92,7 @@ EOF
       /tmp/ws1608-amlenc-initrd/proc /tmp/ws1608-amlenc-initrd/sys \
       /tmp/ws1608-amlenc-initrd/run /tmp/ws1608-amlenc-initrd/newroot
     install -m 0755 /bin/busybox /tmp/ws1608-amlenc-initrd/bin/busybox
-    for applet in sh mount umount mkdir sleep cat blkid switch_root reboot; do
+    for applet in sh mount umount mkdir sleep cat blkid switch_root reboot sync; do
       ln -s busybox "/tmp/ws1608-amlenc-initrd/bin/$applet"
     done
     (
@@ -105,7 +105,14 @@ EOF
       /tmp/ws1608-amlenc-build-boot/amlenc-legacy-firstboot-ready \
       /tmp/ws1608-amlenc-build-boot/amlenc-legacy-firstboot-failed \
       /tmp/ws1608-amlenc-build-boot/amlenc-legacy-trial-armed \
-      /tmp/ws1608-amlenc-build-boot/amlenc-legacy-dmesg.log
+      /tmp/ws1608-amlenc-build-boot/amlenc-legacy-dmesg.log \
+      /tmp/ws1608-amlenc-build-boot/amlenc-legacy-3.10-initrd-started \
+      /tmp/ws1608-amlenc-build-boot/amlenc-legacy-3.10-root-mounted \
+      /tmp/ws1608-amlenc-build-boot/amlenc-legacy-3.10-switch-root \
+      /tmp/ws1608-amlenc-build-boot/amlenc-legacy-3.10-firstboot-started \
+      /tmp/ws1608-amlenc-build-boot/amlenc-legacy-3.10-firstboot-ready \
+      /tmp/ws1608-amlenc-build-boot/amlenc-legacy-3.10-firstboot-failed \
+      /tmp/ws1608-amlenc-build-boot/amlenc-legacy-3.10-dmesg.log
     : >/etc/machine-id
     find /var/lib/apt/lists /var/cache/apt/archives /tmp /var/tmp -mindepth 1 -delete
     /build-tools/archive-rootfs /work/rootfs.tar /

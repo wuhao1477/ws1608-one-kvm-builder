@@ -12,6 +12,7 @@ const firstboot = 'experimental/amlenc/rootfs/ws1608-amlenc-firstboot';
 const initrd = 'experimental/amlenc/rootfs/ws1608-amlenc-initrd';
 const kexecTrial = 'experimental/amlenc/rootfs/ws1608-amlenc-kexec-trial';
 const uuid = '7c59bb76-d17e-4a9c-9ff8-031b35133010';
+const legacyMilestones = ['amlenc-legacy-3.10-initrd-started', 'amlenc-legacy-3.10-root-mounted', 'amlenc-legacy-3.10-switch-root', 'amlenc-legacy-3.10-firstboot-started', 'amlenc-legacy-3.10-firstboot-ready', 'amlenc-legacy-3.10-firstboot-failed', 'amlenc-legacy-3.10-dmesg.log'];
 
 function fixture(t) {
   const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'ws1608-legacy-boot-'));
@@ -222,6 +223,8 @@ test('does not mark first boot complete when sshd validation fails', (t) => {
   assert.equal(fs.existsSync(setup.env.STATUS_FILE), false);
   assert.equal(fs.existsSync(path.join(setup.env.BOOT_DIR, 'amlenc-legacy-firstboot-failed')), true);
   assert.equal(fs.existsSync(path.join(setup.env.BOOT_DIR, 'amlenc-legacy-dmesg.log')), true);
+  assert.equal(fs.existsSync(path.join(setup.env.BOOT_DIR, 'amlenc-legacy-3.10-firstboot-failed')), true);
+  assert.equal(fs.existsSync(path.join(setup.env.BOOT_DIR, 'amlenc-legacy-3.10-dmesg.log')), true);
 });
 
 test('does not mark first boot complete when ssh service start fails', (t) => {
@@ -249,10 +252,38 @@ test('records a persistent legacy userspace boot milestone', () => {
   assert.match(helper, /dmesg/);
 });
 
+test('records independent 3.10 userspace milestones', (t) => {
+  const setup = firstbootFixture(t);
+  const result = spawnSync('sh', [firstboot], { encoding: 'utf8', env: setup.env });
+
+  assert.equal(result.status, 0, result.stderr || result.stdout);
+  for (const marker of legacyMilestones.slice(3, 5)) {
+    assert.equal(fs.existsSync(path.join(setup.env.BOOT_DIR, marker)), true, marker);
+  }
+});
+
+test('keeps 3.10 milestones when recovery firstboot runs', (t) => {
+  const setup = firstbootFixture(t);
+  for (const marker of legacyMilestones) fs.writeFileSync(path.join(setup.env.BOOT_DIR, marker), `marker=${marker}\n`);
+
+  const result = spawnSync('sh', [firstboot], {
+    encoding: 'utf8',
+    env: { ...setup.env, UNAME_RELEASE: '6.12.28-current-meson' },
+  });
+
+  assert.equal(result.status, 0, result.stderr || result.stdout);
+  for (const marker of legacyMilestones) {
+    assert.equal(fs.readFileSync(path.join(setup.env.BOOT_DIR, marker), 'utf8'), `marker=${marker}\n`);
+  }
+});
+
 test('ships an early initramfs recovery guard', () => {
   assert.equal(fs.existsSync(initrd), true, 'legacy initramfs helper is required');
   const script = fs.readFileSync(initrd, 'utf8');
   assert.match(script, /amlenc-force-recovery/);
+  assert.match(script, /amlenc-legacy-3\.10-initrd-started/);
+  assert.match(script, /amlenc-legacy-3\.10-root-mounted/);
+  assert.match(script, /amlenc-legacy-3\.10-switch-root/);
   assert.match(script, /mount/);
   assert.match(script, /switch_root/);
 });

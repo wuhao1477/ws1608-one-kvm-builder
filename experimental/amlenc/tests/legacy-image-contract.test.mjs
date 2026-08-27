@@ -74,7 +74,7 @@ function installVerifierStubs(directory) {
     '  "ls -p /etc/ssh") if [ "$LEGACY_TEST_FORBIDDEN" = host-key ]; then echo "/42/100600/0/0/ssh_host_test_key/16/"; else echo "/42/100644/0/0/sshd_config/3289/"; fi ;;',
     '  "stat /usr/bin/one-kvm") exit 1 ;;',
     '  "ls -p /etc/rc2.d"|"ls -p /etc/rc3.d"|"ls -p /etc/rc4.d"|"ls -p /etc/rc5.d") if [ "$LEGACY_TEST_RC_ORDER" = reversed ]; then printf "/42/120777/0/0/S03ws1608-amlenc-firstboot/40/\\n/43/120777/0/0/S02ssh/20/\\n"; else printf "/42/120777/0/0/S01ws1608-amlenc-firstboot/40/\\n/43/120777/0/0/S02ssh/20/\\n"; fi ;;',
-    '  "stat /etc/rcS.d/S99ws1608-amlenc-firstboot"|"stat /etc/rcS.d/S01ws1608-amlenc-firstboot"|"stat /etc/ssh/ssh_host_"*|"stat /boot/amlenc-legacy-firstboot-"*|"stat /boot/amlenc-legacy-trial-armed"|"stat /boot/amlenc-legacy-dmesg.log"|"stat /var/lib/ws1608-amlenc/firstboot-complete") exit 1 ;;',
+    '  "stat /etc/rcS.d/S99ws1608-amlenc-firstboot"|"stat /etc/rcS.d/S01ws1608-amlenc-firstboot"|"stat /etc/ssh/ssh_host_"*|"stat /boot/amlenc-legacy-firstboot-"*|"stat /boot/amlenc-legacy-3.10-"*|"stat /boot/amlenc-legacy-trial-armed"|"stat /boot/amlenc-legacy-dmesg.log"|"stat /var/lib/ws1608-amlenc/firstboot-complete") exit 1 ;;',
     '  "stat /etc/rc"*"/S01ws1608-amlenc-firstboot") echo "Inode: 42   Type: symlink    Mode:  0777"; echo "Fast link dest: \\"../init.d/ws1608-amlenc-firstboot\\"" ;;',
     '  "stat /tmp/ws1608-amlenc-firstboot.complete") if [ "$LEGACY_TEST_FORBIDDEN" = build-marker ]; then echo "Inode: 42   Type: regular    Mode:  0644"; fi ;;',
     '  "stat /etc/init.d/ws1608-amlenc-firstboot") echo "Inode: 42   Type: regular    Mode:  0755" ;;',
@@ -224,7 +224,7 @@ test('independently verifies recovery identity, rootfs and untested status', () 
   assert.match(verify, /6\.12\.28-current-meson/);
   assert.match(verify, /3\.10\.107/);
   assert.match(verify, /ws1608-amlenc-arm-trial/);
-  assert.match(verify, /ws1608-amlenc-mark-success/);
+  assert.match(verify, /ws1608-amlenc-mark-success[\s\S]*amlenc-legacy-3\.10-firstboot-failed[\s\S]*amlenc-legacy-3\.10-dmesg\.log/);
   assert.match(verify, /ls -p \/etc\/rc\$\{level\}\.d/);
   assert.match(verify, /ssh_host_\[\^\/\]\+/);
   for (const pattern of [/PasswordAuthentication yes/, /PermitRootLogin yes/, /cat \/etc\/shadow/, /root:\\\$6\\\$\[\^:\]\+/]) assert.match(verify, pattern);
@@ -251,8 +251,8 @@ test('builds a Bullseye SysV rootfs for both kernels without One-KVM', () => {
   assert.match(rootfs, /lib\/modules\/6\.12\.28-current-meson/);
   assert.match(rootfs, /ws1608-amlenc-arm-trial/);
   assert.match(rootfs, /ws1608-amlenc-mark-success/);
-  assert.match(rootfs, /ws1608-amlenc-firstboot/);
-  for (const pattern of [/ws1608-amlenc-initrd/, /busybox-static/, /cpio/, /backports/, /qcom/]) assert.match(rootfs, pattern);
+  for (const pattern of [/ws1608-amlenc-initrd/, /amlenc-legacy-3\.10-initrd-started/, /busybox-static/, /cpio/, /backports/, /qcom/]) assert.match(rootfs, pattern);
+  assert.match(rootfs, /for applet in sh mount umount mkdir sleep cat blkid switch_root reboot sync;/);
   for (const pattern of [/update-rc\.d ws1608-amlenc-firstboot defaults/, /update-rc\.d ssh defaults/]) assert.match(rootfs, pattern);
   for (const pattern of [/ws1608-amlenc-kexec-trial/, /update-rc\.d -f kexec remove/]) assert.doesNotMatch(rootfs, pattern);
   assert.doesNotMatch(rootfs, /ln -s \.\.\/init\.d\/ws1608-amlenc-firstboot/);

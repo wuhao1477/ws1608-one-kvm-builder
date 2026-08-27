@@ -170,6 +170,13 @@ for forbidden in \
   /boot/amlenc-legacy-firstboot-failed \
   /boot/amlenc-legacy-trial-armed \
   /boot/amlenc-legacy-dmesg.log \
+  /boot/amlenc-legacy-3.10-initrd-started \
+  /boot/amlenc-legacy-3.10-root-mounted \
+  /boot/amlenc-legacy-3.10-switch-root \
+  /boot/amlenc-legacy-3.10-firstboot-started \
+  /boot/amlenc-legacy-3.10-firstboot-ready \
+  /boot/amlenc-legacy-3.10-firstboot-failed \
+  /boot/amlenc-legacy-3.10-dmesg.log \
   /var/lib/ws1608-amlenc/firstboot-complete \
   /tmp/ws1608-amlenc-firstboot.complete; do
   if debugfs -R "stat $forbidden" "$ROOTFS_RAW" 2>/dev/null | grep -q 'Inode:'; then
