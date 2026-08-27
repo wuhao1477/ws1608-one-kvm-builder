@@ -127,38 +127,48 @@ new test.
 ```text
 if nonempty /amlenc-force-recovery exists:
     boot recovery Linux 6.12.28
+else if nonempty /amlenc-legacy-trial-armed exists:
+    if amlenc_trial_revision equals this build_revision:
+        boot recovery Linux 6.12.28
+    else:
+        set amlenc_trial_revision to this build_revision
+        saveenv if available; continue even when it fails
+        boot Linux 3.10.107
 else if nonempty /amlenc-3.10.ok exists:
     boot Linux 3.10.107
-else if amlenc_trial_revision equals this build_revision:
-    boot recovery Linux 6.12.28
 else:
-    set amlenc_trial_revision to this build_revision
-    saveenv; on save failure boot recovery
-    boot Linux 3.10.107
+    boot recovery Linux 6.12.28
 ```
 
 Every new candidate ships with `/amlenc-force-recovery`. After the recovery
 kernel has DHCP and SSH, the operator runs
 `/usr/local/sbin/ws1608-amlenc-arm-trial`; it verifies recovery health and
-writes an armed marker without removing the recovery marker. On the next cold
-boot U-Boot checks that marker, stores this candidate's `amlenc_trial_revision`
-with `saveenv`, and boots 3.10 only when that save succeeds. A repeated boot
-with the same revision, or a save failure, selects recovery instead.
+writes an armed marker and then removes the recovery marker. On the next cold
+boot U-Boot checks that marker after the recovery marker has been removed,
+attempts to store this candidate's `amlenc_trial_revision` with `saveenv`, and
+boots 3.10 even when that optional save fails. A repeated boot with the same
+revision selects recovery when the environment write was persistent.
 The 3.10 `uInitrd.amlenc` keeps the marker available before mounting the rootfs.
 The SysV `firstboot` helper removes it only after a 3.10 userspace boot has
 created host keys, validated `sshd` and started the service.
 
-The marker remains in the FAT filesystem for an early failure. Because U-Boot
-cannot delete FAT files, the saved revision is the one-shot consumption guard:
-after a failed 3.10 boot, the next cold boot sees the same revision and enters
-recovery. A failure before U-Boot can save the revision remains an unverified
-hardware risk and requires a power cycle or USB reflash.
+The 3.10 initramfs writes `amlenc-force-recovery` before rootfs handoff, so a
+failure after initramfs entry returns to recovery on the next cold boot. U-Boot
+cannot delete FAT files, and this OneCloud build did not persist
+`amlenc_trial_revision` after `saveenv`; therefore a failure before initramfs
+entry can repeat the trial and requires a power cycle or USB reflash.
 
 The recovery rootfs does not install `kexec-tools`. A controlled test on
 2026-08-27 loaded the same 6.12 recovery kernel through kexec and lost both
 HDMI progress and SSH; the 3.10 target behaved identically. This proves that
 the recovery kernel cannot replace the SoC cold-start sequence on WS1608, so
 kexec is prohibited for this bring-up.
+
+The first cold-start attempt with the revised candidate confirmed the expected
+recovery boot and login path; the device-side environment block still lacked
+`amlenc_trial_revision`, confirming that the optional U-Boot save did not
+persist. The next candidate therefore keeps the direct trial path enabled and
+labels the early-failure limit explicitly in its manifest.
 
 The 3.10 kernel uses `panic=10`; after the initramfs guard has run, a panic
 reboot selects recovery. If it hangs before the guard, a power cycle or USB
@@ -286,9 +296,9 @@ The 6.12 stable image remains a separate recovery download and is not changed.
 
 ## Failure Handling
 
-- U-Boot environment save failure boots recovery immediately.
-- A 3.10 panic reboots after 10 seconds; a hang requires a power cycle. Both
-  paths select recovery next.
+- U-Boot environment save is best effort; a 3.10 panic reboots after 10
+  seconds and the initramfs marker selects recovery next. A hang before
+  initramfs entry requires a power cycle or USB reflash.
 - DHCP or SSH failure leaves the success marker absent, so recovery is next.
 - Encoder probe or CMA failure: keep the device online and stop before mmap.
 - Encoder timeout or malformed H.264: stop One-KVM integration and retain all

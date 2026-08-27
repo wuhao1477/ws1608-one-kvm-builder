@@ -54,7 +54,7 @@ function installVerifierStubs(directory) {
     '  *uInitrd.amlenc) printf "legacy-initrd\\n" >"$dest" ;;',
     '  *meson8b-onecloud.dtb|*meson8b-onecloud.recovery.dtb) printf "recovery-dtb\\n" >"$dest" ;;',
     '  *uImage.amlenc) printf "legacy-kernel\\n" >"$dest" ;;',
-    '  *boot.cmd) printf "amlenc-legacy-trial-armed\\namlenc_trial_revision\\nsetenv amlenc_trial_revision b001001\\nif saveenv; then\\nrun boot_amlenc\\nfi\\namlenc-force-recovery\\namlenc-3.10.ok\\n" >"$dest" ;;',
+    '  *boot.cmd) printf "amlenc-force-recovery\\nrun boot_recovery\\namlenc-legacy-trial-armed\\nsetenv amlenc_trial_revision b001001\\nsaveenv || echo saveenv-failed\\nrun boot_amlenc\\namlenc-3.10.ok\\n" >"$dest" ;;',
     '  *boot.scr) printf "boot-script\\n" >"$dest" ;;',
     '  *armbianEnv.txt) printf "env\\n" >"$dest" ;;',
     '  *amlenc-force-recovery) printf "recovery-first" >"$dest" ;;',
@@ -133,7 +133,7 @@ function runLegacyVerifier(t, manifestKeySha256, authorizedKey, forbidden = '', 
     base_release_tag: envValue('config/base.env', 'BASE_RELEASE_TAG'),
     base_image_sha256: envValue('config/base.env', 'BASE_IMAGE_SHA256'),
     recovery: { kernel: '6.12.28-current-meson', source: 'stable-base' },
-    legacy: { kernel: '3.10.107', commit: envValue('experimental/amlenc/config/sources.env', 'LINUX_COMMIT'), cma_mib: 64, initrd_sha256: 'caa732c300ab3cf56d05100423e04901252ac60a9b75e74562f492690717c421' }, boot_method: 'uboot-cold-start', kexec: false, diagnostic_included: true, encoder: { abi: 1, commit: '5aed95d35d252cafc75ce613a3a0052285662de2', libvpcodec_sha256: '0'.repeat(64), diagnostic_sha256: '0'.repeat(64) },
+    legacy: { kernel: '3.10.107', commit: envValue('experimental/amlenc/config/sources.env', 'LINUX_COMMIT'), cma_mib: 64, initrd_sha256: 'caa732c300ab3cf56d05100423e04901252ac60a9b75e74562f492690717c421' }, boot_method: 'uboot-cold-start', kexec: false, saveenv_guard: 'best-effort', early_failure_recovery: 'initramfs-or-reflash', diagnostic_included: true, encoder: { abi: 1, commit: '5aed95d35d252cafc75ce613a3a0052285662de2', libvpcodec_sha256: '0'.repeat(64), diagnostic_sha256: '0'.repeat(64) },
     partitions: { boot_sha256: sha256Text('final-boot\n'), rootfs_sha256: sha256Text('final-rootfs\n') },
     ssh_public_key_sha256: manifestKeySha256,
     default_login_user: 'root',
@@ -215,6 +215,7 @@ test('independently verifies recovery identity, rootfs and untested status', () 
   assert.doesNotMatch(verify, /button reset/);
   assert.match(verify, /boot_method.*uboot-cold-start/);
   assert.match(verify, /kexec.*false/);
+  assert.match(verify, /saveenv.*best-effort/);
   assert.match(verify, /mcopy/);
   assert.match(verify, /mkimage -l/);
   assert.match(verify, /debugfs/);
@@ -294,7 +295,6 @@ test('assembles dual boot and rootfs partitions inside the stable AmlImg package
   ]) assert.match(image, new RegExp(asset.replaceAll('.', '\\.')));
   assert.match(image, /mkimage.*Linux-3\.10\.107-WS1608-AMLENC/s);
   assert.match(image, /mkimage.*Linux-3\.10\.107-AMLENC-initrd/s);
-  assert.match(image, /sha1sum/);
   for (const pattern of [/stable_channel_modified:\s*false/, /hardware_boot_tested:\s*false/, /hardware_encoder_tested:\s*false/, /one_kvm_included:\s*false/]) assert.match(image, pattern);
   assert.doesNotMatch(image, /DIAGNOSTIC_IMAGE|DIAGNOSTIC_MANIFEST/);
 });

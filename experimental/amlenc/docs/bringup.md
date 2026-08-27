@@ -14,8 +14,9 @@ ONE_KVM_AMLENC_SMOKE_TEST=1 /usr/bin/one-kvm
 
 1. 先在 recovery 中确认 `uname -r` 为 `6.12.28-current-meson`、网络和 SSH 正常。
 2. 在 recovery 中执行 `/usr/local/sbin/ws1608-amlenc-arm-trial`，然后冷重启；
-   U-Boot 会消耗本次试启动状态并直接加载 Linux 3.10.107、DTB 和 initrd。
-   若 U-Boot `saveenv` 失败或试启动状态已使用，则自动加载 recovery。
+   helper 会移除 recovery 标记，U-Boot 直接加载 Linux 3.10.107、DTB 和
+   initrd。`saveenv` 只作可选的重复启动保护，失败时仍执行本次冷启动；
+   若 3.10 在 initramfs 之前挂死，需要断电或重新烧录 recovery。
 3. 保留当前已验证镜像和 USB Burning Tool 恢复路径。启动后确认
    `uname -r` 为 `3.10.107`，且 `/dev/amvenc_avc` 存在。
 

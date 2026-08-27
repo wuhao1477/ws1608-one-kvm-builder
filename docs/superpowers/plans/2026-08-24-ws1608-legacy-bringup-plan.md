@@ -134,8 +134,9 @@ Expected: FAIL because renderer and helpers do not exist.
 The renderer validates UUID and `b[0-9]{6}` revision. The candidate ships a
 nonempty `amlenc-force-recovery` and a 3.10 initramfs that preserves this
 marker before rootfs handoff. `ws1608-amlenc-arm-trial` writes an armed marker
-but leaves recovery forced; U-Boot consumes it with a revisioned `saveenv`
-gate before a cold 3.10 boot, and repeats go to recovery. The recovery rootfs
+and removes recovery force; U-Boot checks the force marker first, then attempts
+a revisioned `saveenv` but continues with one cold 3.10 boot when it fails.
+The recovery rootfs
 does not install kexec-tools because both 3.10 and same-kernel kexec trials
 lost the SoC cold-start state on WS1608. `ws1608-amlenc-firstboot` removes
 recovery force only after a healthy 3.10 userspace start;
@@ -345,8 +346,9 @@ git push
   of SSH and did not return on the LAN. This isolates the failure to the
   Amlogic cold-start boundary rather than the 3.10 DTB or encoder driver.
 - The candidate now removes `kexec-tools`, deletes the kexec helper, and uses
-  the U-Boot `amlenc-legacy-trial-armed` marker plus a revisioned `saveenv`
-  gate for one cold 3.10 boot. Repeated or failed trials select recovery.
+  the U-Boot `amlenc-legacy-trial-armed` marker plus an optional revisioned
+  `saveenv` attempt for one cold 3.10 boot. The initramfs marker recovers after
+  initramfs entry; an earlier hang requires reflash.
 - The local contract suite and shell syntax checks pass after this change;
   hosted hardware fields remain false until a new burn image is flashed.
 

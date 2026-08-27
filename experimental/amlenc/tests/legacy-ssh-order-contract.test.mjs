@@ -23,7 +23,7 @@ function fixture(t, order) {
   executable(path.join(bin, 'realpath'), '#!/bin/sh\n[ "$1" = -m ] && shift\nprintf "%s\\n" "$1"\n');
   executable(path.join(bin, 'dumpe2fs'), '#!/bin/sh\nprintf "Filesystem features: ext_attr\\nBlock size: 4096\\nFree blocks: 100000\\n"\n');
   executable(path.join(bin, 'mkimage'), '#!/bin/sh\ncase "$2" in *uImage.amlenc*) echo Linux-3.10.107-WS1608-AMLENC ;; *uInitrd.amlenc*) echo Linux-3.10.107-AMLENC-initrd ;; *boot.scr*) echo WS1608-AMLENC-Bringup ;; esac\n');
-  executable(path.join(bin, 'mcopy'), '#!/usr/bin/env bash\ndest="${@: -1}"\nprintf "x\\n" >"$dest"\ncase "$dest" in *uImage|*uImage.recovery|*uInitrd|*uInitrd.recovery|*meson8b-onecloud.dtb|*meson8b-onecloud.recovery.dtb) printf "recovery\\n" >"$dest" ;; *amlenc-force-recovery) printf "recovery-first" >"$dest" ;; *boot.cmd) printf "amlenc-legacy-trial-armed\\namlenc_trial_revision\\nsetenv amlenc_trial_revision b001001\\nif saveenv; then\\nrun boot_amlenc\\nfi\\namlenc-force-recovery\\namlenc-3.10.ok\\n" >"$dest" ;; esac\n');
+  executable(path.join(bin, 'mcopy'), '#!/usr/bin/env bash\ndest="${@: -1}"\nprintf "x\\n" >"$dest"\ncase "$dest" in *uImage|*uImage.recovery|*uInitrd|*uInitrd.recovery|*meson8b-onecloud.dtb|*meson8b-onecloud.recovery.dtb) printf "recovery\\n" >"$dest" ;; *amlenc-force-recovery) printf "recovery-first" >"$dest" ;; *boot.cmd) printf "amlenc-force-recovery\\nrun boot_recovery\\namlenc-legacy-trial-armed\\nsetenv amlenc_trial_revision b001001\\nsaveenv || echo saveenv-failed\\nrun boot_amlenc\\namlenc-3.10.ok\\n" >"$dest" ;; esac\n');
   executable(path.join(bin, 'debugfs'), [
     '#!/bin/sh',
     'command=$2',
@@ -57,7 +57,7 @@ function fixture(t, order) {
     schema: 1, kind: 'ws1608-amlenc-legacy-bringup', build_revision: 'b001001', image_sha256: 'x',
     recovery: { kernel: '6.12.28-current-meson', source: 'stable-base' },
     legacy: { kernel: '3.10.107', commit: '5aed95d35d252cafc75ce613a3a0052285662de2', cma_mib: 64 },
-    boot_method: 'uboot-cold-start', kexec: false,
+    boot_method: 'uboot-cold-start', kexec: false, saveenv_guard: 'best-effort', early_failure_recovery: 'initramfs-or-reflash',
     partitions: {}, ssh_public_key_sha256: 'x', default_login_user: 'root', password_authentication: true,
     recovery_first: true, hardware_boot_tested: false, hardware_encoder_tested: false,
     one_kvm_included: false, hid_tested: false, msd_tested: false, stable_channel_modified: false,
