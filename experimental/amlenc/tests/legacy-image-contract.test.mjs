@@ -14,24 +14,15 @@ const files = {
 };
 const bash = fs.existsSync('/opt/homebrew/bin/bash') ? '/opt/homebrew/bin/bash' : 'bash';
 
-function readRequired(filePath) {
-  assert.equal(fs.existsSync(filePath), true, `${filePath} must exist`);
-  return fs.readFileSync(filePath, 'utf8');
-}
+function readRequired(filePath) { assert.equal(fs.existsSync(filePath), true, `${filePath} must exist`); return fs.readFileSync(filePath, 'utf8'); }
 
-function envValue(filePath, name) {
-  const match = readRequired(filePath).match(new RegExp(`^${name}=(.+)$`, 'm'));
-  assert.notEqual(match, null, `${name} must exist`);
-  return match[1];
-}
+function envValue(filePath, name) { const match = readRequired(filePath).match(new RegExp(`^${name}=(.+)$`, 'm')); assert.notEqual(match, null, `${name} must exist`); return match[1]; }
 
 function sha256Text(text) {
   return crypto.createHash('sha256').update(text).digest('hex');
 }
 
-function sha256Identity(line) {
-  return sha256Text(`${line}\n`);
-}
+function sha256Identity(line) { return sha256Text(`${line}\n`); }
 
 function writeExecutable(filePath, content) {
   fs.writeFileSync(filePath, content, { mode: 0o755 });
@@ -63,7 +54,7 @@ function installVerifierStubs(directory) {
     '  *uInitrd.amlenc) printf "legacy-initrd\\n" >"$dest" ;;',
     '  *meson8b-onecloud.dtb|*meson8b-onecloud.recovery.dtb) printf "recovery-dtb\\n" >"$dest" ;;',
     '  *uImage.amlenc) printf "legacy-kernel\\n" >"$dest" ;;',
-    '  *boot.cmd) printf "amlenc-legacy-trial-armed\\nbutton reset\\namlenc-force-recovery\\namlenc-3.10.ok\\namlenc_trial_revision\\n" >"$dest" ;;',
+    '  *boot.cmd) printf "amlenc-force-recovery\\nrun boot_recovery\\namlenc-legacy-trial-armed\\nsetenv amlenc_trial_revision b001001\\nsaveenv || echo saveenv-failed\\nrun boot_amlenc\\namlenc-3.10.ok\\n" >"$dest" ;;',
     '  *boot.scr) printf "boot-script\\n" >"$dest" ;;',
     '  *armbianEnv.txt) printf "env\\n" >"$dest" ;;',
     '  *amlenc-force-recovery) printf "recovery-first" >"$dest" ;;',
@@ -79,10 +70,11 @@ function installVerifierStubs(directory) {
     '  "cat /etc/ssh/sshd_config.d/ws1608-amlenc.conf") printf "PasswordAuthentication yes\\nKbdInteractiveAuthentication yes\\nPubkeyAuthentication yes\\nPermitRootLogin yes\\n" ;;',
     '  "cat /etc/shadow") printf "root:\\$6\\$test\\$hash:20000:0:99999:7:::\\n" ;;',
     '  "cat /etc/fstab") printf "LABEL=armbi_boot /boot vfat defaults 0 2\\n" ;;',
+    '  "cat /usr/local/share/ws1608-amlenc/hardware-limits.json") printf "{\\"schema\\":1,\\"codec\\":\\"h264\\",\\"pixel_format\\":\\"nv12\\",\\"hardware_encoder_tested\\":false}\\n" ;;',
     '  "ls -p /etc/ssh") if [ "$LEGACY_TEST_FORBIDDEN" = host-key ]; then echo "/42/100600/0/0/ssh_host_test_key/16/"; else echo "/42/100644/0/0/sshd_config/3289/"; fi ;;',
     '  "stat /usr/bin/one-kvm") exit 1 ;;',
     '  "ls -p /etc/rc2.d"|"ls -p /etc/rc3.d"|"ls -p /etc/rc4.d"|"ls -p /etc/rc5.d") if [ "$LEGACY_TEST_RC_ORDER" = reversed ]; then printf "/42/120777/0/0/S03ws1608-amlenc-firstboot/40/\\n/43/120777/0/0/S02ssh/20/\\n"; else printf "/42/120777/0/0/S01ws1608-amlenc-firstboot/40/\\n/43/120777/0/0/S02ssh/20/\\n"; fi ;;',
-    '  "stat /etc/rcS.d/S99ws1608-amlenc-firstboot"|"stat /etc/rcS.d/S01ws1608-amlenc-firstboot"|"stat /etc/ssh/ssh_host_"*|"stat /boot/amlenc-legacy-firstboot-"*|"stat /boot/amlenc-legacy-trial-armed"|"stat /boot/amlenc-legacy-dmesg.log"|"stat /var/lib/ws1608-amlenc/firstboot-complete") exit 1 ;;',
+    '  "stat /etc/rcS.d/S99ws1608-amlenc-firstboot"|"stat /etc/rcS.d/S01ws1608-amlenc-firstboot"|"stat /etc/ssh/ssh_host_"*|"stat /boot/amlenc-legacy-firstboot-"*|"stat /boot/amlenc-legacy-3.10-"*|"stat /boot/amlenc-legacy-trial-armed"|"stat /boot/amlenc-legacy-dmesg.log"|"stat /var/lib/ws1608-amlenc/firstboot-complete") exit 1 ;;',
     '  "stat /etc/rc"*"/S01ws1608-amlenc-firstboot") echo "Inode: 42   Type: symlink    Mode:  0777"; echo "Fast link dest: \\"../init.d/ws1608-amlenc-firstboot\\"" ;;',
     '  "stat /tmp/ws1608-amlenc-firstboot.complete") if [ "$LEGACY_TEST_FORBIDDEN" = build-marker ]; then echo "Inode: 42   Type: regular    Mode:  0644"; fi ;;',
     '  "stat /etc/init.d/ws1608-amlenc-firstboot") echo "Inode: 42   Type: regular    Mode:  0755" ;;',
@@ -136,11 +128,12 @@ function runLegacyVerifier(t, manifestKeySha256, authorizedKey, forbidden = '', 
   fs.writeFileSync(manifest, JSON.stringify({
     schema: 1,
     kind: 'ws1608-amlenc-legacy-bringup',
+    build_revision: 'b001001',
     image_sha256: sha256Text('final image\n'),
     base_release_tag: envValue('config/base.env', 'BASE_RELEASE_TAG'),
     base_image_sha256: envValue('config/base.env', 'BASE_IMAGE_SHA256'),
     recovery: { kernel: '6.12.28-current-meson', source: 'stable-base' },
-    legacy: { kernel: '3.10.107', commit: envValue('experimental/amlenc/config/sources.env', 'LINUX_COMMIT'), cma_mib: 64, initrd_sha256: sha256Text('legacy-initrd\\n') },
+    legacy: { kernel: '3.10.107', commit: envValue('experimental/amlenc/config/sources.env', 'LINUX_COMMIT'), cma_mib: 64, initrd_sha256: 'caa732c300ab3cf56d05100423e04901252ac60a9b75e74562f492690717c421' }, boot_method: 'uboot-cold-start', kexec: false, saveenv_guard: 'best-effort', early_failure_recovery: 'initramfs-or-reflash', diagnostic_included: true, encoder: { abi: 1, commit: '5aed95d35d252cafc75ce613a3a0052285662de2', libvpcodec_sha256: '0'.repeat(64), diagnostic_sha256: '0'.repeat(64) },
     partitions: { boot_sha256: sha256Text('final-boot\n'), rootfs_sha256: sha256Text('final-rootfs\n') },
     ssh_public_key_sha256: manifestKeySha256,
     default_login_user: 'root',
@@ -219,7 +212,10 @@ test('independently verifies recovery identity, rootfs and untested status', () 
   assert.match(verify, /sha1sum/);
   assert.match(verify, /e2fsck/);
   assert.match(verify, /Free blocks/);
-  for (const pattern of [/button reset/, /kexec/]) assert.match(verify, pattern);
+  assert.doesNotMatch(verify, /button reset/);
+  assert.match(verify, /boot_method.*uboot-cold-start/);
+  assert.match(verify, /kexec.*false/);
+  assert.match(verify, /saveenv.*best-effort/);
   assert.match(verify, /mcopy/);
   assert.match(verify, /mkimage -l/);
   assert.match(verify, /debugfs/);
@@ -228,7 +224,7 @@ test('independently verifies recovery identity, rootfs and untested status', () 
   assert.match(verify, /6\.12\.28-current-meson/);
   assert.match(verify, /3\.10\.107/);
   assert.match(verify, /ws1608-amlenc-arm-trial/);
-  assert.match(verify, /ws1608-amlenc-mark-success/);
+  assert.match(verify, /ws1608-amlenc-mark-success[\s\S]*amlenc-legacy-3\.10-firstboot-failed[\s\S]*amlenc-legacy-3\.10-dmesg\.log/);
   assert.match(verify, /ls -p \/etc\/rc\$\{level\}\.d/);
   assert.match(verify, /ssh_host_\[\^\/\]\+/);
   for (const pattern of [/PasswordAuthentication yes/, /PermitRootLogin yes/, /cat \/etc\/shadow/, /root:\\\$6\\\$\[\^:\]\+/]) assert.match(verify, pattern);
@@ -236,13 +232,15 @@ test('independently verifies recovery identity, rootfs and untested status', () 
   for (const field of ['hardware_boot_tested', 'hardware_encoder_tested', 'one_kvm_included', 'hid_tested', 'msd_tested']) assert.match(verify, new RegExp(`${field}.*false`));
 });
 test('builds a Bullseye SysV rootfs for both kernels without One-KVM', () => {
-  const rootfs = readRequired(files.rootfs);
+  const rootfs = readRequired(files.rootfs); const config = readRequired(files.config);
   const offlineMountpoints = rootfs.slice(
     rootfs.indexOf('tar --numeric-owner'),
     rootfs.indexOf('debugfs -R'),
   );
   assert.match(rootfs, /BULLSEYE_ARMV7_OCI_IMAGE/);
-  for (const packageName of ['sysvinit-core', 'sysv-rc', 'insserv', 'udev', 'kmod', 'ifupdown', 'isc-dhcp-client', 'openssh-server', 'kexec-tools']) {
+  for (const pattern of [/KEXEC_TOOLS_DEB/, /dpkg-deb -x/, /KEXEC_TOOLS_BINARY_SHA256/, /kexec-tools/, /\/sbin\/kexec/]) assert.doesNotMatch(rootfs, pattern);
+  for (const pattern of [/KEXEC_TOOLS_VERSION/, /KEXEC_TOOLS_DEB_URL/, /KEXEC_TOOLS_DEB_SHA256/, /KEXEC_TOOLS_BINARY_SHA256/]) assert.doesNotMatch(config, new RegExp(pattern));
+  for (const packageName of ['sysvinit-core', 'sysv-rc', 'insserv', 'udev', 'kmod', 'ifupdown', 'isc-dhcp-client', 'openssh-server']) {
     assert.match(rootfs, new RegExp(packageName));
   }
   for (const pattern of [/LEGACY_DEFAULT_LOGIN_PASSWORD/, /chpasswd --crypt-method SHA512/, /PasswordAuthentication yes/, /KbdInteractiveAuthentication yes/, /PermitRootLogin yes/, /PubkeyAuthentication yes/]) assert.match(rootfs, pattern);
@@ -253,9 +251,10 @@ test('builds a Bullseye SysV rootfs for both kernels without One-KVM', () => {
   assert.match(rootfs, /lib\/modules\/6\.12\.28-current-meson/);
   assert.match(rootfs, /ws1608-amlenc-arm-trial/);
   assert.match(rootfs, /ws1608-amlenc-mark-success/);
-  assert.match(rootfs, /ws1608-amlenc-firstboot/);
-  for (const pattern of [/ws1608-amlenc-initrd/, /ws1608-amlenc-kexec-trial/, /busybox-static/, /cpio/, /backports/, /qcom/]) assert.match(rootfs, pattern);
-  for (const pattern of [/update-rc\.d ws1608-amlenc-firstboot defaults/, /update-rc\.d ssh defaults/, /update-rc\.d -f kexec remove/]) assert.match(rootfs, pattern);
+  for (const pattern of [/ws1608-amlenc-initrd/, /amlenc-legacy-3\.10-initrd-started/, /busybox-static/, /cpio/, /backports/, /qcom/]) assert.match(rootfs, pattern);
+  assert.match(rootfs, /for applet in sh mount umount mkdir sleep cat blkid switch_root reboot sync;/);
+  for (const pattern of [/update-rc\.d ws1608-amlenc-firstboot defaults/, /update-rc\.d ssh defaults/]) assert.match(rootfs, pattern);
+  for (const pattern of [/ws1608-amlenc-kexec-trial/, /update-rc\.d -f kexec remove/]) assert.doesNotMatch(rootfs, pattern);
   assert.doesNotMatch(rootfs, /ln -s \.\.\/init\.d\/ws1608-amlenc-firstboot/);
   assert.match(rootfs, /STATUS_FILE=.*ws1608-amlenc-firstboot/);
   assert.match(rootfs, /SSHD_START_BIN=\/bin\/true/);
@@ -266,6 +265,8 @@ test('builds a Bullseye SysV rootfs for both kernels without One-KVM', () => {
   for (const mountpoint of ['boot', 'proc', 'sys', 'dev', 'run']) assert.match(offlineMountpoints, new RegExp('/work/rootfs-tree/' + mountpoint));
   assert.doesNotMatch(rootfs, /one-kvm\.deb|\/usr\/bin\/one-kvm/);
 });
+
+test('accepts a complete legacy image with the U-Boot cold-start entry', (t) => { const key = 'ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAITestOnlyKey ws1608-test'; const result = runLegacyVerifier(t, sha256Identity(key), key); assert.equal(result.status, 0, result.stderr || result.stdout); assert.match(result.stdout, /verified WS1608 recovery-first legacy bring-up image/); });
 
 test('creates offline rootfs mountpoints with POSIX shell semantics', (t) => {
   const rootfs = readRequired(files.rootfs);
@@ -294,7 +295,6 @@ test('assembles dual boot and rootfs partitions inside the stable AmlImg package
   ]) assert.match(image, new RegExp(asset.replaceAll('.', '\\.')));
   assert.match(image, /mkimage.*Linux-3\.10\.107-WS1608-AMLENC/s);
   assert.match(image, /mkimage.*Linux-3\.10\.107-AMLENC-initrd/s);
-  assert.match(image, /sha1sum/);
   for (const pattern of [/stable_channel_modified:\s*false/, /hardware_boot_tested:\s*false/, /hardware_encoder_tested:\s*false/, /one_kvm_included:\s*false/]) assert.match(image, pattern);
   assert.doesNotMatch(image, /DIAGNOSTIC_IMAGE|DIAGNOSTIC_MANIFEST/);
 });

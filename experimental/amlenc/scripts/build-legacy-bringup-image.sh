@@ -55,7 +55,8 @@ cp "$BASE_BOOT_RAW" "$FINAL_BOOT_RAW"
 
 RECOVERY_ROOTFS_RAW="$BASE_ROOTFS_RAW" LEGACY_MODULES_TAR="$LEGACY_KERNEL_DIR/modules.tar.gz" \
   ENCODER_DIR="$ENCODER_DIR" \
-  SSH_PUBLIC_KEY="$SSH_PUBLIC_KEY" OUTPUT_ROOTFS_RAW="$FINAL_ROOTFS_RAW" \
+  SSH_PUBLIC_KEY="$SSH_PUBLIC_KEY" \
+  OUTPUT_ROOTFS_RAW="$FINAL_ROOTFS_RAW" \
   WORK_DIR="$WORK_DIR/rootfs-work" "$ROOT_DIR/experimental/amlenc/scripts/build-legacy-rootfs.sh"
 LEGACY_INITRD="$WORK_DIR/rootfs-work/amlenc-initrd"
 require_file "$LEGACY_INITRD"
@@ -105,6 +106,8 @@ jq -n --arg image "$IMAGE_NAME" --arg image_sha "$image_sha256" --arg revision "
     build_revision:$revision,base_release_tag:$base_tag,base_image_sha256:$base_sha,
     recovery:{kernel:"6.12.28-current-meson",source:"stable-base"},
     legacy:{kernel:"3.10.107",commit:$linux,cma_mib:64,initrd_sha256:$initrd_sha},
+    boot_method:"uboot-cold-start",kexec:false,saveenv_guard:"best-effort",
+    early_failure_recovery:"initramfs-or-reflash",
     diagnostic_included:true,
     encoder:{commit:$encoder_commit,abi:$encoder_abi,redistribution:$encoder_redistribution,
       libvpcodec_sha256:$encoder_sha,diagnostic_sha256:$diagnostic_sha},

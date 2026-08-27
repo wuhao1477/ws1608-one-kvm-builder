@@ -127,38 +127,48 @@ new test.
 ```text
 if nonempty /amlenc-force-recovery exists:
     boot recovery Linux 6.12.28
+else if nonempty /amlenc-legacy-trial-armed exists:
+    if amlenc_trial_revision equals this build_revision:
+        boot recovery Linux 6.12.28
+    else:
+        set amlenc_trial_revision to this build_revision
+        saveenv if available; continue even when it fails
+        boot Linux 3.10.107
 else if nonempty /amlenc-3.10.ok exists:
     boot Linux 3.10.107
-else if amlenc_trial_revision equals this build_revision:
-    boot recovery Linux 6.12.28
 else:
-    set amlenc_trial_revision to this build_revision
-    saveenv; on save failure boot recovery
-    boot Linux 3.10.107
+    boot recovery Linux 6.12.28
 ```
 
 Every new candidate ships with `/amlenc-force-recovery`. After the recovery
 kernel has DHCP and SSH, the operator runs
 `/usr/local/sbin/ws1608-amlenc-arm-trial`; it verifies recovery health and
-writes an armed marker without removing the recovery marker. The operator holds
-the physical reset button while rebooting; U-Boot boots 3.10 only when both the
-armed marker and `button reset` are present. Without the button, every reboot
-selects recovery.
+writes an armed marker and then removes the recovery marker. On the next cold
+boot U-Boot checks that marker after the recovery marker has been removed,
+attempts to store this candidate's `amlenc_trial_revision` with `saveenv`, and
+boots 3.10 even when that optional save fails. A repeated boot with the same
+revision selects recovery when the environment write was persistent.
 The 3.10 `uInitrd.amlenc` keeps the marker available before mounting the rootfs.
 The SysV `firstboot` helper removes it only after a 3.10 userspace boot has
 created host keys, validated `sshd` and started the service.
 
-The pinned OneCloud U-Boot has no FAT write/delete command and the board
-partition table has no `env` partition, so `saveenv` is not a reliable trial
-counter. The initramfs marker is therefore the early-failure guard. A failure
-before initramfs execution remains an unverified hardware risk and must not be
-treated as a successful bring-up.
+The 3.10 initramfs writes `amlenc-force-recovery` before rootfs handoff, so a
+failure after initramfs entry returns to recovery on the next cold boot. U-Boot
+cannot delete FAT files, and this OneCloud build did not persist
+`amlenc_trial_revision` after `saveenv`; therefore a failure before initramfs
+entry can repeat the trial and requires a power cycle or USB reflash.
 
-The recovery rootfs also provides `/usr/local/sbin/ws1608-amlenc-kexec-trial`.
-It loads the 3.10 uImage, initrd and DTB through the recovery kernel's
-`CONFIG_KEXEC` path while leaving `amlenc-force-recovery` present. This is
-the preferred trial entry because a 3.10 reset returns to U-Boot recovery
-without a physical button.
+The recovery rootfs does not install `kexec-tools`. A controlled test on
+2026-08-27 loaded the same 6.12 recovery kernel through kexec and lost both
+HDMI progress and SSH; the 3.10 target behaved identically. This proves that
+the recovery kernel cannot replace the SoC cold-start sequence on WS1608, so
+kexec is prohibited for this bring-up.
+
+The first cold-start attempt with the revised candidate confirmed the expected
+recovery boot and login path; the device-side environment block still lacked
+`amlenc_trial_revision`, confirming that the optional U-Boot save did not
+persist. The next candidate therefore keeps the direct trial path enabled and
+labels the early-failure limit explicitly in its manifest.
 
 The 3.10 kernel uses `panic=10`; after the initramfs guard has run, a panic
 reboot selects recovery. If it hangs before the guard, a power cycle or USB
@@ -286,9 +296,9 @@ The 6.12 stable image remains a separate recovery download and is not changed.
 
 ## Failure Handling
 
-- U-Boot environment save failure boots recovery immediately.
-- A 3.10 panic reboots after 10 seconds; a hang requires a power cycle. Both
-  paths select recovery next.
+- U-Boot environment save is best effort; a 3.10 panic reboots after 10
+  seconds and the initramfs marker selects recovery next. A hang before
+  initramfs entry requires a power cycle or USB reflash.
 - DHCP or SSH failure leaves the success marker absent, so recovery is next.
 - Encoder probe or CMA failure: keep the device online and stop before mmap.
 - Encoder timeout or malformed H.264: stop One-KVM integration and retain all
@@ -298,7 +308,8 @@ The 6.12 stable image remains a separate recovery download and is not changed.
 
 ## Security And Evidence
 
-- No password login.
+- Root password login is enabled for this candidate with the fixed password
+  `ws1608`; it is not a stable-release credential.
 - No private SSH key is uploaded to GitHub Actions or included in an artifact.
 - LAN addresses, device identifiers and raw logs are not committed.
 - Public artifacts contain hashes and status summaries only.

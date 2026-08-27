@@ -4,6 +4,7 @@ set -Eeuo pipefail
 ROOT_DIR=$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd -P)
 source "$ROOT_DIR/config/base.env"
 source "$ROOT_DIR/experimental/amlenc/config/sources.env"
+source "$ROOT_DIR/experimental/amlenc/config/legacy-bringup.env"
 
 IMAGE=${IMAGE:?IMAGE is required}
 MANIFEST=${MANIFEST:?MANIFEST is required}
@@ -18,6 +19,8 @@ for command in awk cmp cut debugfs dumpe2fs e2fsck file grep jq mcopy mkimage no
 done
 for artifact in "$IMAGE" "$MANIFEST" "$BASE_IMAGE"; do [[ -f "$artifact" && ! -L "$artifact" ]] || fail "invalid artifact"; done
 [[ -x "$AMLIMG_BIN" ]] || fail "AmlImg is not executable"
+BUILD_REVISION=$(jq -er '.build_revision' "$MANIFEST") || fail "build revision is missing"
+[[ "$BUILD_REVISION" =~ ^b[0-9]{6}$ ]] || fail "invalid build revision"
 resolved=$(realpath -m -- "$VERIFY_DIR")
 [[ "$resolved" != / && "$resolved" != "$ROOT_DIR" && ! -L "$VERIFY_DIR" ]] || fail "unsafe verify directory"
 
@@ -104,11 +107,14 @@ legacy_initrd_sha256=$(sha256sum "$BOOT_FILES/uInitrd.amlenc" | awk '{print $1}'
 mkimage -l "$BOOT_FILES/boot.scr" | grep -q 'WS1608-AMLENC-Bringup' || fail "boot script identity"
 [[ "$(<"$BOOT_FILES/amlenc-force-recovery")" == recovery-first ]] || fail "force-recovery marker"
 armed_line=$(grep -n -m1 amlenc-legacy-trial-armed "$BOOT_FILES/boot.cmd" | cut -d: -f1)
-button_line=$(grep -n -m1 'button reset' "$BOOT_FILES/boot.cmd" | cut -d: -f1)
 force_line=$(grep -n -m1 amlenc-force-recovery "$BOOT_FILES/boot.cmd" | cut -d: -f1)
 success_line=$(grep -n -m1 amlenc-3.10.ok "$BOOT_FILES/boot.cmd" | cut -d: -f1)
-trial_line=$(grep -n -m1 amlenc_trial_revision "$BOOT_FILES/boot.cmd" | cut -d: -f1)
-[[ "$armed_line" -lt "$button_line" && "$button_line" -lt "$force_line" && "$force_line" -lt "$success_line" && "$success_line" -lt "$trial_line" ]] || fail "boot branch order"
+trial_set_line=$(grep -n -m1 -F "setenv amlenc_trial_revision ${BUILD_REVISION}" "$BOOT_FILES/boot.cmd" | cut -d: -f1)
+! grep -Eq 'button[[:space:]]+reset' "$BOOT_FILES/boot.cmd" || fail "boot path must not require the reset button"
+[[ "$force_line" -lt "$armed_line" && "$armed_line" -lt "$trial_set_line" && "$success_line" -gt "$armed_line" ]] || fail "boot branch order"
+[[ -n "$trial_set_line" ]] || fail "armed trial revision missing"
+grep -Fq 'saveenv ||' "$BOOT_FILES/boot.cmd" || fail "best-effort saveenv gate missing"
+grep -Fq 'saveenv || echo' "$BOOT_FILES/boot.cmd" || fail "saveenv fallback message missing"
 
 for path in \
   /lib/modules/6.12.28-current-meson \
@@ -122,8 +128,7 @@ for path in \
   /usr/local/share/ws1608-amlenc/hardware-limits.json \
   /usr/local/share/ws1608-amlenc/frame-640x480.nv12 \
   /usr/local/share/ws1608-amlenc/frame-1280x720.nv12 \
-  /etc/init.d/ws1608-amlenc-firstboot \
-  /usr/local/sbin/ws1608-amlenc-kexec-trial; do
+  /etc/init.d/ws1608-amlenc-firstboot; do
   debugfs -R "stat $path" "$ROOTFS_RAW" 2>/dev/null | grep -q 'Inode:' || fail "missing rootfs path $path"
 done
 for helper in ws1608-amlenc-arm-trial ws1608-amlenc-mark-success; do
@@ -165,6 +170,13 @@ for forbidden in \
   /boot/amlenc-legacy-firstboot-failed \
   /boot/amlenc-legacy-trial-armed \
   /boot/amlenc-legacy-dmesg.log \
+  /boot/amlenc-legacy-3.10-initrd-started \
+  /boot/amlenc-legacy-3.10-root-mounted \
+  /boot/amlenc-legacy-3.10-switch-root \
+  /boot/amlenc-legacy-3.10-firstboot-started \
+  /boot/amlenc-legacy-3.10-firstboot-ready \
+  /boot/amlenc-legacy-3.10-firstboot-failed \
+  /boot/amlenc-legacy-3.10-dmesg.log \
   /var/lib/ws1608-amlenc/firstboot-complete \
   /tmp/ws1608-amlenc-firstboot.complete; do
   if debugfs -R "stat $forbidden" "$ROOTFS_RAW" 2>/dev/null | grep -q 'Inode:'; then
@@ -205,7 +217,9 @@ jq -e --arg base_tag "$BASE_RELEASE_TAG" --arg base_sha "$BASE_IMAGE_SHA256" \
   .base_release_tag == $base_tag and .base_image_sha256 == $base_sha and
   .recovery == {kernel:"6.12.28-current-meson",source:"stable-base"} and
   .legacy.kernel == "3.10.107" and .legacy.commit == $linux and .legacy.cma_mib == 64 and
-  .legacy.initrd_sha256 == $initrd_sha and .recovery_first == true and
+  .legacy.initrd_sha256 == $initrd_sha and .boot_method == "uboot-cold-start" and
+  .kexec == false and .saveenv_guard == "best-effort" and
+  .early_failure_recovery == "initramfs-or-reflash" and .recovery_first == true and
   .diagnostic_included == true and .encoder.abi == 1 and
   (.encoder.commit | test("^[a-f0-9]{40}$")) and
   (.encoder.libvpcodec_sha256 | test("^[a-f0-9]{64}$")) and

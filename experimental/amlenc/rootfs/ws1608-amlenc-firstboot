@@ -24,6 +24,14 @@ FAILED_MARKER="$BOOT_DIR/amlenc-legacy-firstboot-failed"
 ARMED_MARKER="$BOOT_DIR/amlenc-legacy-trial-armed"
 FORCE_RECOVERY_MARKER="$BOOT_DIR/amlenc-force-recovery"
 DMESG_LOG="$BOOT_DIR/amlenc-legacy-dmesg.log"
+LEGACY_FIRSTBOOT_STARTED_MARKER="$BOOT_DIR/amlenc-legacy-3.10-firstboot-started"
+LEGACY_FIRSTBOOT_READY_MARKER="$BOOT_DIR/amlenc-legacy-3.10-firstboot-ready"
+LEGACY_FIRSTBOOT_FAILED_MARKER="$BOOT_DIR/amlenc-legacy-3.10-firstboot-failed"
+LEGACY_DMESG_LOG="$BOOT_DIR/amlenc-legacy-3.10-dmesg.log"
+legacy_boot=0
+case "$UNAME_RELEASE" in
+  3.10.107*) legacy_boot=1 ;;
+esac
 stage=initialization
 
 on_exit() {
@@ -35,6 +43,13 @@ on_exit() {
     } >"$FAILED_MARKER" 2>/dev/null || true
     "$DMESG_BIN" 2>/dev/null | grep -Ei 'amvenc|encoder|codec_mm|cma|ion|oops|panic|timeout|corrupt|mmc|ethernet|usb' \
       >"$DMESG_LOG" 2>/dev/null || true
+    if [ "$legacy_boot" -eq 1 ]; then
+      {
+        printf 'stage=%s\nstatus=%s\nkernel=%s\n' "$stage" "$status" "$UNAME_RELEASE"
+      } >"$LEGACY_FIRSTBOOT_FAILED_MARKER" 2>/dev/null || true
+      "$DMESG_BIN" 2>/dev/null | grep -Ei 'amvenc|encoder|codec_mm|cma|ion|oops|panic|timeout|corrupt|mmc|ethernet|usb' \
+        >"$LEGACY_DMESG_LOG" 2>/dev/null || true
+    fi
     sync 2>/dev/null || true
   fi
   exit "$status"
@@ -48,6 +63,10 @@ chmod 0755 "$RUN_DIR"
 printf 'kernel=%s\n' "$UNAME_RELEASE" >"$STARTED_MARKER"
 rm -f -- "$READY_MARKER" "$FAILED_MARKER"
 sync
+if [ "$legacy_boot" -eq 1 ]; then
+  printf 'kernel=%s\nstage=firstboot-started\n' "$UNAME_RELEASE" >"$LEGACY_FIRSTBOOT_STARTED_MARKER"
+  sync
+fi
 stage=host-key-generation
 "$SSH_KEYGEN_BIN" -A
 stage=sshd-configuration
@@ -58,6 +77,9 @@ stage=ready
 printf 'host-keys-ready\n' >"$STATUS_FILE"
 chmod 0644 "$STATUS_FILE"
 printf 'kernel=%s\n' "$UNAME_RELEASE" >"$READY_MARKER"
+if [ "$legacy_boot" -eq 1 ]; then
+  printf 'kernel=%s\nstage=firstboot-ready\n' "$UNAME_RELEASE" >"$LEGACY_FIRSTBOOT_READY_MARKER"
+fi
 rm -f -- "$ARMED_MARKER"
 case "$UNAME_RELEASE" in
   3.10.107*) rm -f -- "$FORCE_RECOVERY_MARKER" ;;

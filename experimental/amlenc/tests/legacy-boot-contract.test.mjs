@@ -12,6 +12,7 @@ const firstboot = 'experimental/amlenc/rootfs/ws1608-amlenc-firstboot';
 const initrd = 'experimental/amlenc/rootfs/ws1608-amlenc-initrd';
 const kexecTrial = 'experimental/amlenc/rootfs/ws1608-amlenc-kexec-trial';
 const uuid = '7c59bb76-d17e-4a9c-9ff8-031b35133010';
+const legacyMilestones = ['amlenc-legacy-3.10-initrd-started', 'amlenc-legacy-3.10-root-mounted', 'amlenc-legacy-3.10-switch-root', 'amlenc-legacy-3.10-firstboot-started', 'amlenc-legacy-3.10-firstboot-ready', 'amlenc-legacy-3.10-firstboot-failed', 'amlenc-legacy-3.10-dmesg.log'];
 
 function fixture(t) {
   const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'ws1608-legacy-boot-'));
@@ -99,12 +100,12 @@ test('renders a recovery-first revision-isolated boot flow', (t) => {
   const command = fs.readFileSync(path.join(output, 'boot.cmd'), 'utf8');
   const force = command.indexOf('amlenc-force-recovery');
   const armed = command.indexOf('amlenc-legacy-trial-armed');
-  const button = command.indexOf('button reset');
   const success = command.indexOf('amlenc-3.10.ok');
   const attempted = command.indexOf('amlenc_trial_revision');
-  assert.ok(armed >= 0 && button > armed && force > button && success > force && attempted > success);
-  assert.match(command, /amlenc-legacy-trial-armed[\s\S]*button reset[\s\S]*run boot_amlenc/);
-  assert.match(command, /saveenv[\s\S]*run boot_recovery/);
+  assert.ok(force >= 0 && armed > force && success > armed && attempted > armed);
+  assert.doesNotMatch(command, /button reset/);
+  assert.match(command, /amlenc-force-recovery[\s\S]*run boot_recovery[\s\S]*amlenc-legacy-trial-armed[\s\S]*setenv amlenc_trial_revision b001001[\s\S]*saveenv[\s\S]*run boot_amlenc/);
+  assert.match(command, /saveenv \|\|/);
   assert.match(command, /uImage\.recovery/);
   assert.match(command, /uInitrd\.recovery/);
   assert.match(command, /uImage\.amlenc/);
@@ -131,8 +132,8 @@ test('arms one legacy trial only from healthy recovery', (t) => {
   const result = helper(armTrial, boot, { UNAME_RELEASE: '6.12.28-current-meson' });
 
   assert.equal(result.status, 0, result.stderr || result.stdout);
-  assert.equal(fs.existsSync(path.join(boot, 'amlenc-force-recovery')), true);
-  assert.match(result.stdout, /armed one Linux 3\.10\.107 trial/);
+  assert.equal(fs.existsSync(path.join(boot, 'amlenc-force-recovery')), false);
+  assert.match(result.stdout, /armed one Linux 3\.10\.107 trial.*reboot/);
 });
 
 test('refuses to arm a trial from an unhealthy recovery', (t) => {
@@ -222,6 +223,8 @@ test('does not mark first boot complete when sshd validation fails', (t) => {
   assert.equal(fs.existsSync(setup.env.STATUS_FILE), false);
   assert.equal(fs.existsSync(path.join(setup.env.BOOT_DIR, 'amlenc-legacy-firstboot-failed')), true);
   assert.equal(fs.existsSync(path.join(setup.env.BOOT_DIR, 'amlenc-legacy-dmesg.log')), true);
+  assert.equal(fs.existsSync(path.join(setup.env.BOOT_DIR, 'amlenc-legacy-3.10-firstboot-failed')), true);
+  assert.equal(fs.existsSync(path.join(setup.env.BOOT_DIR, 'amlenc-legacy-3.10-dmesg.log')), true);
 });
 
 test('does not mark first boot complete when ssh service start fails', (t) => {
@@ -249,36 +252,42 @@ test('records a persistent legacy userspace boot milestone', () => {
   assert.match(helper, /dmesg/);
 });
 
+test('records independent 3.10 userspace milestones', (t) => {
+  const setup = firstbootFixture(t);
+  const result = spawnSync('sh', [firstboot], { encoding: 'utf8', env: setup.env });
+
+  assert.equal(result.status, 0, result.stderr || result.stdout);
+  for (const marker of legacyMilestones.slice(3, 5)) {
+    assert.equal(fs.existsSync(path.join(setup.env.BOOT_DIR, marker)), true, marker);
+  }
+});
+
+test('keeps 3.10 milestones when recovery firstboot runs', (t) => {
+  const setup = firstbootFixture(t);
+  for (const marker of legacyMilestones) fs.writeFileSync(path.join(setup.env.BOOT_DIR, marker), `marker=${marker}\n`);
+
+  const result = spawnSync('sh', [firstboot], {
+    encoding: 'utf8',
+    env: { ...setup.env, UNAME_RELEASE: '6.12.28-current-meson' },
+  });
+
+  assert.equal(result.status, 0, result.stderr || result.stdout);
+  for (const marker of legacyMilestones) {
+    assert.equal(fs.readFileSync(path.join(setup.env.BOOT_DIR, marker), 'utf8'), `marker=${marker}\n`);
+  }
+});
+
 test('ships an early initramfs recovery guard', () => {
   assert.equal(fs.existsSync(initrd), true, 'legacy initramfs helper is required');
   const script = fs.readFileSync(initrd, 'utf8');
   assert.match(script, /amlenc-force-recovery/);
+  assert.match(script, /amlenc-legacy-3\.10-initrd-started/);
+  assert.match(script, /amlenc-legacy-3\.10-root-mounted/);
+  assert.match(script, /amlenc-legacy-3\.10-switch-root/);
   assert.match(script, /mount/);
   assert.match(script, /switch_root/);
 });
 
-test('loads the legacy kernel through recovery kexec without removing recovery force', (t) => {
-  assert.equal(fs.existsSync(kexecTrial), true, 'kexec trial helper is required');
-  const boot = fixture(t);
-  for (const file of ['uImage.amlenc', 'uInitrd.amlenc', 'dtb/meson8b-onecloud-amlenc.dtb']) {
-    fs.mkdirSync(path.dirname(path.join(boot, file)), { recursive: true });
-    fs.writeFileSync(path.join(boot, file), 'asset\n');
-  }
-  fs.writeFileSync(path.join(boot, 'amlenc-force-recovery'), 'recovery-first\n');
-  const log = path.join(boot, 'kexec.log');
-  const kexec = path.join(boot, 'kexec');
-  writeExecutable(kexec, '#!/bin/sh\nprintf "%s\\n" "$*" >>"$KEXEC_LOG"\n');
-  const result = helper(kexecTrial, boot, {
-    KEXEC_BIN: kexec, KEXEC_LOG: log, UNAME_RELEASE: '6.12.28-current-meson',
-    CMDLINE: 'root=UUID=7c59bb76-d17e-4a9c-9ff8-031b35133010 rootfstype=ext4 rw',
-  });
-
-  assert.equal(result.status, 0, result.stderr || result.stdout);
-  assert.equal(fs.existsSync(path.join(boot, 'amlenc-force-recovery')), true);
-  assert.equal(fs.existsSync(path.join(boot, 'amlenc-legacy-trial-armed')), true);
-  const commands = fs.readFileSync(log, 'utf8');
-  assert.match(commands, /--load .*uImage\.amlenc/);
-  assert.match(commands, /--initrd=.*uInitrd\.amlenc/);
-  assert.match(commands, /--dtb=.*meson8b-onecloud-amlenc\.dtb/);
-  assert.match(commands, /--exec/);
+test('does not ship the unsupported kexec entry point', () => {
+  assert.equal(fs.existsSync(kexecTrial), false, 'kexec trial helper must be removed');
 });

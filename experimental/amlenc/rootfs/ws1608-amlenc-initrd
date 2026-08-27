@@ -4,6 +4,16 @@ set -eu
 PATH=/bin
 export PATH
 
+INITRD_STARTED_MARKER=amlenc-legacy-3.10-initrd-started
+ROOT_MOUNTED_MARKER=amlenc-legacy-3.10-root-mounted
+SWITCH_ROOT_MARKER=amlenc-legacy-3.10-switch-root
+
+mark_boot_stage() {
+  stage=$1
+  printf 'stage=%s\n' "$stage" >"/run/boot/$2"
+  sync
+}
+
 mkdir -p /dev /proc /sys /run/boot /newroot
 mount -t devtmpfs devtmpfs /dev 2>/dev/null || true
 mount -t proc proc /proc 2>/dev/null || true
@@ -33,6 +43,7 @@ while [ "$attempt" -lt 10 ] && [ -z "$boot_device" ]; do
   fi
   if [ -n "$candidate" ] && mount -t vfat -o rw "$candidate" /run/boot 2>/dev/null; then
     boot_device=$candidate
+    mark_boot_stage initrd-started "$INITRD_STARTED_MARKER"
     printf 'recovery-first\n' >/run/boot/amlenc-force-recovery
     sync
     umount /run/boot 2>/dev/null || true
@@ -59,10 +70,11 @@ if [ -z "$root_device" ]; then
   done
 fi
 
-if [ -n "$root_device" ]; then
-  mount -t ext4 -o rw "$root_device" /newroot 2>/dev/null || true
+if [ -n "$root_device" ] && mount -t ext4 -o rw "$root_device" /newroot 2>/dev/null; then
+  mark_boot_stage root-mounted "$ROOT_MOUNTED_MARKER"
 fi
 if [ ! -x /newroot/sbin/init ]; then
   exec sh -c 'echo "ws1608 initramfs: root filesystem unavailable" >&2; sleep 10; reboot -f'
 fi
+mark_boot_stage switch-root "$SWITCH_ROOT_MARKER"
 exec switch_root /newroot /sbin/init

@@ -29,32 +29,26 @@ fi
 setenv boot_recovery 'setenv bootargs root=\${rootdev} rootfstype=ext4 rootwait rw ${console}; fatload \${bootdev} 0x20800000 /uImage.recovery; fatload \${bootdev} 0x22000000 /uInitrd.recovery; fatload \${bootdev} 0x21800000 /dtb/meson8b-onecloud.recovery.dtb; bootm 0x20800000 0x22000000 0x21800000'
 setenv boot_amlenc 'setenv bootargs root=\${rootdev} rootfstype=ext4 rootwait rw ${console} panic=10 loglevel=8 ignore_loglevel; fatload \${bootdev} 0x20800000 /uImage.amlenc; fatload \${bootdev} 0x22000000 /uInitrd.amlenc; fatload \${bootdev} 0x21800000 /dtb/meson8b-onecloud-amlenc.dtb; bootm 0x20800000 0x22000000 0x21800000'
 
-if fatload \${bootdev} 0x13000000 /amlenc-legacy-trial-armed; then
-  if button reset; then
-    run boot_amlenc
-    exit 1
-  fi
-fi
 if fatload \${bootdev} 0x13000000 /amlenc-force-recovery; then
   run boot_recovery
+  exit 1
+fi
+if fatload \${bootdev} 0x13000000 /amlenc-legacy-trial-armed; then
+  if test "\${amlenc_trial_revision}" = "${buildRevision}"; then
+    run boot_recovery
+    exit 1
+  fi
+  setenv amlenc_trial_revision ${buildRevision}
+  saveenv || echo "saveenv failed; continuing with one cold trial"
+  run boot_amlenc
   exit 1
 fi
 if fatload \${bootdev} 0x13000000 /amlenc-3.10.ok; then
   run boot_amlenc
   exit 1
 fi
-if test "\${amlenc_trial_revision}" = "${buildRevision}"; then
-  run boot_recovery
-  exit 1
-fi
-
-setenv amlenc_trial_revision ${buildRevision}
-if saveenv; then
-  run boot_amlenc
-else
-  echo "saveenv failed; booting recovery"
-  run boot_recovery
-fi
+echo "no validated legacy trial; booting recovery"
+run boot_recovery
 exit 1
 `;
 

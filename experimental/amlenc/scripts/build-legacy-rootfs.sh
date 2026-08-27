@@ -24,7 +24,7 @@ done
 [[ -n "$LEGACY_DEFAULT_LOGIN_PASSWORD" ]] || fail "default login password is empty"
 [[ "$WORK_DIR" != / && "$WORK_DIR" != "$ROOT_DIR" && ! -L "$WORK_DIR" ]] || fail "unsafe work directory"
 [[ "$OUTPUT_ROOTFS_RAW" != / && ! -L "$OUTPUT_ROOTFS_RAW" ]] || fail "unsafe output path"
-for command in docker realpath sha256sum; do command -v "$command" >/dev/null || fail "missing command: $command"; done
+for command in awk docker realpath sha256sum; do command -v "$command" >/dev/null || fail "missing command: $command"; done
 (
   cd "$ENCODER_DIR"
   sha256sum --check --strict SHA256SUMS >/dev/null
@@ -48,7 +48,7 @@ docker run --rm --platform linux/arm/v7 \
     export DEBIAN_FRONTEND=noninteractive
     /build-tools/apt-install sysvinit-core sysv-rc insserv initscripts udev kmod ifupdown \
       isc-dhcp-client openssh-server ca-certificates ffmpeg jq iproute2 procps psmisc util-linux \
-      busybox-static cpio gzip kexec-tools
+      busybox-static cpio gzip
     printf "onecloud-amlenc\n" >/etc/hostname
     cat >/etc/network/interfaces <<"EOF"
 auto lo
@@ -64,7 +64,6 @@ EOF
     install -D -m 0755 /assets/ws1608-amlenc-arm-trial /usr/local/sbin/ws1608-amlenc-arm-trial
     install -D -m 0755 /assets/ws1608-amlenc-mark-success /usr/local/sbin/ws1608-amlenc-mark-success
     install -D -m 0755 /assets/ws1608-amlenc-firstboot /etc/init.d/ws1608-amlenc-firstboot
-    install -D -m 0755 /assets/ws1608-amlenc-kexec-trial /usr/local/sbin/ws1608-amlenc-kexec-trial
     mkdir -p /tmp/ws1608-amlenc-initrd
     install -D -m 0755 /assets/ws1608-amlenc-initrd /tmp/ws1608-amlenc-initrd/init
     install -D -m 0755 /assets/ws1608-amlenc-probe /usr/local/sbin/ws1608-amlenc-probe
@@ -83,8 +82,6 @@ EOF
     rm -f /etc/rcS.d/S99ws1608-amlenc-firstboot /etc/rc2.d/S01ws1608-amlenc-firstboot
     update-rc.d ws1608-amlenc-firstboot defaults
     update-rc.d ssh defaults
-    update-rc.d -f kexec remove || true
-    update-rc.d -f kexec-load remove || true
     rm -f /etc/ssh/ssh_host_* /etc/machine-id
     mkdir -p /tmp/ws1608-amlenc-build-boot
     BOOT_DIR=/tmp/ws1608-amlenc-build-boot DMESG_BIN=/bin/true \
@@ -95,7 +92,7 @@ EOF
       /tmp/ws1608-amlenc-initrd/proc /tmp/ws1608-amlenc-initrd/sys \
       /tmp/ws1608-amlenc-initrd/run /tmp/ws1608-amlenc-initrd/newroot
     install -m 0755 /bin/busybox /tmp/ws1608-amlenc-initrd/bin/busybox
-    for applet in sh mount umount mkdir sleep cat blkid switch_root reboot; do
+    for applet in sh mount umount mkdir sleep cat blkid switch_root reboot sync; do
       ln -s busybox "/tmp/ws1608-amlenc-initrd/bin/$applet"
     done
     (
@@ -108,7 +105,14 @@ EOF
       /tmp/ws1608-amlenc-build-boot/amlenc-legacy-firstboot-ready \
       /tmp/ws1608-amlenc-build-boot/amlenc-legacy-firstboot-failed \
       /tmp/ws1608-amlenc-build-boot/amlenc-legacy-trial-armed \
-      /tmp/ws1608-amlenc-build-boot/amlenc-legacy-dmesg.log
+      /tmp/ws1608-amlenc-build-boot/amlenc-legacy-dmesg.log \
+      /tmp/ws1608-amlenc-build-boot/amlenc-legacy-3.10-initrd-started \
+      /tmp/ws1608-amlenc-build-boot/amlenc-legacy-3.10-root-mounted \
+      /tmp/ws1608-amlenc-build-boot/amlenc-legacy-3.10-switch-root \
+      /tmp/ws1608-amlenc-build-boot/amlenc-legacy-3.10-firstboot-started \
+      /tmp/ws1608-amlenc-build-boot/amlenc-legacy-3.10-firstboot-ready \
+      /tmp/ws1608-amlenc-build-boot/amlenc-legacy-3.10-firstboot-failed \
+      /tmp/ws1608-amlenc-build-boot/amlenc-legacy-3.10-dmesg.log
     : >/etc/machine-id
     find /var/lib/apt/lists /var/cache/apt/archives /tmp /var/tmp -mindepth 1 -delete
     /build-tools/archive-rootfs /work/rootfs.tar /

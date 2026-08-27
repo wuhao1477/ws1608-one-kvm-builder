@@ -13,10 +13,16 @@ fail() { echo "cannot arm legacy trial: $*" >&2; exit 1; }
 [[ "$SSHD_ACTIVE" == true ]] || fail "sshd is not active"
 [[ ",$ROOT_MOUNT_OPTIONS," == *,rw,* ]] || fail "root filesystem is not read-write"
 [[ -d "$BOOT_DIR" && ! -L "$BOOT_DIR" && -w "$BOOT_DIR" ]] || fail "boot filesystem is unsafe"
-marker="$BOOT_DIR/amlenc-force-recovery"
-[[ -f "$marker" && ! -L "$marker" && -s "$marker" ]] || fail "recovery marker is missing"
+force_marker="$BOOT_DIR/amlenc-force-recovery"
+armed_marker="$BOOT_DIR/amlenc-legacy-trial-armed"
+[[ -f "$force_marker" && ! -L "$force_marker" && -s "$force_marker" ]] || fail "recovery marker is missing"
 
-printf 'kernel=%s\n' "$UNAME_RELEASE" >"$BOOT_DIR/amlenc-legacy-trial-armed"
-chmod 0644 "$BOOT_DIR/amlenc-legacy-trial-armed"
+temporary="$BOOT_DIR/.amlenc-legacy-trial-armed.tmp"
+printf 'kernel=%s\n' "$UNAME_RELEASE" >"$temporary"
+chmod 0644 "$temporary"
 sync
-echo "armed one Linux 3.10.107 trial; run ws1608-amlenc-kexec-trial"
+mv -f -- "$temporary" "$armed_marker"
+sync
+rm -f -- "$force_marker"
+sync
+echo "armed one Linux 3.10.107 trial; reboot to continue"
