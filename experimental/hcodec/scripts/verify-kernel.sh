@@ -51,9 +51,13 @@ node -e '
   const m = JSON.parse(fs.readFileSync(process.argv[1], "utf8"));
   if (m.arch !== "arm" || m.board !== "onecloud" ||
       m.kernel_release !== "6.12.28-current-meson" ||
+      m.linux_commit !== process.env.LINUX_COMMIT ||
       m.armbian_build_commit !== process.env.ARMBIAN_BUILD_COMMIT ||
       m.armbian_patches_hash !== process.env.ARMBIAN_PATCHES_HASH ||
       m.armbian_drivers_hash !== process.env.ARMBIAN_DRIVERS_HASH ||
+      m.uimage_load_address !== process.env.UIMAGE_LOAD_ADDRESS ||
+      m.uimage_entry_point !== process.env.UIMAGE_ENTRY_POINT ||
+      m.candidate_extraargs !== process.env.CANDIDATE_EXTRAARGS ||
       m.automatic_module_loading !== false ||
       m.hardware_boot_tested !== false || m.hardware_encoder_tested !== false)
     process.exit(1);
