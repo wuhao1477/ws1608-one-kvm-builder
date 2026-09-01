@@ -64,11 +64,11 @@
 - Consumes: Task 1 的来源锁和 `base-evidence/`。
 - Produces: 可审计的 19 个补丁序列和规范化 patch digest。
 
-- [ ] **Step 1: 写失败测试**：检查 18 个补丁顺序、SPDX、允许文件、Meson8b HHI/AO/Canvas/IRQ/时钟/firmware 资源和无 DOS 重叠。
-- [ ] **Step 2: 导入补丁**：从研究资料复制补丁文本和提交信息，不复制预编译对象。
-- [ ] **Step 3: 编写修正补丁**：只修复 Meson8b 时钟 provider、`amlogic,hhi-sysctrl`、OneCloud 节点 `status = "okay"`、Kconfig/Makefile、模块依赖和 firmware 路径。
-- [ ] **Step 4: 应用与摘要**：逐个 `git apply --check` 后应用；冲突、未跟踪改动或顺序错误立即失败；摘要与工作目录无关。
-- [ ] **Step 5: 验证并提交**：运行两个契约测试，提交 `feat(hcodec): 修正Meson8b内核资源`。
+- [x] **Step 1: 写失败测试**：检查 18 个补丁顺序、SPDX、允许文件、Meson8b HHI/AO/Canvas/IRQ/时钟/firmware 资源和无 DOS 重叠。
+- [x] **Step 2: 导入补丁**：从研究资料复制补丁文本和提交信息，不复制预编译对象。
+- [x] **Step 3: 编写修正补丁**：复用 Meson8b 现有 HCODEC 时钟 provider，仅增加 OneCloud 节点 `status = "okay"`；不引入 direct HHI 控制。
+- [x] **Step 4: 应用与摘要**：逐个 `git apply --check` 后应用；冲突、未跟踪改动或顺序错误立即失败；摘要与工作目录无关。
+- [x] **Step 5: 验证并提交**：运行两个契约测试，提交 `feat(hcodec): 修正Meson8b内核资源`。
 
 ---
 
@@ -86,9 +86,9 @@
 - Consumes: Tasks 1-2 的源码、配置、证据和补丁。
 - Produces: `out/hcodec/kernel/` 的 `zImage`、`uImage`、OneCloud DTB、模块 tar、`.config`、`System.map`、`Module.symvers`、source manifest、签名报告和 `SHA256SUMS`。
 
-- [ ] **Step 1: 写失败测试**：要求 ARM 32-bit、`6.12.28-current-meson`、`CONFIG_VIDEO_MESON_VENC=m`、启用 HCODEC DT 节点、稳定地址和无自动加载。
-- [ ] **Step 2: 实现构建**：从固定 Armbian framework 恢复源码/config，应用补丁，运行 `olddefconfig`，比较白名单差异，在 digest-pinned Docker 中构建 kernel/DTB/modules。
-- [ ] **Step 3: 生成镜像**：用 base evidence 的 load/entry 封装 `zImage`；地址不唯一时阻塞。
+- [x] **Step 1: 写失败测试**：要求 ARM 32-bit、`6.12.28-current-meson`、`CONFIG_VIDEO_MESON_VENC=m`、启用 HCODEC DT 节点、稳定地址和无自动加载。
+- [x] **Step 2: 实现构建**：由固定 Armbian framework 恢复源码/config，应用 driver harness、Armbian 与 HCODEC 补丁，比较白名单差异，在 digest-pinned Docker 中构建 kernel/DTB/modules。
+- [x] **Step 3: 生成镜像**：用 base evidence 的 load/entry 封装 `zImage`；地址不唯一时阻塞；已生成并验证 `uImage`。
 - [ ] **Step 4: 签名策略**：比较稳定基础的 `CONFIG_MODULE_SIG*`、算法、证书摘要和新模块；强制验签但无匹配密钥时阻塞。
 - [ ] **Step 5: 验证并提交**：运行 build/verify 脚本和契约测试，提交 `feat(hcodec): 构建Armbian ARMv7内核`。
 
