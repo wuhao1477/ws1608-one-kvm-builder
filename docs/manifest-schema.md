@@ -31,8 +31,7 @@
 
 ## HCODEC 候选证据
 
-未来 HCODEC 工作流必须在独立候选 manifest 中增加以下 schema 约束。当前
-稳定工作流尚未生成这些字段：
+HCODEC 独立候选 manifest 使用以下 schema 约束；稳定工作流仍不生成这些字段：
 
 ```json
 {

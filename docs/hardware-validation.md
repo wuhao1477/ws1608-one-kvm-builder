@@ -7,7 +7,7 @@
 | `base-20260804-consolefix` 启动、HDMI、网络、SSH、eMMC | 已验证 |
 | Armbian `6.12.28-current-meson` 与 One-KVM 运行 | 已验证 |
 | H.264/H.265/VP8/VP9 软件编码路径 | 已验证 |
-| ARMv7 `meson-venc` 模块、DTB 与固件 | 尚未生成可验证候选 |
+| ARMv7 `meson-venc` 模块、DTB 与工具 artifact | 已完成静态构建，尚未实机验证 |
 | HCODEC V4L2 M2M H.264 | 尚未实机验证 |
 | One-KVM `h264_v4l2m2m` | 尚未实机验证 |
 | 1080p30、128 MiB CMA、长时间稳定性 | 尚未实机验证 |

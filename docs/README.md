@@ -10,10 +10,12 @@ V4L2 M2M 路线。
 - [architecture.md](architecture.md)：稳定构建与 HCODEC 候选的架构关系。
 - [build-pipeline.md](build-pipeline.md)：现有稳定工作流和候选流程边界。
 - [image-lineage.md](image-lineage.md)：稳定基础来源和候选内核选型。
-- [manifest-schema.md](manifest-schema.md)：稳定资产及未来 HCODEC 候选证据字段。
+- [manifest-schema.md](manifest-schema.md)：稳定资产及 HCODEC 候选证据字段。
 - [maintenance.md](maintenance.md)：日常更新、候选升级和维护禁区。
 - [hardware-validation.md](hardware-validation.md)：V4L2 M2M、码流、One-KVM、HID 验收。
 - [troubleshooting.md](troubleshooting.md)：HCODEC、DT、固件、CMA 和发布排障。
+- [HCODEC 构建](../experimental/hcodec/docs/build.md)：固定输入与候选构建顺序。
+- [HCODEC artifact](../experimental/hcodec/docs/artifact.md)：制品内容、校验和硬件状态边界。
 - [ADR-0001](adr/0001-pinned-base-weekly-check.md)：固定已验证基础并每周检查。
 - [ADR-0002](adr/0002-immutable-versioned-rebuilds.md)：不可变版本化 Release。
 - [ADR-0003](adr/0003-armbian-6.12-hcodec-route.md)：放弃 3.10，采用 Armbian 6.12 HCODEC。

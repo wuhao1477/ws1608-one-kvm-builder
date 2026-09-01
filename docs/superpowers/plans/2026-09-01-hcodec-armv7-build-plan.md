@@ -147,10 +147,10 @@
 - Consumes: CI run、artifact manifest、静态验证报告。
 - Produces: 可审计交接记录，不刷机、不修改 One-KVM、不宣称硬件通过。
 
-- [ ] **Step 1: 写文档**：记录固定输入、构建命令、输出清单、固件不上传、失败处理、14 天保留和手动 `modprobe` 规则。
-- [ ] **Step 2: 完成验证**：运行 `node --test`、HCODEC tests、`git diff --check`、全量 shell 语法和 actionlint；确认非文档/实现文件仅限计划范围。
-- [ ] **Step 3: 更新状态**：只记录实际 CI/artifact 摘要；`hardware_boot_tested=false`、`hardware_encoder_tested=false` 保持不变。
-- [ ] **Step 4: 创建签名提交**：提交 `docs(hcodec): 记录ARMv7候选构建`。
+- [x] **Step 1: 写文档**：记录固定输入、构建命令、输出清单、固件不上传、失败处理、14 天保留和手动 `modprobe` 规则。
+- [x] **Step 2: 完成验证**：运行 `node --test`、HCODEC tests、`git diff --check`、全量 shell 语法和 actionlint；确认非文档/实现文件仅限计划范围。
+- [x] **Step 3: 更新状态**：只记录实际静态构建摘要；`hardware_boot_tested=false`、`hardware_encoder_tested=false` 保持不变。
+- [x] **Step 4: 创建签名提交**：提交 `docs(hcodec): 记录ARMv7候选构建`。
 
 ## 完成标准
 
