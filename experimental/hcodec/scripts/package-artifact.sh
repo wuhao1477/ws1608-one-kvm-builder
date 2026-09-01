@@ -27,14 +27,24 @@ const fs = require('fs');
 const [file, run, attempt, sourceFile, toolsFile] = process.argv.slice(2);
 const source = JSON.parse(fs.readFileSync(sourceFile, 'utf8'));
 const tools = JSON.parse(fs.readFileSync(toolsFile, 'utf8'));
+const kernelSums = fs.readFileSync(`${sourceFile.slice(0, sourceFile.lastIndexOf('/'))}/SHA256SUMS`, 'utf8');
+const digestFor = (name) => {
+  const line = kernelSums.split(/\r?\n/).find((entry) => entry.endsWith(`  ${name}`));
+  return line ? line.split(/\s+/)[0] : undefined;
+};
 const manifest = {
   schema: 1, artifact: `ws1608-hcodec-armv7-run-${run}-${attempt}.tar.xz`,
-  arch: 'arm', board: 'onecloud', kernel_release: '6.12.28-current-meson',
+  arch: 'arm', board: 'onecloud', kernel_base: '6.12.28-current-meson',
+  kernel_release: '6.12.28-current-meson', encoder_backend: 'h264_v4l2m2m',
   base_release_tag: process.env.BASE_RELEASE_TAG,
   base_image_sha256: process.env.BASE_IMAGE_SHA256,
   linux_commit: source.linux_commit, armbian_build_commit: source.armbian_build_commit,
-  patches_sha256: source.patches_sha256, toolchain_container: source.toolchain_container,
-  tools_abi: tools.abi, candidate_extraargs: 'cma=128M', automatic_module_loading: false,
+  driver_source_sha256: source.patches_sha256, patch_series_sha256: source.patches_sha256,
+  firmware_sha256: process.env.FIRMWARE_ARCHIVE_SHA256,
+  dtb_sha256: digestFor('meson8b-onecloud.dtb'),
+  module_vermagic: source.kernel_release || '6.12.28-current-meson', cma_mib: 128,
+  toolchain_container: source.toolchain_container, tools_abi: tools.abi,
+  candidate_extraargs: 'cma=128M', automatic_module_loading: false,
   firmware_binary_included: false, hardware_boot_tested: false, hardware_encoder_tested: false
 };
 fs.writeFileSync(file, `${JSON.stringify(manifest, null, 2)}\n`);

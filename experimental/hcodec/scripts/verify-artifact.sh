@@ -44,9 +44,15 @@ for file in kernel/zImage kernel/uImage kernel/meson8b-onecloud.dtb kernel/modul
 node - "$work/manifest.json" <<'NODE'
 const fs = require('fs');
 const m = JSON.parse(fs.readFileSync(process.argv[2], 'utf8'));
+const sha256 = /^[0-9a-f]{64}$/;
 if (m.schema !== 1 || m.arch !== 'arm' || m.board !== 'onecloud' ||
+    m.kernel_base !== '6.12.28-current-meson' || m.encoder_backend !== 'h264_v4l2m2m' ||
     m.kernel_release !== '6.12.28-current-meson' || m.candidate_extraargs !== 'cma=128M' ||
+    m.module_vermagic !== '6.12.28-current-meson' || m.cma_mib !== 128 ||
+    !sha256.test(m.driver_source_sha256) || m.driver_source_sha256 !== m.patch_series_sha256 ||
+    !sha256.test(m.firmware_sha256) || !sha256.test(m.dtb_sha256) || m.tools_abi !== 'glibc' ||
     m.automatic_module_loading !== false || m.firmware_binary_included !== false ||
     m.hardware_boot_tested !== false || m.hardware_encoder_tested !== false) process.exit(1);
 NODE
+cmp -s "$OUTPUT_DIR/manifest.json" "$work/manifest.json"
 echo 'verified HCODEC artifact'

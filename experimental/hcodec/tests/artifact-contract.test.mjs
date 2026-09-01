@@ -22,9 +22,10 @@ test('packages a single deterministic tar.xz with manifests and kernel/tools pay
   for (const file of ['meson-venc-smoke', 'meson-venc-capture', 'tools-manifest.json',
     'firmware-manifest.json', 'SHA256SUMS']) fs.writeFileSync(path.join(tools, file), file);
   fs.writeFileSync(path.join(kernel, 'source-manifest.json'), JSON.stringify({
-    linux_commit: 'linux', armbian_build_commit: 'armbian', patches_sha256: 'patches',
-    toolchain_container: 'ubuntu:24.04@sha256:test'
+    linux_commit: 'linux', armbian_build_commit: 'armbian', kernel_release: '6.12.28-current-meson',
+    patches_sha256: '1'.repeat(64), toolchain_container: 'ubuntu:24.04@sha256:test'
   }));
+  fs.writeFileSync(path.join(kernel, 'SHA256SUMS'), `${'2'.repeat(64)}  meson8b-onecloud.dtb\n`);
   fs.writeFileSync(path.join(tools, 'tools-manifest.json'), JSON.stringify({ schema: 1, abi: 'glibc' }));
   const result = spawnSync('bash', [packageScript, kernel, tools, output, '12', '2'], { encoding: 'utf8' });
   assert.equal(result.status, 0, result.stderr || result.stdout);
