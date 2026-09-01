@@ -1,46 +1,91 @@
-# WS1608 S805 AMLENC 实机启动与编码门禁
+# WS1608 Armbian 6.12 HCODEC bring-up
 
-当前状态：**未通过实机验证**。本流程不得写入 eMMC，不得接入 One-KVM、USB Gadget 或稳定发布链路。
+当前状态：**尚未通过实机验证**。本流程只适用于 Linux 6.12
+`meson-venc` HCODEC V4L2 M2M 候选，不改变稳定 Release。
 
-## 1. 可恢复启动
+## 候选产物
 
-1. 使用可移除介质或可恢复的临时启动方式加载 `out/amlenc/kernel/` 中的 Linux 3.10.107 内核、WS1608 DTB 和模块。
-2. 保留当前已验证镜像和 USB Burning Tool 恢复路径。
-3. 启动后确认 `uname -r` 为 `3.10.107`，且 `/dev/amvenc_avc` 存在。当前稳定版 6.12 内核不能作为本门禁的测试环境。
+开始实机测试前必须具有同一 manifest 管理的：
 
-在设备上采集不含网络地址、密码和序列号的只读信息：
+- ARMv7 Linux 6.12 内核和 `.config`；
+- `meson-venc.ko` 及完整模块依赖；
+- OneCloud DTB；
+- `meson/venc/meson8b_h264.bin`；
+- ARMv7 `meson-venc-smoke` 和 DMABUF 测试工具；
+- 驱动、补丁、固件、DTB、工具链和测试工具 SHA-256；
+- `hardware_boot_tested=false`、`hardware_encoder_tested=false` 的候选报告。
 
-```bash
-mkdir -p amlenc-evidence/system
-uname -a > amlenc-evidence/system/uname.txt
-tr '\0' '\n' </proc/device-tree/compatible > amlenc-evidence/system/dt-compatible.txt
-cat /proc/iomem > amlenc-evidence/system/iomem.txt
-cat /proc/meminfo > amlenc-evidence/system/meminfo.txt
-ls -l /dev/amvenc_avc > amlenc-evidence/system/device-node.txt
-dmesg | grep -Ei 'amvenc|encoder|codec_mm|cma|ion|oops|panic|timeout|corrupt' > amlenc-evidence/system/kernel-boot.log
+资料中的 AArch64 预编译模块不能进入该清单。18 个补丁与最终源码只能选择
+一个一致实现基线。
+
+## 1. 稳定系统回归
+
+刷入候选后先确认 Armbian 基础功能：
+
+```sh
+uname -a
+cat /proc/cmdline
+findmnt -no SOURCE,FSTYPE,OPTIONS /
+ip -brief address
+systemctl is-active one-kvm.service
+curl -fsS http://127.0.0.1:8080/api/health
 ```
 
-## 2. 固定探针
+HDMI、网络、SSH、eMMC 或 One-KVM 软件路径任一失败时停止，不运行 HCODEC。
 
-把 `libvpcodec.so`、`amlenc-m8-diag`、`validate-h264.sh`、`hardware-limits.json` 和单帧 NV12 测试图放在设备的临时目录。依次执行：
+## 2. HCODEC probe
 
-```bash
-export LD_LIBRARY_PATH=$PWD
-./amlenc-m8-diag --input frame-640x480.nv12 --width 640 --height 480 --fps 30 --bitrate 1000000 --frames 300 --output 640x480-300f.h264
-dmesg > 640x480-300f.dmesg
-./validate-h264.sh --probe 640x480-300f --input 640x480-300f.h264 --kernel-log 640x480-300f.dmesg --output-dir amlenc-evidence/640x480-300f
-
-./amlenc-m8-diag --input frame-1280x720.nv12 --width 1280 --height 720 --fps 30 --bitrate 4000000 --frames 1800 --output 1280x720-1800f.h264
-dmesg > 1280x720-1800f.dmesg
-./validate-h264.sh --probe 1280x720-1800f --input 1280x720-1800f.h264 --kernel-log 1280x720-1800f.dmesg --output-dir amlenc-evidence/1280x720-1800f
-
-./amlenc-m8-diag --input frame-1280x720.nv12 --width 1280 --height 720 --fps 30 --bitrate 4000000 --frames 864000 --output 1280x720-8h.h264
-dmesg > 1280x720-8h.dmesg
-./validate-h264.sh --probe 1280x720-8h --input 1280x720-8h.h264 --kernel-log 1280x720-8h.dmesg --output-dir amlenc-evidence/1280x720-8h
+```sh
+zgrep -E 'CONFIG_VIDEO_MESON_VENC|CONFIG_V4L2_MEM2MEM_DEV|CONFIG_MESON_CANVAS' /proc/config.gz
+grep -E 'CmaTotal|CmaFree' /proc/meminfo
+v4l2-ctl --list-devices
+media-ctl -p
+dmesg | grep -Ei 'meson-venc|hcodec|firmware|cma|dma|canvas|timeout|oops|panic'
 ```
 
-长时探针开始前应保证输出介质空间足够。每项探针必须在编码结束后采集新的完整 `dmesg`，再交给验证器；验证器只把筛选后的编码相关行写入证据目录。裸 Annex-B H.264 不携带容器时间戳，因此验证器按固定探针的 30 fps 解复用，并用提交帧数计算持续时间。每项验证独立要求 H.264、正确分辨率、精确帧数、SPS/PPS/IDR、零解码错误，以及无 kernel oops、CMA failure、编码超时或损坏码流。
+确认编码器节点后读取其 capability 和格式；不要根据 `/dev/video*` 编号猜测
+设备类型。
 
-## 3. 停止条件
+## 3. 固定探针
 
-任一命令非零退出即停止后续开发。只有三项 `validation.json` 都为 `passed`，并经人工核对系统信息与哈希后，才能把 `hardware-limits.json` 更新为已验证并开始 One-KVM 集成。提交证据前删除 IP、密码、序列号和未经筛选的原始日志。
+```sh
+printf 'Encoder device path: '
+read -r encoder
+test -c "$encoder"
+./meson-venc-smoke "$encoder" 640x480-300f.h264 640 480 300
+ffprobe -v error -show_streams 640x480-300f.h264
+ffmpeg -v error -i 640x480-300f.h264 -f null -
+
+./meson-venc-smoke "$encoder" 1280x720-1800f.h264 1280 720 1800
+ffprobe -v error -show_streams 1280x720-1800f.h264
+ffmpeg -v error -i 1280x720-1800f.h264 -f null -
+```
+
+MMAP 通过后再运行 DMABUF。720p 通过后才测试 1080p 和长时间运行。每项
+保存 CMA 前后值、输出 SHA-256、测试参数和筛选后的 dmesg。
+
+## 4. One-KVM 探针
+
+独立探针通过后临时运行：
+
+```sh
+ONE_KVM_V4L2M2M_ALLOW=1 /usr/bin/one-kvm
+```
+
+确认 `h264_v4l2m2m` 被注册且实际流可解码。该变量不写入稳定 systemd 环境。
+
+## 停止条件
+
+以下任一情况立即停止后续测试：
+
+- 系统基础功能回归失败；
+- 模块架构或 vermagic 不匹配；
+- DT、时钟、HHI、Canvas、IRQ 或固件 probe 失败；
+- CMA/DMA 分配失败；
+- timeout、oops、panic 或损坏码流；
+- 缺少 SPS/PPS/IDR、帧数错误或 FFmpeg 解码失败；
+- One-KVM 硬件失败后软件编码也不可用。
+
+只有独立码流、One-KVM、视频、HID、虚拟介质、重启和稳定性全部通过，才
+能更新候选硬件状态。完整记录格式见
+[实机验收](../../../docs/hardware-validation.md)。
