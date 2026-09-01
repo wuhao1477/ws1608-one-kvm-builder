@@ -1,86 +1,74 @@
 # WS1608 One-KVM 构建器交接
 
-更新时间：2026-07-20
+更新时间：2026-09-01
 
 ## 当前结论
 
-公开仓库已经建立并可独立运行：
+稳定构建和发布链已经建立，系统与硬件编码路线现已明确分离：
 
-- 仓库：[wuhao1477/ws1608-one-kvm-builder](https://github.com/wuhao1477/ws1608-one-kvm-builder)
-- 当前 Release：[ws1608-one-kvm-0.2.4-v260709-b016001](https://github.com/wuhao1477/ws1608-one-kvm-builder/releases/tag/ws1608-one-kvm-0.2.4-v260709-b016001)
-- PR 完整构建验证：[Actions run 29703193309](https://github.com/wuhao1477/ws1608-one-kvm-builder/actions/runs/29703193309)，结论 `success`，发布 job 按设计 skipped
-- 完整构建与发布：[Actions run 29703507602](https://github.com/wuhao1477/ws1608-one-kvm-builder/actions/runs/29703507602)，结论 `success`
-- 无更新识别与跳过：[Actions run 29703930315](https://github.com/wuhao1477/ws1608-one-kvm-builder/actions/runs/29703930315)，build 和 release job 均为 skipped
-- 旧格式 Release：[ws1608-one-kvm-0.2.4-v260709-173450](https://github.com/wuhao1477/ws1608-one-kvm-builder/releases/tag/ws1608-one-kvm-0.2.4-v260709-173450) 和 [ws1608-one-kvm-v260709](https://github.com/wuhao1477/ws1608-one-kvm-builder/releases/tag/ws1608-one-kvm-v260709)
-- 上游版本：One-KVM `0.2.4`，tag `v260709`
-- 基础：Armbian 26.8 Trixie，`6.12.28-current-meson`，OneCloud/WS1608 HDMI-test
-- 触发：每周日 02:17 UTC；无新的上游 tag + Deb digest 时只检查、不构建
+- 稳定基础为 `base-20260804-consolefix`、Armbian `26.8.0-trunk.413`、
+  Debian Trixie、Linux `6.12.28-current-meson`。
+- 当前稳定 Release 为
+  [`ws1608-one-kvm-0.2.6-v260802-b028001`](https://github.com/wuhao1477/ws1608-one-kvm-builder/releases/tag/ws1608-one-kvm-0.2.6-v260802-b028001)。
+- 稳定底座已有实体启动、HDMI、网络、SSH、eMMC 和 One-KVM 运行证据。
+- H.264 硬件编码改走 Linux 6.12 `meson-venc` HCODEC V4L2 M2M。
+- Linux 3.10、私有 AMLENC ABI、双内核和 kexec 已废弃，不再构建或刷写。
+- HCODEC 尚未通过 WS1608 实机编码验证，当前不能发布硬件成功结论。
 
-当前 Release 使用 `ws1608-one-kvm-0.2.4-v260709-bRRRAAA` 身份，五项资产均为 uploaded，且 Release 不是 draft/prerelease。tag 指向 builder commit `0271eeb2f35e70cbc6bf741874ac0c20a524cb8d`；Release body、manifest、validation report、`SHA256SUMS` 和 GitHub 资产 digest 已相互核对。随后一次普通检查识别同一上游 tag、Deb digest 和完整资产契约后跳过构建；旧 Release 未被覆盖。
+正式决策见 [ADR-0003](adr/0003-armbian-6.12-hcodec-route.md)，技术边界见
+[路线设计](superpowers/specs/2026-09-01-armbian-hcodec-route-design.md)。
 
-## 已实现的范围
+## 稳定通道
 
-仓库现在可以在 GitHub hosted Ubuntu runner 中完成：
+`.github/workflows/build.yml` 每周日 02:17 UTC 查询 One-KVM 最新稳定
+Release。只有新的上游 tag 与 armhf Deb SHA-256 组合才触发镜像构建；同一
+输入可通过 `force=true` 生成新的不可变 `bRRRAAA` Release。
 
-1. 查询上游最新稳定 One-KVM Release。
-2. 严格选择唯一 armhf Deb 并验证 digest、版本和架构。
-3. 下载固定基础 burn 包并验证 SHA-256。
-4. 解包 Amlogic v2，展开 rootfs，使用 qemu 在 armhf chroot 中安装包。
-5. 安装 One-KVM 开机服务、WS1608 OTG unit/drop-in、`libcomposite` 和版本 metadata。
-6. 严格卸载 rootfs 后运行 e2fsck，重建 sparse 并验证往返一致性。
-7. 更新 sparse rootfs 的 Amlogic VERIFY SHA-1，重打包容器。
-8. 独立解包成品，比较非 rootfs 分区、检查所有 VERIFY、Deb/systemd/OTG/ext4。
-9. 生成并验证 versioned image、xz、`SHA256SUMS`、`manifest.json` 和 `validation-report.json`。
-10. 下载 artifact 后再次验证，再公开不可变 Release。
+稳定构建只修改 rootfs 中的 One-KVM、systemd、OTG 和来源 metadata，不
+替换 boot、内核、DTB、U-Boot 或 resource。CI 验证镜像容器、分区、ext4、
+包身份、服务、压缩往返、manifest 和五项发布资产，但不能代替实体硬件验收。
 
-具体实现不要从本文件复制，直接以 [build-pipeline.md](build-pipeline.md)、[scripts/build-image.sh](../scripts/build-image.sh) 和 [scripts/verify-image.sh](../scripts/verify-image.sh) 为准。
+## HCODEC 新证据
 
-## 最重要的边界
+已核对的研究资料包含 18 个 Linux 6.12 补丁、最终 `meson-venc` 驱动、
+Meson8b 绑定、V4L2 MMAP/DMABUF 工具和固件提取脚本。编码链为：
 
-- 稳定通道只自动更新 One-KVM，不自动滚动 Armbian、内核、DTB 或 U-Boot。
-- CI 结构、rootfs、artifact 和远端摘要验证通过不等于实体 WS1608 已启动；每个新 Release 仍需要一次实机刷写验收。
-- 之前已验证基础镜像能启动、HDMI 显示、联网、使用 eMMC 并承受短时负载；已运行系统中的 One-KVM `0.2.4` health/service 也曾通过。
-- HDMI 音频存在已知 `gx-sound-card` error -22；USB 视频/HID、实际采集卡和被控机 HID 仍需现场验证。
-- 设备 IP、SSH 密码、token、私钥和物理测试机信息不在公开仓库中。
+```text
+NV12/YUYV → V4L2 OUTPUT → DMA/CMA → Canvas/MFDIN
+→ HCODEC 固件与 IRQ → V4L2 CAPTURE → Annex-B H.264
+```
 
-## 接手后的第一步
+One-KVM `0.2.6` 已有 `h264_v4l2m2m` 后端，Amlogic 实验探测需要
+`ONE_KVM_V4L2M2M_ALLOW=1`。
 
-1. 阅读 [docs/README.md](README.md)、[build-pipeline.md](build-pipeline.md) 和 [troubleshooting.md](troubleshooting.md)。
-2. 阅读 [image-lineage.md](image-lineage.md)，不要把历史 Jammy 或官方 Bookworm 参考包误当成当前稳定基础。
-3. 打开 [Actions](https://github.com/wuhao1477/ws1608-one-kvm-builder/actions)，确认最近一次完整运行和 skipped 运行的每个验证步骤。
-4. 实机刷写前下载当前 Release 的 xz 镜像并核对 `SHA256SUMS`；需要审计全部五个资产时，在有足够空间的 Linux runner 上使用 `scripts/verify-release-assets.sh`。
-5. 同一上游版本需要重建时使用 `force=true`；它会生成新的 `bRRRAAA` tag，不会修改旧 Release。
-6. 如要改基础镜像，先阅读 [hardware-validation.md](hardware-validation.md)，完成实体刷写后再改 `config/base.env`。
+## 尚未解决
 
-## 已知维护风险
+- 资料中的 `meson-venc.ko` 是 AArch64 `6.12.98-ipkvm-release`，不能用于
+  当前 ARMv7 内核。
+- 18 个补丁与最终源码不是同一修订；Meson8b HHI 和时钟改动不完整。
+- 公共 Meson8b HCODEC 节点默认禁用，OneCloud 板级资源尚未验证。
+- `meson/venc/meson8b_h264.bin` 固件只有提取脚本，没有可追溯成品。
+- 1080p 编码缓冲预算约 59.30 MiB（NV12）至 63.26 MiB（YUYV），
+  `cma=128M` 只是候选设置。
+- 1080p30 和 One-KVM 1080p20 来自外部实测描述，不是当前板卡证据。
 
-### 1. 不能忽略卸载错误
+## 接手后的顺序
 
-此前使用递归 `/dev` bind mount 并忽略 `umount` 返回值，导致 e2fsck 在仍挂载的 raw 文件上运行。日志出现 journal recovery、orphan inode 和 free block/inode 错误，OTG 文件在成品中消失。当前代码改用临时 `/dev`、隔离的 mount/PID namespace、复制/恢复 DNS、残留挂载检查和严格卸载。修改这些代码时必须保留这些检查。
+1. 固定与稳定基础匹配的 Armbian/Linux 6.12 ARMv7 源码和配置。
+2. 选择补丁系列或最终驱动之一作为一致实现基线。
+3. 补齐 Meson8b 时钟、HHI、设备树和可追溯固件。
+4. 构建匹配 `6.12.28-current-meson` 的内核、模块和 DTB。
+5. 先通过独立 V4L2 640×480、1280×720 探针，再评估 1080p。
+6. 独立码流通过后临时接入 One-KVM，不修改稳定服务配置。
+7. 完成启动、视频、HID、虚拟介质、重启和长时间运行后再讨论候选发布。
 
-### 2. force 重建不是字节级复现
+## 维护边界
 
-rootfs 安装使用动态 apt 源，ext4 时间戳和构建时间也会变化。同一上游 tag force 重建可能得到不同 SHA-256；这是当前设计已知限制，不要把旧 hash 硬编码成测试期望。
+- 不把外部教程、其他 SoC 或 CI 编译结果写成 WS1608 硬件通过。
+- 不提交 `Downloads/`、预编译模块、固件或本机测试数据。
+- 不在稳定服务中默认启用 V4L2 M2M 实验开关。
+- 不改变稳定基础，除非新候选完成单独实机验收与决策。
+- 设备连接信息和原始日志保持在维护者的私有测试记录中。
 
-### 3. 上游同 tag 替换资产或 tag 碰撞
-
-当前 discover 同时比较上游 tag 和 package digest。如果上游重写同一个 tag，下一次周检会使用新的 `bRRRAAA`；仍应检查新 manifest 的 package digest。
-
-### 4. GitHub 资产大小
-
-当前未压缩镜像约 1.19 GB，低于 GitHub Release 单文件限制；rootfs 增长后要重新评估。不能为了绕过限制而删除直刷 `.img`，因为用户需要直接刷写包。
-
-## 后续优先级
-
-1. 用 `ws1608-one-kvm-0.2.4-v260709-b016001` 在实体 WS1608 完成一次完整刷写、断电重启和 One-KVM/OTG/视频/HID 验收。
-2. 将不含敏感信息的硬件结论记录到私有测试记录；公开仓库只记录结论和 Release tag。
-3. 若需要最新内核，建立 candidate 基础镜像流程，先通过硬件验收再提升稳定基础。
-4. 若需要严格可复现，固定 Debian snapshot、依赖版本、时间戳，并保留 manifest 中的 builder commit。
-
-## 建议的后续技能
-
-- GitHub Actions 失败：`github:gh-fix-ci`。
-- 复杂构建/挂载问题：`systematic-debugging`。
-- 交付前证据检查：`verification-before-completion`。
-- 实体板卡和接口验收：`hardware-solution`，但不要跳过 [hardware-validation.md](hardware-validation.md) 的现场步骤。
-- 再次交接：`handoff`，输出必须脱敏。
+实机步骤见 [hardware-validation.md](hardware-validation.md)，故障定位见
+[troubleshooting.md](troubleshooting.md)。

@@ -1,57 +1,85 @@
 # WS1608 One-KVM builder
 
-这个公开仓库自动把已在 OneCloud/WS1608 上验证过的 Armbian 基础镜像，封装为带 One-KVM Rust 的 Amlogic 直刷镜像。
+本仓库把已在 OneCloud/WS1608 上验证过的 Armbian 基础镜像封装为带
+One-KVM Rust 的 Amlogic 直刷镜像，并为 S805 H.264 硬件编码维护独立的
+Linux 6.12 HCODEC 研究路线。
+
+## 当前状态
+
+- 唯一稳定底座：Armbian `26.8.0-trunk.413`、Debian Trixie、
+  Linux `6.12.28-current-meson`、`base-20260804-consolefix`。
+- 当前稳定 Release：
+  [`ws1608-one-kvm-0.2.6-v260802-b028001`](https://github.com/wuhao1477/ws1608-one-kvm-builder/releases/tag/ws1608-one-kvm-0.2.6-v260802-b028001)。
+- 稳定底座已经具备实体启动、HDMI、网络、SSH、eMMC 和 One-KVM 运行证据。
+- H.264 HCODEC 候选尚未通过 WS1608 实机编码测试；不得把资料或 CI 结果
+  写成硬件已经可用。
 
 ## 自动更新规则
 
-- 每周日 02:17 UTC（北京时间 10:17）查询 `mofeng-git/One-KVM` 的最新稳定 Release。
-- 只有发现尚未发布的上游 tag 与 Deb SHA-256 组合才下载 `armhf.deb`、构建并发布新 Release。
-- Release/tag 格式为 `ws1608-one-kvm-<one-kvm-rust-version>-<upstream-tag>-bRRRAAA`，例如 `ws1608-one-kvm-0.2.4-v260709-b014001`；`RRR` 是 Actions run number，`AAA` 是 run attempt，均至少保留三位。
-- `workflow_dispatch` 可手动运行；`force=true` 创建独立构建，`publish=false` 只做云端构建和验证，不发布。
-- Pull request 会执行完整构建，但不会获得发布权限。
-- 预留 `repository_dispatch` 的 `one-kvm-release` 事件，但上游仓库目前不会向本仓库发送该事件，所以每周检查是实际触发方式。
+- 每周日 02:17 UTC 查询 `mofeng-git/One-KVM` 最新稳定 Release。
+- 只有出现尚未发布的上游 tag 与 Deb SHA-256 组合才构建新镜像。
+- Release/tag 使用
+  `ws1608-one-kvm-<one-kvm-version>-<upstream-tag>-bRRRAAA`。
+- `workflow_dispatch` 支持 `force=true` 独立重建和 `publish=false` 仅验证。
+- Pull request 执行完整构建，但不获得发布权限。
+- 每个 Release 提供 `.burn.img`、`.burn.img.xz`、`SHA256SUMS`、
+  `manifest.json` 和 `validation-report.json`。
 
-当前已通过完整云端构建和发布检查的版本是 [`ws1608-one-kvm-0.2.4-v260709-b016001`](https://github.com/wuhao1477/ws1608-one-kvm-builder/releases/tag/ws1608-one-kvm-0.2.4-v260709-b016001)。完整发布见 [run 29703507602](https://github.com/wuhao1477/ws1608-one-kvm-builder/actions/runs/29703507602)，无更新跳过构建见 [run 29703930315](https://github.com/wuhao1477/ws1608-one-kvm-builder/actions/runs/29703930315)。构建证据和摘要见 [HANDOFF.md](docs/HANDOFF.md)；该成品仍需实体 WS1608 刷写验收，不能仅凭 CI 标记为硬件已通过。
+稳定通道只更新 One-KVM rootfs 内容，不自动替换内核、DTB、U-Boot 或
+Armbian 基础。完整流程见[构建与发布流程](docs/build-pipeline.md)。
 
-## 基础镜像
+## 硬件编码研发路线
 
-构建固定使用 `config/base.env` 指向的基础资产：Armbian 26.8 Trixie、`6.12.28-current-meson`、OneCloud HDMI 设备树和启动链。当前候选基础修复了 U-Boot 文本环境中的引号错误；实体刷写通过前仍按候选处理。
+当前唯一有效方向是在已验证 Armbian/Linux 6.12 基础上移植
+`meson-venc` HCODEC 驱动，通过标准 V4L2 M2M 输出 Annex-B H.264，再由
+One-KVM 使用 `h264_v4l2m2m` 后端。
 
-## CI 验证
+新证据包含 18 个 Linux 6.12 补丁、Meson8b 后端、V4L2 MMAP/DMABUF
+工具和固件提取脚本。它证明方向具备较高可行性，但尚不能直接交付：
 
-构建任务会重新解包成品并检查：Amlogic v2 CRC、boot FAT 与有效 Linux console 参数、12 个标准条目、非 rootfs 分区字节一致性、每个分区 VERIFY SHA1、`one-kvm` armhf 包和依赖、systemd 开机链接、OneCloud OTG 配置、ext4 文件系统一致性、构建来源 metadata 和临时文件清理。
+- 附带模块是 AArch64 `6.12.98-ipkvm-release`，不能加载到 ARMv7
+  `6.12.28-current-meson`；
+- 补丁与最终驱动不是同一修订，Meson8b 时钟和 HHI 资源仍需修正；
+- 缺少可追溯的 `meson8b_h264.bin` 固件；
+- `cma=128M` 是基于 1080p 缓冲预算的候选值，不是实机结论；
+- One-KVM 实验探测需要 `ONE_KVM_V4L2M2M_ALLOW=1`，通过独立编码测试前
+  不写入稳定服务配置。
 
-GitHub 托管 runner 没有连接实体 WS1608，因此 CI 不把结构验证写成硬件启动结论。发布前会验证 xz 解压后与原始镜像摘要一致、manifest、`SHA256SUMS` 和 validation report。Release 提供未压缩 `.burn.img`、`.burn.img.xz`、`SHA256SUMS`、`manifest.json` 和 `validation-report.json`。
+Linux 3.10、Bullseye、`/dev/amvenc_avc`、`libvpcodec`、双内核和 kexec
+路线已经废弃，仅作为历史研究记录保留。正式决策见
+[ADR-0003](docs/adr/0003-armbian-6.12-hcodec-route.md)。
 
-## 本地运行
+## CI 与实机边界
 
-推荐直接使用 GitHub Actions 云构建，不需要在本地保存解压后的大镜像。云 runner 会安装 root 权限所需的 `qemu-user-static`、Go、Node.js、`binutils` 和 `e2fsprogs`，完成构建与验证后只保留 Release 资产。
+CI 会重新解包成品并验证 Amlogic v2 CRC、boot FAT、Linux console、12 个
+标准条目、分区 VERIFY、非 rootfs 分区一致性、One-KVM armhf 包、systemd、
+OTG、ext4、manifest、压缩往返和所有摘要。
 
-本地复现需要 Linux 主机、root 权限、`qemu-user-static`、Go、Node.js、`e2fsprogs`、`mtools` 和 Amlogic 基础镜像。准备 `BASE_IMAGE_XZ`、`ONE_KVM_DEB`、`AMLIMG_BIN`、`ONE_KVM_VERSION`、`UPSTREAM_TAG`、`PACKAGE_NAME`、`PACKAGE_DIGEST`、`PACKAGE_URL`、`BUILD_TAG`、`BUILD_NUMBER`、`BUILD_REVISION`、`BUILDER_COMMIT`、`GITHUB_RUN_ID`、`GITHUB_RUN_ATTEMPT`、`GITHUB_RUN_NUMBER`、`OUTPUT_DIR`、`WORK_DIR`、`IMAGE_NAME` 和 `VALIDATION_REPORT` 后执行：
+GitHub 托管 runner 没有实体 WS1608、采集卡或被控机 USB。加入新内核或
+设备树的 HCODEC 候选必须保持 `hardware_boot_tested=false` 和
+`hardware_encoder_tested=false`，直到对应实机验收完成。
+
+## 本地检查
+
+纯仓库测试不需要镜像或 root 权限：
 
 ```sh
-./scripts/build-image.sh
-./scripts/verify-image.sh
-./scripts/package-release.sh
+pnpm test
 ```
 
-`BUILD_TAG`、`BUILD_REVISION` 和 `IMAGE_NAME` 必须使用 `discover-release` 输出的同一构建身份；脚本会拒绝不一致的名称。
+完整镜像构建需要 Linux、root、qemu-user-static、Go、Node.js、e2fsprogs、
+mtools 和固定 AmlImg 工具；macOS 上优先使用 GitHub Actions。
 
-纯格式测试不需要镜像或 root 权限：
+## 文档
 
-```sh
-npm test
-```
-
-## 文档与交接
-
-- [维护文档索引](docs/README.md)：按构建、排障、实机验收等任务导航。
-- [当前交接状态](docs/HANDOFF.md)：当前 Release、验证边界、已知问题和后续优先级。
-- [镜像来源与选型](docs/image-lineage.md)：当前稳定基础、历史 Jammy 镜像和官方 One-KVM 镜像的关系。
-- [构建与发布流程](docs/build-pipeline.md)：GitHub Actions 从发现上游版本到发布直刷包的完整过程。
-- [排障手册](docs/troubleshooting.md)：Amlogic、sparse、挂载、e2fsck、OTG 和云构建已知坑。
-- [WS1608 实机验收](docs/hardware-validation.md)：不能由 CI 替代的刷写、启动、视频和 HID 检查。
+- [维护文档索引](docs/README.md)
+- [当前交接状态](docs/HANDOFF.md)
+- [架构与稳定性边界](docs/architecture.md)
+- [HCODEC 实机验收](docs/hardware-validation.md)
+- [排障手册](docs/troubleshooting.md)
+- [Armbian HCODEC 路线规格](docs/superpowers/specs/2026-09-01-armbian-hcodec-route-design.md)
 
 ## 许可证
 
-本仓库脚本使用 MIT 许可证。生成的镜像包含 Armbian、Debian、One-KVM Rust 和 Amlogic 工具的第三方组件，各组件继续适用其原许可证；来源链接见 `THIRD_PARTY.md`。
+本仓库脚本使用 MIT 许可证。生成镜像及 HCODEC 研究资料中的第三方组件继续
+适用各自许可证；来源和固件发布边界见 [THIRD_PARTY.md](THIRD_PARTY.md)。
