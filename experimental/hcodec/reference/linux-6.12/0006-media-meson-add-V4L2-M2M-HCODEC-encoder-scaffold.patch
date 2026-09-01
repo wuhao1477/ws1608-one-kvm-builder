@@ -1,0 +1,732 @@
+From da4dad4c50d9350da383d3395ce4dd42fb770560 Mon Sep 17 00:00:00 2001
+From: Meson Codec <meson-codec@localhost>
+Date: Sun, 23 Aug 2026 11:18:47 +0800
+Subject: [PATCH] media: meson: add V4L2 M2M HCODEC encoder scaffold
+
+Add stateful V4L2 M2M queue and format plumbing for linear NV12 to H.264.
+The driver binds only to the parent-created encoder child and participates
+in shared DOS arbitration. Hardware execution remains deliberately disabled
+and returns jobs as errors until the firmware backend is implemented.
+
+Signed-off-by: Meson Codec <meson-codec@localhost>
+---
+ MAINTAINERS                                   |   1 +
+ drivers/media/platform/amlogic/Kconfig        |   1 +
+ drivers/media/platform/amlogic/Makefile       |   1 +
+ .../media/platform/amlogic/meson-venc/Kconfig |  16 +
+ .../platform/amlogic/meson-venc/Makefile      |   3 +
+ .../platform/amlogic/meson-venc/meson-venc.c  | 639 ++++++++++++++++++
+ 6 files changed, 661 insertions(+)
+ create mode 100644 drivers/media/platform/amlogic/meson-venc/Kconfig
+ create mode 100644 drivers/media/platform/amlogic/meson-venc/Makefile
+ create mode 100644 drivers/media/platform/amlogic/meson-venc/meson-venc.c
+
+diff --git a/MAINTAINERS b/MAINTAINERS
+index 8f9c430..5e9d15e 100644
+--- a/MAINTAINERS
++++ b/MAINTAINERS
+@@ -15014,6 +15014,7 @@ L:	linux-amlogic@lists.infradead.org
+ S:	Supported
+ T:	git git://linuxtv.org/media.git
+ F:	Documentation/devicetree/bindings/media/amlogic,gx-vdec.yaml
++F:	drivers/media/platform/amlogic/meson-venc/
+ F:	drivers/staging/media/meson/vdec/
+ F:	include/linux/platform_data/media/meson-codec.h
+ 
+diff --git a/drivers/media/platform/amlogic/Kconfig b/drivers/media/platform/amlogic/Kconfig
+index 458acf3..6c28a6c 100644
+--- a/drivers/media/platform/amlogic/Kconfig
++++ b/drivers/media/platform/amlogic/Kconfig
+@@ -4,3 +4,4 @@ comment "Amlogic media platform drivers"
+ 
+ source "drivers/media/platform/amlogic/c3/Kconfig"
+ source "drivers/media/platform/amlogic/meson-ge2d/Kconfig"
++source "drivers/media/platform/amlogic/meson-venc/Kconfig"
+diff --git a/drivers/media/platform/amlogic/Makefile b/drivers/media/platform/amlogic/Makefile
+index c744afc..cd1f89f 100644
+--- a/drivers/media/platform/amlogic/Makefile
++++ b/drivers/media/platform/amlogic/Makefile
+@@ -2,3 +2,4 @@
+ 
+ obj-y += c3/
+ obj-y += meson-ge2d/
++obj-y += meson-venc/
+diff --git a/drivers/media/platform/amlogic/meson-venc/Kconfig b/drivers/media/platform/amlogic/meson-venc/Kconfig
+new file mode 100644
+index 0000000..647ce4d
+--- /dev/null
++++ b/drivers/media/platform/amlogic/meson-venc/Kconfig
+@@ -0,0 +1,16 @@
++# SPDX-License-Identifier: GPL-2.0-only
++
++config VIDEO_MESON_VENC
++	tristate "Amlogic Meson H.264 encoder scaffold"
++	depends on VIDEO_DEV
++	depends on VIDEO_MESON_VDEC
++	depends on ARCH_MESON || COMPILE_TEST
++	select V4L2_MEM2MEM_DEV
++	select VIDEOBUF2_DMA_CONTIG
++	help
++	  Build the V4L2 memory-to-memory encoder framework for the HCODEC
++	  block found in Amlogic Meson GXL and GXM SoCs.
++
++	  The initial implementation provides format negotiation, videobuf2 queue
++	  plumbing and shared DOS resource arbitration with meson-vdec. Hardware
++	  execution remains disabled until the HCODEC backend is implemented.
+diff --git a/drivers/media/platform/amlogic/meson-venc/Makefile b/drivers/media/platform/amlogic/meson-venc/Makefile
+new file mode 100644
+index 0000000..03bb1f6
+--- /dev/null
++++ b/drivers/media/platform/amlogic/meson-venc/Makefile
+@@ -0,0 +1,3 @@
++# SPDX-License-Identifier: GPL-2.0-only
++
++obj-$(CONFIG_VIDEO_MESON_VENC) += meson-venc.o
+diff --git a/drivers/media/platform/amlogic/meson-venc/meson-venc.c b/drivers/media/platform/amlogic/meson-venc/meson-venc.c
+new file mode 100644
+index 0000000..122ec56
+--- /dev/null
++++ b/drivers/media/platform/amlogic/meson-venc/meson-venc.c
+@@ -0,0 +1,639 @@
++// SPDX-License-Identifier: GPL-2.0-only
++/*
++ * Amlogic Meson V4L2 memory-to-memory encoder scaffold
++ *
++ * Copyright (C) 2026 Meson Codec contributors
++ *
++ * M0 deliberately contains no vendor register programming.  device_run()
++ * returns buffers with an error until a reviewed HCODEC backend is
++ * installed.
++ */
++
++#include <linux/align.h>
++#include <linux/errno.h>
++#include <linux/kernel.h>
++#include <linux/module.h>
++#include <linux/mutex.h>
++#include <linux/platform_device.h>
++#include <linux/platform_data/media/meson-codec.h>
++#include <linux/sizes.h>
++#include <linux/slab.h>
++
++#include <media/v4l2-ctrls.h>
++#include <media/v4l2-device.h>
++#include <media/v4l2-event.h>
++#include <media/v4l2-fh.h>
++#include <media/v4l2-ioctl.h>
++#include <media/v4l2-mem2mem.h>
++#include <media/videobuf2-dma-contig.h>
++#include <media/videobuf2-v4l2.h>
++
++#define MESON_VENC_NAME		"meson-venc"
++#define MESON_VENC_MIN_WIDTH	64U
++#define MESON_VENC_MIN_HEIGHT	64U
++#define MESON_VENC_MAX_WIDTH	1920U
++#define MESON_VENC_MAX_HEIGHT	1088U
++#define MESON_VENC_DEF_WIDTH	640U
++#define MESON_VENC_DEF_HEIGHT	480U
++#define MESON_VENC_STRIDE_ALIGN	32U
++#define MESON_VENC_MIN_CODED_SIZE SZ_512K
++
++enum meson_venc_queue_id {
++	MESON_VENC_QUEUE_OUTPUT,
++	MESON_VENC_QUEUE_CAPTURE,
++	MESON_VENC_QUEUE_COUNT,
++};
++
++struct meson_venc_q_data {
++	u32 fourcc;
++	u32 width;
++	u32 height;
++	u32 bytesperline;
++	u32 sizeimage;
++	u32 sequence;
++};
++
++struct meson_venc_dev {
++	struct device *dev;
++	const struct meson_codec_child_data *core;
++	/* Serializes video-device ioctls and device removal. */
++	struct mutex dev_lock;
++	struct v4l2_device v4l2_dev;
++	struct video_device vdev;
++	struct v4l2_m2m_dev *m2m_dev;
++};
++
++struct meson_venc_ctx {
++	struct meson_venc_dev *venc;
++	/* Serializes the two vb2 queues belonging to this context. */
++	struct mutex q_lock;
++	struct v4l2_fh fh;
++	struct meson_venc_q_data q_data[MESON_VENC_QUEUE_COUNT];
++	bool streaming_output;
++	bool streaming_capture;
++	bool owns_hw;
++};
++
++static struct meson_venc_ctx *fh_to_ctx(void *priv)
++{
++	return container_of(priv, struct meson_venc_ctx, fh);
++}
++
++static struct meson_venc_q_data *
++meson_venc_get_q_data(struct meson_venc_ctx *ctx, enum v4l2_buf_type type)
++{
++	if (type == V4L2_BUF_TYPE_VIDEO_OUTPUT_MPLANE)
++		return &ctx->q_data[MESON_VENC_QUEUE_OUTPUT];
++	if (type == V4L2_BUF_TYPE_VIDEO_CAPTURE_MPLANE)
++		return &ctx->q_data[MESON_VENC_QUEUE_CAPTURE];
++
++	return NULL;
++}
++
++static bool meson_venc_type_is_valid(enum v4l2_buf_type type)
++{
++	return type == V4L2_BUF_TYPE_VIDEO_OUTPUT_MPLANE ||
++	       type == V4L2_BUF_TYPE_VIDEO_CAPTURE_MPLANE;
++}
++
++static u32 meson_venc_raw_size(u32 bytesperline, u32 height)
++{
++	return bytesperline * height * 3 / 2;
++}
++
++static u32 meson_venc_coded_size(u32 width, u32 height)
++{
++	return max_t(u32, MESON_VENC_MIN_CODED_SIZE, width * height * 2);
++}
++
++static void meson_venc_set_default_formats(struct meson_venc_ctx *ctx)
++{
++	struct meson_venc_q_data *out;
++	struct meson_venc_q_data *cap;
++
++	out = &ctx->q_data[MESON_VENC_QUEUE_OUTPUT];
++	out->fourcc = V4L2_PIX_FMT_NV12;
++	out->width = MESON_VENC_DEF_WIDTH;
++	out->height = MESON_VENC_DEF_HEIGHT;
++	out->bytesperline = ALIGN(out->width, MESON_VENC_STRIDE_ALIGN);
++	out->sizeimage = meson_venc_raw_size(out->bytesperline, out->height);
++
++	cap = &ctx->q_data[MESON_VENC_QUEUE_CAPTURE];
++	cap->fourcc = V4L2_PIX_FMT_H264;
++	cap->width = out->width;
++	cap->height = out->height;
++	cap->bytesperline = 0;
++	cap->sizeimage = meson_venc_coded_size(cap->width, cap->height);
++}
++
++static int meson_venc_querycap(struct file *file, void *priv,
++			       struct v4l2_capability *cap)
++{
++	struct meson_venc_ctx *ctx = fh_to_ctx(priv);
++
++	strscpy(cap->driver, MESON_VENC_NAME, sizeof(cap->driver));
++	strscpy(cap->card, "Amlogic Meson H.264 Encoder", sizeof(cap->card));
++	snprintf(cap->bus_info, sizeof(cap->bus_info), "platform:%s",
++		 dev_name(ctx->venc->dev));
++
++	return 0;
++}
++
++static int meson_venc_enum_fmt(struct file *file, void *priv,
++			       struct v4l2_fmtdesc *f)
++{
++	if (!meson_venc_type_is_valid(f->type) || f->index)
++		return -EINVAL;
++
++	if (V4L2_TYPE_IS_OUTPUT(f->type))
++		f->pixelformat = V4L2_PIX_FMT_NV12;
++	else
++		f->pixelformat = V4L2_PIX_FMT_H264;
++
++	return 0;
++}
++
++static int meson_venc_enum_framesizes(struct file *file, void *priv,
++				      struct v4l2_frmsizeenum *fsize)
++{
++	if (fsize->index)
++		return -EINVAL;
++	if (fsize->pixel_format != V4L2_PIX_FMT_NV12 &&
++	    fsize->pixel_format != V4L2_PIX_FMT_H264)
++		return -EINVAL;
++
++	fsize->type = V4L2_FRMSIZE_TYPE_STEPWISE;
++	fsize->stepwise.min_width = MESON_VENC_MIN_WIDTH;
++	fsize->stepwise.max_width = MESON_VENC_MAX_WIDTH;
++	fsize->stepwise.step_width = 2;
++	fsize->stepwise.min_height = MESON_VENC_MIN_HEIGHT;
++	fsize->stepwise.max_height = MESON_VENC_MAX_HEIGHT;
++	fsize->stepwise.step_height = 2;
++
++	return 0;
++}
++
++static void meson_venc_clamp_dimensions(u32 *width, u32 *height)
++{
++	*width = clamp_t(u32, *width, MESON_VENC_MIN_WIDTH,
++			 MESON_VENC_MAX_WIDTH) & ~1U;
++	*height = clamp_t(u32, *height, MESON_VENC_MIN_HEIGHT,
++			  MESON_VENC_MAX_HEIGHT) & ~1U;
++}
++
++static int meson_venc_try_fmt(struct file *file, void *priv,
++			      struct v4l2_format *f)
++{
++	struct v4l2_pix_format_mplane *pix = &f->fmt.pix_mp;
++	u32 bytesperline;
++	u32 min_size;
++
++	if (!meson_venc_type_is_valid(f->type))
++		return -EINVAL;
++
++	meson_venc_clamp_dimensions(&pix->width, &pix->height);
++	pix->field = V4L2_FIELD_NONE;
++	pix->num_planes = 1;
++	pix->flags = 0;
++
++	if (V4L2_TYPE_IS_OUTPUT(f->type)) {
++		pix->pixelformat = V4L2_PIX_FMT_NV12;
++		bytesperline = ALIGN(pix->width, MESON_VENC_STRIDE_ALIGN);
++		pix->plane_fmt[0].bytesperline = bytesperline;
++		pix->plane_fmt[0].sizeimage =
++			meson_venc_raw_size(bytesperline, pix->height);
++		if (!pix->colorspace)
++			pix->colorspace = V4L2_COLORSPACE_REC709;
++	} else {
++		pix->pixelformat = V4L2_PIX_FMT_H264;
++		pix->plane_fmt[0].bytesperline = 0;
++		min_size = meson_venc_coded_size(pix->width, pix->height);
++		if (pix->plane_fmt[0].sizeimage < min_size)
++			pix->plane_fmt[0].sizeimage = min_size;
++	}
++
++	return 0;
++}
++
++static int meson_venc_g_fmt(struct file *file, void *priv,
++			    struct v4l2_format *f)
++{
++	struct meson_venc_ctx *ctx = fh_to_ctx(priv);
++	struct meson_venc_q_data *q_data;
++	struct v4l2_pix_format_mplane *pix = &f->fmt.pix_mp;
++
++	q_data = meson_venc_get_q_data(ctx, f->type);
++	if (!q_data)
++		return -EINVAL;
++
++	pix->width = q_data->width;
++	pix->height = q_data->height;
++	pix->pixelformat = q_data->fourcc;
++	pix->field = V4L2_FIELD_NONE;
++	pix->num_planes = 1;
++	pix->plane_fmt[0].bytesperline = q_data->bytesperline;
++	pix->plane_fmt[0].sizeimage = q_data->sizeimage;
++	if (V4L2_TYPE_IS_OUTPUT(f->type))
++		pix->colorspace = V4L2_COLORSPACE_REC709;
++
++	return 0;
++}
++
++static int meson_venc_s_fmt(struct file *file, void *priv,
++			    struct v4l2_format *f)
++{
++	struct meson_venc_ctx *ctx = fh_to_ctx(priv);
++	struct meson_venc_q_data *q_data;
++	struct v4l2_pix_format_mplane *pix = &f->fmt.pix_mp;
++	struct vb2_queue *vq;
++	int ret;
++
++	ret = meson_venc_try_fmt(file, priv, f);
++	if (ret)
++		return ret;
++
++	vq = v4l2_m2m_get_vq(ctx->fh.m2m_ctx, f->type);
++	if (!vq)
++		return -EINVAL;
++	if (vb2_is_busy(vq))
++		return -EBUSY;
++
++	q_data = meson_venc_get_q_data(ctx, f->type);
++	q_data->fourcc = pix->pixelformat;
++	q_data->width = pix->width;
++	q_data->height = pix->height;
++	q_data->bytesperline = pix->plane_fmt[0].bytesperline;
++	q_data->sizeimage = pix->plane_fmt[0].sizeimage;
++
++	return 0;
++}
++
++static const struct v4l2_ioctl_ops meson_venc_ioctl_ops = {
++	.vidioc_querycap = meson_venc_querycap,
++	.vidioc_enum_fmt_vid_out = meson_venc_enum_fmt,
++	.vidioc_enum_fmt_vid_cap = meson_venc_enum_fmt,
++	.vidioc_enum_framesizes = meson_venc_enum_framesizes,
++	.vidioc_try_fmt_vid_out_mplane = meson_venc_try_fmt,
++	.vidioc_try_fmt_vid_cap_mplane = meson_venc_try_fmt,
++	.vidioc_g_fmt_vid_out_mplane = meson_venc_g_fmt,
++	.vidioc_g_fmt_vid_cap_mplane = meson_venc_g_fmt,
++	.vidioc_s_fmt_vid_out_mplane = meson_venc_s_fmt,
++	.vidioc_s_fmt_vid_cap_mplane = meson_venc_s_fmt,
++	.vidioc_reqbufs = v4l2_m2m_ioctl_reqbufs,
++	.vidioc_querybuf = v4l2_m2m_ioctl_querybuf,
++	.vidioc_prepare_buf = v4l2_m2m_ioctl_prepare_buf,
++	.vidioc_qbuf = v4l2_m2m_ioctl_qbuf,
++	.vidioc_dqbuf = v4l2_m2m_ioctl_dqbuf,
++	.vidioc_create_bufs = v4l2_m2m_ioctl_create_bufs,
++	.vidioc_expbuf = v4l2_m2m_ioctl_expbuf,
++	.vidioc_streamon = v4l2_m2m_ioctl_streamon,
++	.vidioc_streamoff = v4l2_m2m_ioctl_streamoff,
++	.vidioc_subscribe_event = v4l2_ctrl_subscribe_event,
++	.vidioc_unsubscribe_event = v4l2_event_unsubscribe,
++};
++
++static int meson_venc_queue_setup(struct vb2_queue *vq,
++				  unsigned int *nbuffers,
++				  unsigned int *nplanes,
++				  unsigned int sizes[],
++				  struct device *alloc_devs[])
++{
++	struct meson_venc_ctx *ctx = vb2_get_drv_priv(vq);
++	struct meson_venc_q_data *q_data;
++
++	q_data = meson_venc_get_q_data(ctx, vq->type);
++	if (!q_data)
++		return -EINVAL;
++
++	if (*nplanes)
++		return *nplanes == 1 && sizes[0] >= q_data->sizeimage ? 0 :
++		       -EINVAL;
++
++	*nplanes = 1;
++	sizes[0] = q_data->sizeimage;
++
++	return 0;
++}
++
++static int meson_venc_buf_out_validate(struct vb2_buffer *vb)
++{
++	struct vb2_v4l2_buffer *vbuf = to_vb2_v4l2_buffer(vb);
++
++	if (vbuf->field == V4L2_FIELD_ANY)
++		vbuf->field = V4L2_FIELD_NONE;
++
++	return vbuf->field == V4L2_FIELD_NONE ? 0 : -EINVAL;
++}
++
++static int meson_venc_buf_prepare(struct vb2_buffer *vb)
++{
++	struct meson_venc_ctx *ctx = vb2_get_drv_priv(vb->vb2_queue);
++	struct meson_venc_q_data *q_data;
++
++	q_data = meson_venc_get_q_data(ctx, vb->vb2_queue->type);
++	if (!q_data)
++		return -EINVAL;
++	if (vb2_plane_size(vb, 0) < q_data->sizeimage)
++		return -EINVAL;
++
++	if (V4L2_TYPE_IS_OUTPUT(vb->vb2_queue->type))
++		vb2_set_plane_payload(vb, 0, q_data->sizeimage);
++	else
++		vb2_set_plane_payload(vb, 0, 0);
++
++	return 0;
++}
++
++static void meson_venc_buf_queue(struct vb2_buffer *vb)
++{
++	struct meson_venc_ctx *ctx = vb2_get_drv_priv(vb->vb2_queue);
++
++	v4l2_m2m_buf_queue(ctx->fh.m2m_ctx, to_vb2_v4l2_buffer(vb));
++}
++
++static int meson_venc_start_streaming(struct vb2_queue *vq,
++				      unsigned int count)
++{
++	struct meson_venc_ctx *ctx = vb2_get_drv_priv(vq);
++	struct meson_venc_q_data *q_data;
++	struct vb2_v4l2_buffer *vbuf;
++
++	q_data = meson_venc_get_q_data(ctx, vq->type);
++	if (!q_data)
++		return -EINVAL;
++
++	if (!ctx->owns_hw) {
++		if (!mutex_trylock(ctx->venc->core->hw_lock)) {
++			while ((vbuf = V4L2_TYPE_IS_OUTPUT(vq->type) ?
++				v4l2_m2m_src_buf_remove(ctx->fh.m2m_ctx) :
++				v4l2_m2m_dst_buf_remove(ctx->fh.m2m_ctx)))
++				v4l2_m2m_buf_done(vbuf, VB2_BUF_STATE_QUEUED);
++			return -EBUSY;
++		}
++		ctx->owns_hw = true;
++	}
++
++	if (V4L2_TYPE_IS_OUTPUT(vq->type))
++		ctx->streaming_output = true;
++	else
++		ctx->streaming_capture = true;
++
++	q_data->sequence = 0;
++	return 0;
++}
++
++static void meson_venc_stop_streaming(struct vb2_queue *vq)
++{
++	struct meson_venc_ctx *ctx = vb2_get_drv_priv(vq);
++	struct vb2_v4l2_buffer *vbuf;
++
++	for (;;) {
++		if (V4L2_TYPE_IS_OUTPUT(vq->type))
++			vbuf = v4l2_m2m_src_buf_remove(ctx->fh.m2m_ctx);
++		else
++			vbuf = v4l2_m2m_dst_buf_remove(ctx->fh.m2m_ctx);
++		if (!vbuf)
++			break;
++		v4l2_m2m_buf_done(vbuf, VB2_BUF_STATE_ERROR);
++	}
++
++	if (V4L2_TYPE_IS_OUTPUT(vq->type))
++		ctx->streaming_output = false;
++	else
++		ctx->streaming_capture = false;
++
++	if (ctx->owns_hw && !ctx->streaming_output &&
++	    !ctx->streaming_capture) {
++		ctx->owns_hw = false;
++		mutex_unlock(ctx->venc->core->hw_lock);
++	}
++}
++
++static const struct vb2_ops meson_venc_qops = {
++	.queue_setup = meson_venc_queue_setup,
++	.buf_out_validate = meson_venc_buf_out_validate,
++	.buf_prepare = meson_venc_buf_prepare,
++	.buf_queue = meson_venc_buf_queue,
++	.start_streaming = meson_venc_start_streaming,
++	.stop_streaming = meson_venc_stop_streaming,
++	.wait_prepare = vb2_ops_wait_prepare,
++	.wait_finish = vb2_ops_wait_finish,
++};
++
++static int meson_venc_queue_init(void *priv, struct vb2_queue *src_vq,
++				 struct vb2_queue *dst_vq)
++{
++	struct meson_venc_ctx *ctx = priv;
++	int ret;
++
++	src_vq->type = V4L2_BUF_TYPE_VIDEO_OUTPUT_MPLANE;
++	src_vq->io_modes = VB2_MMAP | VB2_DMABUF;
++	src_vq->drv_priv = ctx;
++	src_vq->buf_struct_size = sizeof(struct v4l2_m2m_buffer);
++	src_vq->ops = &meson_venc_qops;
++	src_vq->mem_ops = &vb2_dma_contig_memops;
++	src_vq->timestamp_flags = V4L2_BUF_FLAG_TIMESTAMP_COPY;
++	src_vq->lock = &ctx->q_lock;
++	src_vq->dev = ctx->venc->dev;
++
++	ret = vb2_queue_init(src_vq);
++	if (ret)
++		return ret;
++
++	dst_vq->type = V4L2_BUF_TYPE_VIDEO_CAPTURE_MPLANE;
++	dst_vq->io_modes = VB2_MMAP | VB2_DMABUF;
++	dst_vq->drv_priv = ctx;
++	dst_vq->buf_struct_size = sizeof(struct v4l2_m2m_buffer);
++	dst_vq->ops = &meson_venc_qops;
++	dst_vq->mem_ops = &vb2_dma_contig_memops;
++	dst_vq->timestamp_flags = V4L2_BUF_FLAG_TIMESTAMP_COPY;
++	dst_vq->lock = &ctx->q_lock;
++	dst_vq->dev = ctx->venc->dev;
++
++	return vb2_queue_init(dst_vq);
++}
++
++static void meson_venc_device_run(void *priv)
++{
++	struct meson_venc_ctx *ctx = priv;
++	struct meson_venc_q_data *out;
++	struct meson_venc_q_data *cap;
++	struct vb2_v4l2_buffer *src;
++	struct vb2_v4l2_buffer *dst;
++
++	src = v4l2_m2m_src_buf_remove(ctx->fh.m2m_ctx);
++	dst = v4l2_m2m_dst_buf_remove(ctx->fh.m2m_ctx);
++	if (!src || !dst) {
++		if (src)
++			v4l2_m2m_buf_done(src, VB2_BUF_STATE_ERROR);
++		if (dst)
++			v4l2_m2m_buf_done(dst, VB2_BUF_STATE_ERROR);
++		v4l2_m2m_job_finish(ctx->venc->m2m_dev, ctx->fh.m2m_ctx);
++		return;
++	}
++
++	out = &ctx->q_data[MESON_VENC_QUEUE_OUTPUT];
++	cap = &ctx->q_data[MESON_VENC_QUEUE_CAPTURE];
++	src->sequence = out->sequence++;
++	dst->sequence = cap->sequence++;
++	dst->vb2_buf.timestamp = src->vb2_buf.timestamp;
++	vb2_set_plane_payload(&dst->vb2_buf, 0, 0);
++
++	dev_warn_ratelimited(ctx->venc->dev,
++			     "HCODEC backend is not implemented; rejecting encode job\n");
++	v4l2_m2m_buf_done(src, VB2_BUF_STATE_ERROR);
++	v4l2_m2m_buf_done(dst, VB2_BUF_STATE_ERROR);
++	v4l2_m2m_job_finish(ctx->venc->m2m_dev, ctx->fh.m2m_ctx);
++}
++
++static void meson_venc_job_abort(void *priv)
++{
++	struct meson_venc_ctx *ctx = priv;
++
++	v4l2_m2m_job_finish(ctx->venc->m2m_dev, ctx->fh.m2m_ctx);
++}
++
++static const struct v4l2_m2m_ops meson_venc_m2m_ops = {
++	.device_run = meson_venc_device_run,
++	.job_abort = meson_venc_job_abort,
++};
++
++static int meson_venc_open(struct file *file)
++{
++	struct meson_venc_dev *venc = video_drvdata(file);
++	struct meson_venc_ctx *ctx;
++	int ret;
++
++	ctx = kzalloc(sizeof(*ctx), GFP_KERNEL);
++	if (!ctx)
++		return -ENOMEM;
++
++	ctx->venc = venc;
++	mutex_init(&ctx->q_lock);
++	meson_venc_set_default_formats(ctx);
++
++	v4l2_fh_init(&ctx->fh, video_devdata(file));
++	file->private_data = &ctx->fh;
++
++	ctx->fh.m2m_ctx = v4l2_m2m_ctx_init(venc->m2m_dev, ctx,
++					    meson_venc_queue_init);
++	if (IS_ERR(ctx->fh.m2m_ctx)) {
++		ret = PTR_ERR(ctx->fh.m2m_ctx);
++		v4l2_fh_exit(&ctx->fh);
++		kfree(ctx);
++		return ret;
++	}
++
++	v4l2_fh_add(&ctx->fh);
++	return 0;
++}
++
++static int meson_venc_release(struct file *file)
++{
++	struct meson_venc_ctx *ctx = fh_to_ctx(file->private_data);
++
++	v4l2_fh_del(&ctx->fh);
++	v4l2_m2m_ctx_release(ctx->fh.m2m_ctx);
++	v4l2_fh_exit(&ctx->fh);
++	mutex_destroy(&ctx->q_lock);
++	kfree(ctx);
++
++	return 0;
++}
++
++static const struct v4l2_file_operations meson_venc_fops = {
++	.owner = THIS_MODULE,
++	.open = meson_venc_open,
++	.release = meson_venc_release,
++	.poll = v4l2_m2m_fop_poll,
++	.unlocked_ioctl = video_ioctl2,
++	.mmap = v4l2_m2m_fop_mmap,
++};
++
++static const struct video_device meson_venc_videodev = {
++	.name = MESON_VENC_NAME,
++	.vfl_dir = VFL_DIR_M2M,
++	.fops = &meson_venc_fops,
++	.ioctl_ops = &meson_venc_ioctl_ops,
++	.minor = -1,
++	.release = video_device_release_empty,
++	.device_caps = V4L2_CAP_VIDEO_M2M_MPLANE | V4L2_CAP_STREAMING,
++};
++
++static int meson_venc_probe(struct platform_device *pdev)
++{
++	const struct meson_codec_child_data *core = dev_get_platdata(&pdev->dev);
++	struct meson_venc_dev *venc;
++	int ret;
++
++	if (!core || !core->dos_base || !core->regmap_ao || !core->canvas ||
++	    !core->hcodec_clk || !core->hw_lock || core->irq < 0)
++		return dev_err_probe(&pdev->dev, -EINVAL,
++				     "incomplete DOS parent resources\n");
++
++	venc = devm_kzalloc(&pdev->dev, sizeof(*venc), GFP_KERNEL);
++	if (!venc)
++		return -ENOMEM;
++
++	venc->dev = &pdev->dev;
++	venc->core = core;
++	mutex_init(&venc->dev_lock);
++
++	ret = v4l2_device_register(&pdev->dev, &venc->v4l2_dev);
++	if (ret)
++		goto err_mutex;
++
++	venc->m2m_dev = v4l2_m2m_init(&meson_venc_m2m_ops);
++	if (IS_ERR(venc->m2m_dev)) {
++		ret = PTR_ERR(venc->m2m_dev);
++		goto err_v4l2;
++	}
++
++	venc->vdev = meson_venc_videodev;
++	venc->vdev.v4l2_dev = &venc->v4l2_dev;
++	venc->vdev.lock = &venc->dev_lock;
++	venc->vdev.dev_parent = &pdev->dev;
++	video_set_drvdata(&venc->vdev, venc);
++
++	ret = video_register_device(&venc->vdev, VFL_TYPE_VIDEO, -1);
++	if (ret)
++		goto err_m2m;
++
++	platform_set_drvdata(pdev, venc);
++	dev_info(&pdev->dev,
++		 "registered V4L2 scaffold as %s, HCODEC IRQ %d; hardware backend disabled\n",
++		 video_device_node_name(&venc->vdev), core->irq);
++
++	return 0;
++
++err_m2m:
++	v4l2_m2m_release(venc->m2m_dev);
++err_v4l2:
++	v4l2_device_unregister(&venc->v4l2_dev);
++err_mutex:
++	mutex_destroy(&venc->dev_lock);
++	return ret;
++}
++
++static void meson_venc_remove(struct platform_device *pdev)
++{
++	struct meson_venc_dev *venc = platform_get_drvdata(pdev);
++
++	video_unregister_device(&venc->vdev);
++	v4l2_m2m_release(venc->m2m_dev);
++	v4l2_device_unregister(&venc->v4l2_dev);
++	mutex_destroy(&venc->dev_lock);
++}
++
++static struct platform_driver meson_venc_driver = {
++	.probe = meson_venc_probe,
++	.remove_new = meson_venc_remove,
++	.driver = {
++		.name = MESON_VENC_NAME,
++	},
++};
++module_platform_driver(meson_venc_driver);
++
++MODULE_DESCRIPTION("Amlogic Meson V4L2 M2M H.264 encoder scaffold");
++MODULE_AUTHOR("Meson Codec contributors");
++MODULE_LICENSE("GPL");
+-- 
+2.47.3
+

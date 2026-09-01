@@ -1,0 +1,76 @@
+From 3cca2327330be14a1920be7f9852587c71e8125c Mon Sep 17 00:00:00 2001
+From: Codex <codex@openai.com>
+Date: Sun, 23 Aug 2026 21:27:09 +0800
+Subject: [PATCH] media: meson: harden H.264 capture buffer sizing
+
+Size coded buffers for the observed fixed-CQP worst case.
+
+Two bytes per source pixel is insufficient for incompressible NV12.
+
+Ring exhaustion otherwise leaves firmware in the macroblock stage.
+
+Restore the vendor full-mode coefficient-ignore thresholds.
+
+Log VLC and DCT pointers to distinguish exhaustion from a stall.
+
+Signed-off-by: Codex <codex@openai.com>
+
+diff --git a/drivers/media/platform/amlogic/meson-venc/meson-venc.c b/drivers/media/platform/amlogic/meson-venc/meson-venc.c
+index 29b8999..d4981a1 100644
+--- a/drivers/media/platform/amlogic/meson-venc/meson-venc.c
++++ b/drivers/media/platform/amlogic/meson-venc/meson-venc.c
+@@ -47,7 +47,7 @@
+ #define MESON_VENC_DEF_WIDTH	640U
+ #define MESON_VENC_DEF_HEIGHT	480U
+ #define MESON_VENC_STRIDE_ALIGN	32U
+-#define MESON_VENC_MIN_CODED_SIZE SZ_512K
++#define MESON_VENC_MIN_CODED_SIZE SZ_1M
+ #define MESON_VENC_FW_NAME	"meson/venc/gxl_h264.bin"
+ #define MESON_VENC_MC_SIZE	SZ_32K
+ #define MESON_VENC_MC_DATA_SIZE	(24 * SZ_1K)
+@@ -424,8 +424,11 @@ static void meson_venc_protocol_init(struct meson_venc_ctx *ctx, bool idr)
+ 		(qp % 6) << 4 | qp / 6;
+ 	meson_venc_write(venc, HCODEC_QDCT_Q_QUANT_I, quant);
+ 	meson_venc_write(venc, HCODEC_QDCT_Q_QUANT_P, quant);
+-	meson_venc_write(venc, HCODEC_IGNORE_CONFIG, 0);
+-	meson_venc_write(venc, HCODEC_IGNORE_CONFIG_2, 0);
++	meson_venc_write(venc, HCODEC_IGNORE_CONFIG,
++			 BIT(31) | BIT(26) | BIT(21) | 2 << 16 |
++			 BIT(15) | BIT(10) | BIT(5) | 2);
++	meson_venc_write(venc, HCODEC_IGNORE_CONFIG_2,
++			 BIT(31) | BIT(26) | BIT(21) | 5 << 16);
+ 
+ 	meson_venc_write(venc, HCODEC_QDCT_MB_CONTROL, BIT(9) | BIT(0));
+ 	meson_venc_write(venc, HCODEC_QDCT_MB_CONTROL,
+@@ -952,9 +955,15 @@ static int meson_venc_command(struct meson_venc_ctx *ctx, u32 command,
+ 	timeout = msecs_to_jiffies(MESON_VENC_CMD_TIMEOUT_MS);
+ 	timeout = wait_for_completion_timeout(&venc->irq_done, timeout);
+ 	if (!timeout) {
+-		dev_err(venc->dev, "command %u timed out (status %#x)\n",
++		dev_err(venc->dev,
++			"command %u timeout: status %#x bytes %#x VLC %#x/%#x DCT %#x/%#x\n",
+ 			command,
+-			meson_venc_read(venc, HCODEC_HENC_SCRATCH_0));
++			meson_venc_read(venc, HCODEC_HENC_SCRATCH_0),
++			meson_venc_read(venc, HCODEC_VLC_TOTAL_BYTES),
++			meson_venc_read(venc, HCODEC_VLC_VB_WR_PTR),
++			meson_venc_read(venc, HCODEC_VLC_VB_END_PTR),
++			meson_venc_read(venc, HCODEC_QDCT_MB_WR_PTR),
++			meson_venc_read(venc, HCODEC_QDCT_MB_RD_PTR));
+ 		return -ETIMEDOUT;
+ 	}
+ 
+@@ -1160,7 +1169,9 @@ static u32 meson_venc_raw_size(u32 bytesperline, u32 height)
+ 
+ static u32 meson_venc_coded_size(u32 width, u32 height)
+ {
+-	return max_t(u32, MESON_VENC_MIN_CODED_SIZE, width * height * 2);
++	u32 worst_case = ALIGN(width * height * 4 + SZ_64K, SZ_64K);
++
++	return max_t(u32, MESON_VENC_MIN_CODED_SIZE, worst_case);
+ }
+ 
+ static void meson_venc_set_default_formats(struct meson_venc_ctx *ctx)
+-- 
+2.47.3
+

@@ -1,0 +1,33 @@
+From b8818ce6bd12a54bcc1622604c33cec5a8a271b9 Mon Sep 17 00:00:00 2001
+From: wuhao1477 <1477681049@qq.com>
+Date: Wed, 2 Sep 2026 00:56:50 +0800
+Subject: [PATCH 19/19] ARM: dts: amlogic: enable HCODEC on OneCloud
+
+Enable the standalone Meson8b HCODEC node after confirming OneCloud has no
+competing owner for the DOS register range. Use the existing Meson8b
+CLKID_VDEC_HCODEC provider instead of bypassing the common clock framework
+with direct HHI writes.
+
+Signed-off-by: wuhao1477 <1477681049@qq.com>
+---
+ arch/arm/boot/dts/amlogic/meson8b-onecloud.dts | 4 ++++
+ 1 file changed, 4 insertions(+)
+
+diff --git a/arch/arm/boot/dts/amlogic/meson8b-onecloud.dts b/arch/arm/boot/dts/amlogic/meson8b-onecloud.dts
+index 6ed195220..ede6cf078 100644
+--- a/arch/arm/boot/dts/amlogic/meson8b-onecloud.dts
++++ b/arch/arm/boot/dts/amlogic/meson8b-onecloud.dts
+@@ -241,6 +241,10 @@ &mali {
+ 	// mali-supply = <&vcc_core>;
+ };
+ 
++&venc {
++	status = "okay";
++};
++
+ &aiu {
+ 	status = "okay";
+ };
+-- 
+2.51.0
+

@@ -1,0 +1,524 @@
+From a99d859eb2fddbcb4edc159ab8a695c051429ac6 Mon Sep 17 00:00:00 2001
+From: Meson Codec <meson-codec@localhost>
+Date: Sun, 23 Aug 2026 20:43:30 +0800
+Subject: [PATCH] media: meson: add H.264 P-frame and GOP state
+
+Keep two reconstructed Canvas buffers as alternating current and reference
+frames. Track frame_num, picture order count and IDR identifiers across
+jobs, and submit the GXL NON_IDR command for frames inside a GOP.
+
+Expose fixed Baseline, level and header capabilities plus standard GOP,
+I/P QP and force-keyframe controls. Register the M2M media-controller
+topology and encoder commands so userspace can identify and control a
+stateful encoder.
+
+The GXL full microcode reports IDR_DONE for both IDR and NON_IDR frame
+commands. Distinguish them using the submitted command, returned NAL type
+and V4L2 buffer flags.
+
+Signed-off-by: Meson Codec <meson-codec@localhost>
+---
+ .../platform/amlogic/meson-venc/meson-venc.c  | 253 ++++++++++++++++--
+ 1 file changed, 234 insertions(+), 19 deletions(-)
+
+diff --git a/drivers/media/platform/amlogic/meson-venc/meson-venc.c b/drivers/media/platform/amlogic/meson-venc/meson-venc.c
+index ddcf956..29b8999 100644
+--- a/drivers/media/platform/amlogic/meson-venc/meson-venc.c
++++ b/drivers/media/platform/amlogic/meson-venc/meson-venc.c
+@@ -35,6 +35,7 @@
+ #include <media/v4l2-fh.h>
+ #include <media/v4l2-ioctl.h>
+ #include <media/v4l2-mem2mem.h>
++#include <media/media-device.h>
+ #include <media/videobuf2-dma-contig.h>
+ #include <media/videobuf2-v4l2.h>
+ 
+@@ -61,6 +62,8 @@
+ #define MESON_VENC_INPUT_CANVAS_Y 6
+ #define MESON_VENC_INPUT_CANVAS_UV 7
+ #define MESON_VENC_CQP		26U
++#define MESON_VENC_DEFAULT_GOP	30U
++#define MESON_VENC_MAX_GOP	300U
+ #define MESON_VENC_CMD_TIMEOUT_MS	2000U
+ 
+ #define AO_RTI_GEN_PWR_SLEEP0	0xe8
+@@ -101,6 +104,7 @@
+ #define HCODEC_HENC_SCRATCH_G		0x6b40
+ #define HCODEC_HENC_SCRATCH_I		0x6b48
+ #define HCODEC_HENC_SCRATCH_J		0x6b4c
++#define HCODEC_HENC_SCRATCH_K		0x6b50
+ #define HCODEC_HENC_SCRATCH_L		0x6b54
+ #define HCODEC_IE_DATA_FEED_BUFF_INFO	0x6b60
+ #define HCODEC_HDEC_MC_OMEM_AUTO	0x64c0
+@@ -185,9 +189,11 @@ enum meson_venc_command {
+ 	MESON_VENC_CMD_SEQUENCE = 1,
+ 	MESON_VENC_CMD_PICTURE = 2,
+ 	MESON_VENC_CMD_IDR = 3,
++	MESON_VENC_CMD_NON_IDR = 4,
+ 	MESON_VENC_STATUS_SEQUENCE_DONE = 7,
+ 	MESON_VENC_STATUS_PICTURE_DONE = 8,
+ 	MESON_VENC_STATUS_IDR_DONE = 9,
++	MESON_VENC_STATUS_NON_IDR_DONE = 10,
+ 	MESON_VENC_STATUS_ERROR = 0xff,
+ };
+ 
+@@ -238,6 +244,7 @@ struct meson_venc_dev {
+ 	/* Serializes video-device ioctls and device removal. */
+ 	struct mutex dev_lock;
+ 	struct v4l2_device v4l2_dev;
++	struct media_device mdev;
+ 	struct video_device vdev;
+ 	struct v4l2_m2m_dev *m2m_dev;
+ 	struct completion irq_done;
+@@ -250,12 +257,23 @@ struct meson_venc_ctx {
+ 	/* Serializes the two vb2 queues belonging to this context. */
+ 	struct mutex q_lock;
+ 	struct v4l2_fh fh;
++	struct v4l2_ctrl_handler ctrl_handler;
+ 	struct meson_venc_q_data q_data[MESON_VENC_QUEUE_COUNT];
+ 	struct meson_venc_workspace workspace;
++	u32 gop_size;
++	u32 i_qp;
++	u32 p_qp;
++	u32 frame_count;
++	u32 frame_number;
++	u32 pic_order_cnt_lsb;
++	u32 idr_pic_id;
++	u8 recon_index;
++	u8 reference_index;
+ 	bool streaming_output;
+ 	bool streaming_capture;
+ 	bool owns_hw;
+ 	bool aborting;
++	bool force_keyframe;
+ };
+ 
+ static u32 meson_venc_read(struct meson_venc_dev *venc, u32 reg)
+@@ -337,11 +355,11 @@ static void meson_venc_program_mfdin(struct meson_venc_ctx *ctx)
+ 			 3 << 12 | 2 << 15 | 1 << 18);
+ }
+ 
+-static void meson_venc_protocol_init(struct meson_venc_ctx *ctx)
++static void meson_venc_protocol_init(struct meson_venc_ctx *ctx, bool idr)
+ {
+ 	struct meson_venc_dev *venc = ctx->venc;
+ 	struct meson_venc_q_data *out;
+-	u32 qp = MESON_VENC_CQP;
++	u32 qp = idr ? ctx->i_qp : ctx->p_qp;
+ 	u32 chroma_qp = meson_venc_chroma_qp(qp);
+ 	u32 quant;
+ 	unsigned int i;
+@@ -354,16 +372,20 @@ static void meson_venc_protocol_init(struct meson_venc_ctx *ctx)
+ 	meson_venc_write(venc, HCODEC_ASSIST_AMR1_INT0, 0x15);
+ 	meson_venc_write(venc, HCODEC_ASSIST_AMR1_INT1, 0x08);
+ 	meson_venc_write(venc, HCODEC_ASSIST_AMR1_INT3, 0x14);
+-	meson_venc_write(venc, HCODEC_HENC_SCRATCH_5, 0);
+-	meson_venc_write(venc, HCODEC_HENC_SCRATCH_6, 0);
+-	meson_venc_write(venc, HCODEC_HENC_SCRATCH_7, 0);
++	meson_venc_write(venc, HCODEC_HENC_SCRATCH_5, ctx->idr_pic_id);
++	meson_venc_write(venc, HCODEC_HENC_SCRATCH_6,
++			 idr ? 0 : ctx->frame_number);
++	meson_venc_write(venc, HCODEC_HENC_SCRATCH_7,
++			 idr ? 0 : ctx->pic_order_cnt_lsb);
+ 	meson_venc_write(venc, HCODEC_HENC_SCRATCH_8, 4);
+ 	meson_venc_write(venc, HCODEC_HENC_SCRATCH_9, 4);
+ 	meson_venc_write(venc, HCODEC_HENC_SCRATCH_A, 0);
+ 	meson_venc_write(venc, HCODEC_HENC_SCRATCH_B, qp);
+-	meson_venc_write(venc, HCODEC_HENC_SCRATCH_D, 0x9);
++	meson_venc_write(venc, HCODEC_HENC_SCRATCH_D,
++			 idr ? 0x9 : U32_MAX);
+ 	meson_venc_write(venc, HCODEC_HENC_SCRATCH_E, 12);
+ 	meson_venc_write(venc, HCODEC_HENC_SCRATCH_F, 0);
++	meson_venc_write(venc, HCODEC_HENC_SCRATCH_K, 0x8410);
+ 	meson_venc_write(venc, HCODEC_HENC_SCRATCH_L, 0);
+ 
+ 	meson_venc_write(venc, HCODEC_HDEC_MC_OMEM_AUTO,
+@@ -603,13 +625,13 @@ static void meson_venc_workspace_program(struct meson_venc_ctx *ctx)
+ 	meson_venc_write(venc, HCODEC_HENC_SCRATCH_J, 16 << 16 | 9);
+ 
+ 	meson_venc_write(venc, HCODEC_REC_CANVAS_ADDR,
+-			 ws->recon_canvas[0]);
++			 ws->recon_canvas[ctx->recon_index]);
+ 	meson_venc_write(venc, HCODEC_DBKR_CANVAS_ADDR,
+-			 ws->recon_canvas[0]);
++			 ws->recon_canvas[ctx->recon_index]);
+ 	meson_venc_write(venc, HCODEC_DBKW_CANVAS_ADDR,
+-			 ws->recon_canvas[0]);
++			 ws->recon_canvas[ctx->recon_index]);
+ 	meson_venc_write(venc, HCODEC_ANC0_CANVAS_ADDR,
+-			 ws->recon_canvas[1]);
++			 ws->recon_canvas[ctx->reference_index]);
+ 	meson_venc_write(venc, HCODEC_VLC_HCMD_CONFIG, 0);
+ }
+ 
+@@ -891,7 +913,7 @@ static int meson_venc_hw_prepare(struct meson_venc_ctx *ctx)
+ static int meson_venc_prepare_command(struct meson_venc_ctx *ctx,
+ 				      struct vb2_v4l2_buffer *src,
+ 				      struct vb2_v4l2_buffer *dst,
+-				      size_t dst_offset)
++				      size_t dst_offset, bool idr)
+ {
+ 	struct meson_venc_dev *venc = ctx->venc;
+ 	int ret;
+@@ -907,7 +929,7 @@ static int meson_venc_prepare_command(struct meson_venc_ctx *ctx,
+ 		return ret;
+ 
+ 	meson_venc_program_mfdin(ctx);
+-	meson_venc_protocol_init(ctx);
++	meson_venc_protocol_init(ctx, idr);
+ 	dma_wmb();
+ 	meson_venc_write(venc, HCODEC_HENC_SCRATCH_0,
+ 			 MESON_VENC_CMD_IDLE);
+@@ -983,6 +1005,24 @@ static int meson_venc_clear_capture(struct vb2_v4l2_buffer *dst,
+ 	return ret;
+ }
+ 
++static void meson_venc_advance_reference(struct meson_venc_ctx *ctx, bool idr)
++{
++	u8 index = ctx->recon_index;
++
++	ctx->recon_index = ctx->reference_index;
++	ctx->reference_index = index;
++	if (idr) {
++		ctx->idr_pic_id = (ctx->idr_pic_id + 1) & 0xffff;
++		ctx->frame_number = 1;
++		ctx->pic_order_cnt_lsb = 2;
++	} else {
++		ctx->frame_number = (ctx->frame_number + 1) & 0xf;
++		ctx->pic_order_cnt_lsb =
++			(ctx->pic_order_cnt_lsb + 2) & 0xf;
++	}
++	ctx->frame_count++;
++}
++
+ static int meson_venc_encode_idr(struct meson_venc_ctx *ctx,
+ 				 struct vb2_v4l2_buffer *src,
+ 				 struct vb2_v4l2_buffer *dst,
+@@ -996,7 +1036,7 @@ static int meson_venc_encode_idr(struct meson_venc_ctx *ctx,
+ 	int ret;
+ 
+ 	/* Emit SPS and PPS into the beginning of this capture buffer. */
+-	ret = meson_venc_prepare_command(ctx, src, dst, 0);
++	ret = meson_venc_prepare_command(ctx, src, dst, 0, true);
+ 	if (ret)
+ 		return ret;
+ 	ret = meson_venc_command(ctx, MESON_VENC_CMD_SEQUENCE,
+@@ -1020,7 +1060,7 @@ static int meson_venc_encode_idr(struct meson_venc_ctx *ctx,
+ 	 * resume at the next hardware-supported write-pointer boundary. Annex-B
+ 	 * permits zero padding between NAL units, so clear the alignment gap.
+ 	 */
+-	ret = meson_venc_prepare_command(ctx, src, dst, header_span);
++	ret = meson_venc_prepare_command(ctx, src, dst, header_span, true);
+ 	if (ret)
+ 		return ret;
+ 	ret = meson_venc_command(ctx, MESON_VENC_CMD_IDR,
+@@ -1039,6 +1079,40 @@ static int meson_venc_encode_idr(struct meson_venc_ctx *ctx,
+ 		return ret;
+ 
+ 	*payload = header_span + frame;
++	meson_venc_advance_reference(ctx, true);
++	return 0;
++}
++
++static int meson_venc_encode_p(struct meson_venc_ctx *ctx,
++			       struct vb2_v4l2_buffer *src,
++			       struct vb2_v4l2_buffer *dst,
++			       size_t *payload)
++{
++	struct meson_venc_dev *venc = ctx->venc;
++	size_t dst_size = vb2_plane_size(&dst->vb2_buf, 0);
++	u32 frame;
++	int ret;
++
++	ret = meson_venc_prepare_command(ctx, src, dst, 0, false);
++	if (ret)
++		return ret;
++	/* The GXL full microcode reports IDR_DONE for both frame commands.
++	 * The requested command and resulting NAL type distinguish the frame.
++	 */
++	ret = meson_venc_command(ctx, MESON_VENC_CMD_NON_IDR,
++				 MESON_VENC_STATUS_IDR_DONE);
++	if (ret)
++		return ret;
++
++	frame = meson_venc_read(venc, HCODEC_VLC_TOTAL_BYTES);
++	if (!frame || frame > dst_size) {
++		dev_err(venc->dev, "invalid P-frame size %u (buffer %zu)\n",
++			frame, dst_size);
++		return -EOVERFLOW;
++	}
++
++	*payload = frame;
++	meson_venc_advance_reference(ctx, false);
+ 	return 0;
+ }
+ 
+@@ -1109,6 +1183,76 @@ static void meson_venc_set_default_formats(struct meson_venc_ctx *ctx)
+ 	cap->sizeimage = meson_venc_coded_size(cap->width, cap->height);
+ }
+ 
++static int meson_venc_s_ctrl(struct v4l2_ctrl *ctrl)
++{
++	struct meson_venc_ctx *ctx =
++		container_of(ctrl->handler, struct meson_venc_ctx, ctrl_handler);
++
++	switch (ctrl->id) {
++	case V4L2_CID_MPEG_VIDEO_GOP_SIZE:
++		WRITE_ONCE(ctx->gop_size, ctrl->val);
++		break;
++	case V4L2_CID_MPEG_VIDEO_H264_I_FRAME_QP:
++		WRITE_ONCE(ctx->i_qp, ctrl->val);
++		break;
++	case V4L2_CID_MPEG_VIDEO_H264_P_FRAME_QP:
++		WRITE_ONCE(ctx->p_qp, ctrl->val);
++		break;
++	case V4L2_CID_MPEG_VIDEO_FORCE_KEY_FRAME:
++		WRITE_ONCE(ctx->force_keyframe, true);
++		break;
++	default:
++		return -EINVAL;
++	}
++
++	return 0;
++}
++
++static const struct v4l2_ctrl_ops meson_venc_ctrl_ops = {
++	.s_ctrl = meson_venc_s_ctrl,
++};
++
++static int meson_venc_ctrls_init(struct meson_venc_ctx *ctx)
++{
++	struct v4l2_ctrl_handler *handler = &ctx->ctrl_handler;
++
++	v4l2_ctrl_handler_init(handler, 10);
++	v4l2_ctrl_new_std(handler, NULL, V4L2_CID_MIN_BUFFERS_FOR_OUTPUT,
++			  1, 1, 1, 1);
++	v4l2_ctrl_new_std(handler, NULL, V4L2_CID_MPEG_VIDEO_B_FRAMES,
++			  0, 0, 1, 0);
++	v4l2_ctrl_new_std(handler, &meson_venc_ctrl_ops,
++			  V4L2_CID_MPEG_VIDEO_GOP_SIZE, 1,
++			  MESON_VENC_MAX_GOP, 1, MESON_VENC_DEFAULT_GOP);
++	v4l2_ctrl_new_std(handler, &meson_venc_ctrl_ops,
++			  V4L2_CID_MPEG_VIDEO_H264_I_FRAME_QP,
++			  0, 51, 1, MESON_VENC_CQP);
++	v4l2_ctrl_new_std(handler, &meson_venc_ctrl_ops,
++			  V4L2_CID_MPEG_VIDEO_H264_P_FRAME_QP,
++			  0, 51, 1, MESON_VENC_CQP);
++	v4l2_ctrl_new_std(handler, &meson_venc_ctrl_ops,
++			  V4L2_CID_MPEG_VIDEO_FORCE_KEY_FRAME, 0, 0, 0, 0);
++	v4l2_ctrl_new_std_menu(handler, NULL,
++			       V4L2_CID_MPEG_VIDEO_H264_PROFILE,
++			       V4L2_MPEG_VIDEO_H264_PROFILE_BASELINE, 0,
++			       V4L2_MPEG_VIDEO_H264_PROFILE_BASELINE);
++	v4l2_ctrl_new_std_menu(handler, NULL,
++			       V4L2_CID_MPEG_VIDEO_H264_LEVEL,
++			       V4L2_MPEG_VIDEO_H264_LEVEL_4_0,
++			       ~BIT_ULL(V4L2_MPEG_VIDEO_H264_LEVEL_4_0),
++			       V4L2_MPEG_VIDEO_H264_LEVEL_4_0);
++	v4l2_ctrl_new_std_menu(handler, NULL,
++			       V4L2_CID_MPEG_VIDEO_HEADER_MODE,
++			       V4L2_MPEG_VIDEO_HEADER_MODE_JOINED_WITH_1ST_FRAME,
++			       BIT_ULL(V4L2_MPEG_VIDEO_HEADER_MODE_SEPARATE),
++			       V4L2_MPEG_VIDEO_HEADER_MODE_JOINED_WITH_1ST_FRAME);
++	if (handler->error)
++		return handler->error;
++
++	ctx->fh.ctrl_handler = handler;
++	return v4l2_ctrl_handler_setup(handler);
++}
++
+ static int meson_venc_querycap(struct file *file, void *priv,
+ 			       struct v4l2_capability *cap)
+ {
+@@ -1251,6 +1395,15 @@ static int meson_venc_s_fmt(struct file *file, void *priv,
+ 	return 0;
+ }
+ 
++static int meson_venc_subscribe_event(struct v4l2_fh *fh,
++				      const struct v4l2_event_subscription *sub)
++{
++	if (sub->type == V4L2_EVENT_EOS)
++		return v4l2_event_subscribe(fh, sub, 0, NULL);
++
++	return v4l2_ctrl_subscribe_event(fh, sub);
++}
++
+ static const struct v4l2_ioctl_ops meson_venc_ioctl_ops = {
+ 	.vidioc_querycap = meson_venc_querycap,
+ 	.vidioc_enum_fmt_vid_out = meson_venc_enum_fmt,
+@@ -1271,7 +1424,9 @@ static const struct v4l2_ioctl_ops meson_venc_ioctl_ops = {
+ 	.vidioc_expbuf = v4l2_m2m_ioctl_expbuf,
+ 	.vidioc_streamon = v4l2_m2m_ioctl_streamon,
+ 	.vidioc_streamoff = v4l2_m2m_ioctl_streamoff,
+-	.vidioc_subscribe_event = v4l2_ctrl_subscribe_event,
++	.vidioc_try_encoder_cmd = v4l2_m2m_ioctl_try_encoder_cmd,
++	.vidioc_encoder_cmd = v4l2_m2m_ioctl_encoder_cmd,
++	.vidioc_subscribe_event = meson_venc_subscribe_event,
+ 	.vidioc_unsubscribe_event = v4l2_event_unsubscribe,
+ };
+ 
+@@ -1334,6 +1489,16 @@ static void meson_venc_buf_queue(struct vb2_buffer *vb)
+ 	v4l2_m2m_buf_queue(ctx->fh.m2m_ctx, to_vb2_v4l2_buffer(vb));
+ }
+ 
++static void meson_venc_reset_stream_state(struct meson_venc_ctx *ctx)
++{
++	ctx->frame_count = 0;
++	ctx->frame_number = 0;
++	ctx->pic_order_cnt_lsb = 0;
++	ctx->idr_pic_id = 0;
++	ctx->recon_index = 0;
++	ctx->reference_index = 1;
++}
++
+ static int meson_venc_start_streaming(struct vb2_queue *vq,
+ 				      unsigned int count)
+ {
+@@ -1355,6 +1520,7 @@ static int meson_venc_start_streaming(struct vb2_queue *vq,
+ 			return -EBUSY;
+ 		}
+ 		ctx->owns_hw = true;
++		meson_venc_reset_stream_state(ctx);
+ 
+ 		ret = meson_venc_workspace_alloc(ctx);
+ 		if (!ret)
+@@ -1461,6 +1627,7 @@ static void meson_venc_device_run(void *priv)
+ 	struct vb2_v4l2_buffer *src;
+ 	struct vb2_v4l2_buffer *dst;
+ 	size_t payload = 0;
++	bool keyframe;
+ 	int ret;
+ 
+ 	src = v4l2_m2m_src_buf_remove(ctx->fh.m2m_ctx);
+@@ -1480,8 +1647,16 @@ static void meson_venc_device_run(void *priv)
+ 	dst->sequence = cap->sequence++;
+ 	dst->vb2_buf.timestamp = src->vb2_buf.timestamp;
+ 	WRITE_ONCE(ctx->aborting, false);
+-	ret = meson_venc_encode_idr(ctx, src, dst, &payload);
++	keyframe = !ctx->frame_count || READ_ONCE(ctx->force_keyframe) ||
++		   !(ctx->frame_count % READ_ONCE(ctx->gop_size));
++	if (keyframe) {
++		WRITE_ONCE(ctx->force_keyframe, false);
++		ret = meson_venc_encode_idr(ctx, src, dst, &payload);
++	} else {
++		ret = meson_venc_encode_p(ctx, src, dst, &payload);
++	}
+ 	if (ret) {
++		WRITE_ONCE(ctx->force_keyframe, true);
+ 		meson_venc_write(ctx->venc, HCODEC_ASSIST_MBOX2_MASK, 0);
+ 		meson_venc_write(ctx->venc, HCODEC_MPSR, 0);
+ 		meson_venc_reset(ctx->venc);
+@@ -1490,7 +1665,10 @@ static void meson_venc_device_run(void *priv)
+ 		v4l2_m2m_buf_done(dst, VB2_BUF_STATE_ERROR);
+ 	} else {
+ 		vb2_set_plane_payload(&dst->vb2_buf, 0, payload);
+-		dst->flags |= V4L2_BUF_FLAG_KEYFRAME;
++		dst->flags &= ~(V4L2_BUF_FLAG_KEYFRAME |
++				V4L2_BUF_FLAG_PFRAME | V4L2_BUF_FLAG_BFRAME);
++		dst->flags |= keyframe ? V4L2_BUF_FLAG_KEYFRAME :
++			      V4L2_BUF_FLAG_PFRAME;
+ 		v4l2_m2m_buf_done(src, VB2_BUF_STATE_DONE);
+ 		v4l2_m2m_buf_done(dst, VB2_BUF_STATE_DONE);
+ 	}
+@@ -1526,12 +1704,22 @@ static int meson_venc_open(struct file *file)
+ 
+ 	v4l2_fh_init(&ctx->fh, video_devdata(file));
+ 	file->private_data = &ctx->fh;
++	ret = meson_venc_ctrls_init(ctx);
++	if (ret) {
++		v4l2_ctrl_handler_free(&ctx->ctrl_handler);
++		v4l2_fh_exit(&ctx->fh);
++		mutex_destroy(&ctx->q_lock);
++		kfree(ctx);
++		return ret;
++	}
+ 
+ 	ctx->fh.m2m_ctx = v4l2_m2m_ctx_init(venc->m2m_dev, ctx,
+ 					    meson_venc_queue_init);
+ 	if (IS_ERR(ctx->fh.m2m_ctx)) {
+ 		ret = PTR_ERR(ctx->fh.m2m_ctx);
++		v4l2_ctrl_handler_free(&ctx->ctrl_handler);
+ 		v4l2_fh_exit(&ctx->fh);
++		mutex_destroy(&ctx->q_lock);
+ 		kfree(ctx);
+ 		return ret;
+ 	}
+@@ -1546,6 +1734,7 @@ static int meson_venc_release(struct file *file)
+ 
+ 	v4l2_fh_del(&ctx->fh);
+ 	v4l2_m2m_ctx_release(ctx->fh.m2m_ctx);
++	v4l2_ctrl_handler_free(&ctx->ctrl_handler);
+ 	v4l2_fh_exit(&ctx->fh);
+ 	mutex_destroy(&ctx->q_lock);
+ 	kfree(ctx);
+@@ -1602,22 +1791,40 @@ static int meson_venc_probe(struct platform_device *pdev)
+ 	if (ret)
+ 		goto err_mutex;
+ 
++	venc->mdev.dev = &pdev->dev;
++	strscpy(venc->mdev.model, "Amlogic Meson H.264 Encoder",
++		sizeof(venc->mdev.model));
++	strscpy(venc->mdev.bus_info, "platform:meson-venc",
++		sizeof(venc->mdev.bus_info));
++	media_device_init(&venc->mdev);
++	venc->v4l2_dev.mdev = &venc->mdev;
++
+ 	venc->m2m_dev = v4l2_m2m_init(&meson_venc_m2m_ops);
+ 	if (IS_ERR(venc->m2m_dev)) {
+ 		ret = PTR_ERR(venc->m2m_dev);
+-		goto err_v4l2;
++		goto err_media;
+ 	}
+ 
+ 	venc->vdev = meson_venc_videodev;
+ 	venc->vdev.v4l2_dev = &venc->v4l2_dev;
+ 	venc->vdev.lock = &venc->dev_lock;
+ 	venc->vdev.dev_parent = &pdev->dev;
++	venc->vdev.entity.function = MEDIA_ENT_F_PROC_VIDEO_ENCODER;
+ 	video_set_drvdata(&venc->vdev, venc);
+ 
+ 	ret = video_register_device(&venc->vdev, VFL_TYPE_VIDEO, -1);
+ 	if (ret)
+ 		goto err_m2m;
+ 
++	ret = v4l2_m2m_register_media_controller(venc->m2m_dev, &venc->vdev,
++						 MEDIA_ENT_F_PROC_VIDEO_ENCODER);
++	if (ret)
++		goto err_video;
++
++	ret = media_device_register(&venc->mdev);
++	if (ret)
++		goto err_m2m_mc;
++
+ 	platform_set_drvdata(pdev, venc);
+ 	dev_info(&pdev->dev,
+ 		 "registered %s with fixed-CQP GXL H.264 backend and IRQ %d\n",
+@@ -1625,9 +1832,14 @@ static int meson_venc_probe(struct platform_device *pdev)
+ 
+ 	return 0;
+ 
++err_m2m_mc:
++	v4l2_m2m_unregister_media_controller(venc->m2m_dev);
++err_video:
++	video_unregister_device(&venc->vdev);
+ err_m2m:
+ 	v4l2_m2m_release(venc->m2m_dev);
+-err_v4l2:
++err_media:
++	media_device_cleanup(&venc->mdev);
+ 	v4l2_device_unregister(&venc->v4l2_dev);
+ err_mutex:
+ 	mutex_destroy(&venc->dev_lock);
+@@ -1638,6 +1850,9 @@ static void meson_venc_remove(struct platform_device *pdev)
+ {
+ 	struct meson_venc_dev *venc = platform_get_drvdata(pdev);
+ 
++	media_device_unregister(&venc->mdev);
++	v4l2_m2m_unregister_media_controller(venc->m2m_dev);
++	media_device_cleanup(&venc->mdev);
+ 	video_unregister_device(&venc->vdev);
+ 	v4l2_m2m_release(venc->m2m_dev);
+ 	v4l2_device_unregister(&venc->v4l2_dev);
+-- 
+2.47.3
+

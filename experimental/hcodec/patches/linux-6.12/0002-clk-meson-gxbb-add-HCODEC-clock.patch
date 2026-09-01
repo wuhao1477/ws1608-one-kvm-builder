@@ -1,0 +1,119 @@
+From 2aa681e2639d6d6845e49daab09f4a5324bdf2ff Mon Sep 17 00:00:00 2001
+From: Meson Codec <meson-codec@localhost>
+Date: Sun, 23 Aug 2026 10:29:00 +0800
+Subject: [PATCH 2/2] clk: meson: gxbb: add HCODEC clock
+
+Model the HCODEC clock mux, divider and gate in the upper half of
+HHI_VDEC_CLK_CNTL.
+
+Register the clock for both GXBB and GXL variants so GXL/GXM H.264 encoder
+drivers can use the common clock API.
+
+Signed-off-by: Meson Codec <meson-codec@localhost>
+---
+ drivers/clk/meson/gxbb.c | 62 ++++++++++++++++++++++++++++++++++++++++
+ 1 file changed, 62 insertions(+)
+
+diff --git a/drivers/clk/meson/gxbb.c b/drivers/clk/meson/gxbb.c
+index 0c16a13..a99c33b 100644
+--- a/drivers/clk/meson/gxbb.c
++++ b/drivers/clk/meson/gxbb.c
+@@ -2615,6 +2615,56 @@ static struct clk_regmap gxbb_vdec_1 = {
+ 	},
+ };
+ 
++static struct clk_regmap gxbb_vdec_hcodec_sel = {
++	.data = &(struct clk_regmap_mux_data){
++		.offset = HHI_VDEC_CLK_CNTL,
++		.mask = 0x3,
++		.shift = 25,
++		.flags = CLK_MUX_ROUND_CLOSEST,
++	},
++	.hw.init = &(struct clk_init_data){
++		.name = "vdec_hcodec_sel",
++		.ops = &clk_regmap_mux_ops,
++		.parent_hws = gxbb_vdec_parent_hws,
++		.num_parents = ARRAY_SIZE(gxbb_vdec_parent_hws),
++		.flags = CLK_SET_RATE_PARENT,
++	},
++};
++
++static struct clk_regmap gxbb_vdec_hcodec_div = {
++	.data = &(struct clk_regmap_div_data){
++		.offset = HHI_VDEC_CLK_CNTL,
++		.shift = 16,
++		.width = 7,
++		.flags = CLK_DIVIDER_ROUND_CLOSEST,
++	},
++	.hw.init = &(struct clk_init_data){
++		.name = "vdec_hcodec_div",
++		.ops = &clk_regmap_divider_ops,
++		.parent_hws = (const struct clk_hw *[]) {
++			&gxbb_vdec_hcodec_sel.hw
++		},
++		.num_parents = 1,
++		.flags = CLK_SET_RATE_PARENT,
++	},
++};
++
++static struct clk_regmap gxbb_vdec_hcodec = {
++	.data = &(struct clk_regmap_gate_data){
++		.offset = HHI_VDEC_CLK_CNTL,
++		.bit_idx = 24,
++	},
++	.hw.init = &(struct clk_init_data) {
++		.name = "vdec_hcodec",
++		.ops = &clk_regmap_gate_ops,
++		.parent_hws = (const struct clk_hw *[]) {
++			&gxbb_vdec_hcodec_div.hw
++		},
++		.num_parents = 1,
++		.flags = CLK_SET_RATE_PARENT,
++	},
++};
++
+ static struct clk_regmap gxbb_vdec_hevc_sel = {
+ 	.data = &(struct clk_regmap_mux_data){
+ 		.offset = HHI_VDEC2_CLK_CNTL,
+@@ -2986,6 +3036,9 @@ static struct clk_hw *gxbb_hw_clks[] = {
+ 	[CLKID_VDEC_1_SEL]	    = &gxbb_vdec_1_sel.hw,
+ 	[CLKID_VDEC_1_DIV]	    = &gxbb_vdec_1_div.hw,
+ 	[CLKID_VDEC_1]		    = &gxbb_vdec_1.hw,
++	[CLKID_VDEC_HCODEC_SEL]    = &gxbb_vdec_hcodec_sel.hw,
++	[CLKID_VDEC_HCODEC_DIV]    = &gxbb_vdec_hcodec_div.hw,
++	[CLKID_VDEC_HCODEC]	    = &gxbb_vdec_hcodec.hw,
+ 	[CLKID_VDEC_HEVC_SEL]	    = &gxbb_vdec_hevc_sel.hw,
+ 	[CLKID_VDEC_HEVC_DIV]	    = &gxbb_vdec_hevc_div.hw,
+ 	[CLKID_VDEC_HEVC]	    = &gxbb_vdec_hevc.hw,
+@@ -3193,6 +3246,9 @@ static struct clk_hw *gxl_hw_clks[] = {
+ 	[CLKID_VDEC_1_SEL]	    = &gxbb_vdec_1_sel.hw,
+ 	[CLKID_VDEC_1_DIV]	    = &gxbb_vdec_1_div.hw,
+ 	[CLKID_VDEC_1]		    = &gxbb_vdec_1.hw,
++	[CLKID_VDEC_HCODEC_SEL]    = &gxbb_vdec_hcodec_sel.hw,
++	[CLKID_VDEC_HCODEC_DIV]    = &gxbb_vdec_hcodec_div.hw,
++	[CLKID_VDEC_HCODEC]	    = &gxbb_vdec_hcodec.hw,
+ 	[CLKID_VDEC_HEVC_SEL]	    = &gxbb_vdec_hevc_sel.hw,
+ 	[CLKID_VDEC_HEVC_DIV]	    = &gxbb_vdec_hevc_div.hw,
+ 	[CLKID_VDEC_HEVC]	    = &gxbb_vdec_hevc.hw,
+@@ -3394,6 +3450,9 @@ static struct clk_regmap *const gxbb_clk_regmaps[] = {
+ 	&gxbb_vdec_1_sel,
+ 	&gxbb_vdec_1_div,
+ 	&gxbb_vdec_1,
++	&gxbb_vdec_hcodec_sel,
++	&gxbb_vdec_hcodec_div,
++	&gxbb_vdec_hcodec,
+ 	&gxbb_vdec_hevc_sel,
+ 	&gxbb_vdec_hevc_div,
+ 	&gxbb_vdec_hevc,
+@@ -3588,6 +3647,9 @@ static struct clk_regmap *const gxl_clk_regmaps[] = {
+ 	&gxbb_vdec_1_sel,
+ 	&gxbb_vdec_1_div,
+ 	&gxbb_vdec_1,
++	&gxbb_vdec_hcodec_sel,
++	&gxbb_vdec_hcodec_div,
++	&gxbb_vdec_hcodec,
+ 	&gxbb_vdec_hevc_sel,
+ 	&gxbb_vdec_hevc_div,
+ 	&gxbb_vdec_hevc,
+-- 
+2.47.3

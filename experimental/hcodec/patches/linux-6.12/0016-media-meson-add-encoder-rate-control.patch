@@ -1,0 +1,490 @@
+From 00abb30a914a87b88328e5b46308cd39c1b40005 Mon Sep 17 00:00:00 2001
+From: Codex <codex@openai.com>
+Date: Sun, 23 Aug 2026 23:19:17 +0800
+Subject: [PATCH] media: meson: add encoder rate control
+
+Expose standard bitrate-mode, bitrate and peak-bitrate controls.
+
+Add frame-level rate control and output time-per-frame interfaces.
+
+Use completed access-unit sizes to adjust the next frame QP.
+
+Append a standard filler-data NAL when CBR undershoots its budget.
+
+Initialize the GXL full-microcode macroblock QP tables per command.
+
+The zeroed table previously forced QP 0 despite the slice header.
+
+Preserve QP across runtime bitrate changes at the next frame boundary.
+
+Signed-off-by: Codex <codex@openai.com>
+---
+ .../platform/amlogic/meson-venc/meson-venc.c  | 326 +++++++++++++++++-
+ 1 file changed, 322 insertions(+), 4 deletions(-)
+
+diff --git a/drivers/media/platform/amlogic/meson-venc/meson-venc.c b/drivers/media/platform/amlogic/meson-venc/meson-venc.c
+index 1d154ed..b3f6929 100644
+--- a/drivers/media/platform/amlogic/meson-venc/meson-venc.c
++++ b/drivers/media/platform/amlogic/meson-venc/meson-venc.c
+@@ -4,7 +4,7 @@
+  *
+  * Copyright (C) 2026 Meson Codec contributors
+  *
+- * The fixed-CQP GXL backend is derived from the register protocol used by
++ * The GXL backend is derived from the register protocol used by
+  * Amlogic's GPL-2.0 Linux 4.9 encoder driver.  The userspace ABI is V4L2 M2M;
+  * no vendor character-device ABI is retained.
+  */
+@@ -57,6 +57,9 @@
+ #define MESON_VENC_ASSIST_SIZE	(768 * SZ_1K)
+ #define MESON_VENC_DUMP_BYTES_PER_MB 80U
+ #define MESON_VENC_CBR_SIZE	SZ_8K
++#define MESON_VENC_CBR_TABLE_SIZE	SZ_2K
++#define MESON_VENC_CBR_TABLE_COUNT	16U
++#define MESON_VENC_CBR_TABLE_STRIDE	128U
+ #define MESON_VENC_WORK_ALIGN	SZ_64K
+ #define MESON_VENC_CANVAS_COUNT	8
+ #define MESON_VENC_INPUT_CANVAS_Y 6
+@@ -64,6 +67,13 @@
+ #define MESON_VENC_CQP		26U
+ #define MESON_VENC_DEFAULT_GOP	30U
+ #define MESON_VENC_MAX_GOP	300U
++#define MESON_VENC_DEFAULT_FPS	30U
++#define MESON_VENC_MAX_FPS	120U
++#define MESON_VENC_DEFAULT_BITRATE	4000000U
++#define MESON_VENC_DEFAULT_PEAK_BITRATE	8000000U
++#define MESON_VENC_MIN_BITRATE	64000U
++#define MESON_VENC_MAX_BITRATE	50000000U
++#define MESON_VENC_FILLER_MIN_SIZE	6U
+ #define MESON_VENC_CMD_TIMEOUT_MS	2000U
+ 
+ #define AO_RTI_GEN_PWR_SLEEP0	0xe8
+@@ -263,6 +273,16 @@ struct meson_venc_ctx {
+ 	u32 gop_size;
+ 	u32 i_qp;
+ 	u32 p_qp;
++	u32 bitrate_mode;
++	u32 bitrate;
++	u32 peak_bitrate;
++	u32 frame_rate;
++	u32 active_qp;
++	u32 rc_qp;
++	s64 rc_bucket_bits;
++	u64 rc_actual_bits;
++	u64 rc_frames;
++	atomic_t rc_reset_pending;
+ 	u32 frame_count;
+ 	u32 frame_number;
+ 	u32 pic_order_cnt_lsb;
+@@ -274,6 +294,7 @@ struct meson_venc_ctx {
+ 	bool owns_hw;
+ 	bool aborting;
+ 	bool force_keyframe;
++	bool frame_rc_enable;
+ };
+ 
+ static u32 meson_venc_read(struct meson_venc_dev *venc, u32 reg)
+@@ -329,6 +350,39 @@ static void meson_venc_program_quant_table(struct meson_venc_dev *venc,
+ 		meson_venc_write(venc, HCODEC_QUANT_TABLE_DATA, packed);
+ }
+ 
++static void meson_venc_program_cbr_tables(struct meson_venc_ctx *ctx, u32 qp)
++{
++	struct meson_venc_workspace *ws = &ctx->workspace;
++	u8 *base = ws->vaddr + ws->cbr_offset;
++	unsigned int i;
++
++	/* The full GXL microcode selects macroblock QP and mode costs from
++	 * sixteen 128-byte tables. Leaving this workspace zeroed silently forces
++	 * QP 0 even when the slice header advertises another value.
++	 */
++	for (i = 0; i < MESON_VENC_CBR_TABLE_COUNT; i++) {
++		u8 *table = base + i * MESON_VENC_CBR_TABLE_STRIDE;
++		u16 *weight = (u16 *)(table + 96);
++		u16 step = i >= 13 ? i - 13 : 0;
++
++		memset(table, qp, 96);
++		weight[0] = 0x655 + step * 0x380;
++		weight[1] = 0x560;
++		weight[2] = 0x520 + step * 0x200;
++		weight[3] = 0x675 + step * 0x480;
++		weight[4] = 0x570 + step * 0x200;
++		weight[5] = 0x530 + step * 0x280;
++		weight[6] = 0x55aa;
++		weight[7] = 0xaa55;
++	}
++
++	/* No previous-frame spatial weighting is available to the V4L2 backend
++	 * yet. 0xffff matches the BSP's uniform first-frame budget.
++	 */
++	memset(base + MESON_VENC_CBR_TABLE_SIZE, 0xff,
++	       MESON_VENC_CBR_SIZE - MESON_VENC_CBR_TABLE_SIZE);
++}
++
+ static void meson_venc_program_mfdin(struct meson_venc_ctx *ctx)
+ {
+ 	struct meson_venc_workspace *ws = &ctx->workspace;
+@@ -368,12 +422,13 @@ static void meson_venc_protocol_init(struct meson_venc_ctx *ctx, bool idr)
+ {
+ 	struct meson_venc_dev *venc = ctx->venc;
+ 	struct meson_venc_q_data *out;
+-	u32 qp = idr ? ctx->i_qp : ctx->p_qp;
++	u32 qp = ctx->active_qp;
+ 	u32 chroma_qp = meson_venc_chroma_qp(qp);
+ 	u32 quant;
+ 	unsigned int i;
+ 
+ 	out = &ctx->q_data[MESON_VENC_QUEUE_OUTPUT];
++	meson_venc_program_cbr_tables(ctx, qp);
+ 
+ 	meson_venc_write(venc, HCODEC_VLC_TOTAL_BYTES, 0);
+ 	meson_venc_write(venc, HCODEC_VLC_CONFIG, 0x07);
+@@ -1037,6 +1092,185 @@ static int meson_venc_clear_capture(struct vb2_v4l2_buffer *dst,
+ 	return ret;
+ }
+ 
++static int meson_venc_append_filler(struct vb2_v4l2_buffer *dst,
++				    size_t offset, size_t length)
++{
++	struct dma_buf *dbuf = dst->vb2_buf.planes[0].dbuf;
++	u8 *data;
++	int ret = 0;
++
++	if (length < MESON_VENC_FILLER_MIN_SIZE)
++		return -EINVAL;
++
++	if (dbuf) {
++		ret = dma_buf_begin_cpu_access(dbuf, DMA_BIDIRECTIONAL);
++		if (ret)
++			return ret;
++	}
++
++	data = vb2_plane_vaddr(&dst->vb2_buf, 0);
++	if (!data) {
++		ret = -EFAULT;
++	} else {
++		data += offset;
++		data[0] = 0;
++		data[1] = 0;
++		data[2] = 0;
++		data[3] = 1;
++		data[4] = 12;
++		memset(data + 5, 0xff, length - 6);
++		data[length - 1] = 0x80;
++	}
++
++	if (dbuf) {
++		int end_ret;
++
++		end_ret = dma_buf_end_cpu_access(dbuf, DMA_BIDIRECTIONAL);
++		if (!ret)
++			ret = end_ret;
++	}
++
++	return ret;
++}
++
++static bool meson_venc_rate_control_active(struct meson_venc_ctx *ctx)
++{
++	return READ_ONCE(ctx->frame_rc_enable) &&
++	       READ_ONCE(ctx->bitrate_mode) !=
++		V4L2_MPEG_VIDEO_BITRATE_MODE_CQ;
++}
++
++static u64 meson_venc_target_bits(struct meson_venc_ctx *ctx, u32 bitrate)
++{
++	u32 frame_rate = max_t(u32, READ_ONCE(ctx->frame_rate), 1);
++
++	return max_t(u64, div_u64(bitrate, frame_rate), 8);
++}
++
++static void meson_venc_rate_control_reset(struct meson_venc_ctx *ctx)
++{
++	ctx->rc_bucket_bits = 0;
++	ctx->rc_actual_bits = 0;
++	ctx->rc_frames = 0;
++}
++
++static void meson_venc_rate_control_begin(struct meson_venc_ctx *ctx,
++					  bool keyframe)
++{
++	if (atomic_xchg(&ctx->rc_reset_pending, 0))
++		meson_venc_rate_control_reset(ctx);
++
++	if (meson_venc_rate_control_active(ctx))
++		ctx->active_qp = ctx->rc_qp;
++	else
++		ctx->active_qp = keyframe ? READ_ONCE(ctx->i_qp) :
++			READ_ONCE(ctx->p_qp);
++}
++
++static void meson_venc_rc_update_qp(struct meson_venc_ctx *ctx, u64 real_bits,
++				    u64 target_bits, u64 peak_bits,
++				    bool keyframe)
++{
++	s64 bucket_limit;
++	s64 error;
++	u64 qp_target = keyframe ? target_bits * 4 : target_bits;
++	int delta = 0;
++
++	error = (s64)real_bits - (s64)target_bits;
++	bucket_limit = (s64)target_bits *
++		max_t(u32, READ_ONCE(ctx->frame_rate), 1) * 2;
++	ctx->rc_bucket_bits += error;
++	if (ctx->rc_bucket_bits > bucket_limit)
++		ctx->rc_bucket_bits = bucket_limit;
++	else if (ctx->rc_bucket_bits < -bucket_limit)
++		ctx->rc_bucket_bits = -bucket_limit;
++
++	if (real_bits > qp_target * 8)
++		delta = 8;
++	else if (real_bits > qp_target * 4)
++		delta = 6;
++	else if (real_bits > qp_target * 2)
++		delta = 4;
++	else if (real_bits * 4 > qp_target * 5)
++		delta = 2;
++	else if (real_bits * 8 > qp_target * 9)
++		delta = 1;
++	else if (real_bits * 8 < qp_target)
++		delta = -6;
++	else if (real_bits * 4 < qp_target)
++		delta = -4;
++	else if (real_bits * 2 < qp_target)
++		delta = -2;
++	else if (real_bits * 8 < qp_target * 7)
++		delta = -1;
++
++	if (real_bits > peak_bits && delta < 4)
++		delta = 4;
++	if (ctx->rc_bucket_bits > (s64)target_bits * 8)
++		delta++;
++	else if (ctx->rc_bucket_bits < -(s64)target_bits * 8)
++		delta--;
++
++	ctx->rc_qp = clamp_t(int, (int)ctx->rc_qp + delta, 0, 51);
++}
++
++static int meson_venc_rate_control_finish(struct meson_venc_ctx *ctx,
++					  struct vb2_v4l2_buffer *dst,
++					  size_t *payload, bool keyframe)
++{
++	u32 bitrate;
++	u32 peak_bitrate;
++	u32 mode;
++	u64 target_bits;
++	u64 peak_bits;
++	u64 real_bits;
++	u64 desired_bits;
++	u64 projected_bits;
++	u64 deficit_bits;
++	size_t dst_size;
++	size_t filler = 0;
++	int ret;
++
++	if (!meson_venc_rate_control_active(ctx))
++		return 0;
++
++	bitrate = READ_ONCE(ctx->bitrate);
++	peak_bitrate = max_t(u32, READ_ONCE(ctx->peak_bitrate), bitrate);
++	mode = READ_ONCE(ctx->bitrate_mode);
++	target_bits = meson_venc_target_bits(ctx, bitrate);
++	peak_bits = meson_venc_target_bits(ctx, peak_bitrate);
++	real_bits = (u64)*payload * 8;
++
++	meson_venc_rc_update_qp(ctx, real_bits, target_bits, peak_bits,
++				keyframe);
++
++	if (mode == V4L2_MPEG_VIDEO_BITRATE_MODE_CBR) {
++		desired_bits = div_u64((ctx->rc_frames + 1) *
++					(u64)bitrate,
++					max_t(u32, READ_ONCE(ctx->frame_rate), 1));
++		projected_bits = ctx->rc_actual_bits + real_bits;
++		if (desired_bits > projected_bits) {
++			deficit_bits = desired_bits - projected_bits;
++			filler = div_u64(deficit_bits + 4, 8);
++			dst_size = vb2_plane_size(&dst->vb2_buf, 0);
++			filler = min_t(size_t, filler, dst_size - *payload);
++			if (filler < MESON_VENC_FILLER_MIN_SIZE)
++				filler = 0;
++		}
++	}
++
++	if (filler) {
++		ret = meson_venc_append_filler(dst, *payload, filler);
++		if (ret)
++			return ret;
++		*payload += filler;
++	}
++
++	ctx->rc_actual_bits += (u64)*payload * 8;
++	ctx->rc_frames++;
++	return 0;
++}
++
+ static void meson_venc_advance_reference(struct meson_venc_ctx *ctx, bool idr)
+ {
+ 	u8 index = ctx->recon_index;
+@@ -1236,9 +1470,28 @@ static int meson_venc_s_ctrl(struct v4l2_ctrl *ctrl)
+ 		break;
+ 	case V4L2_CID_MPEG_VIDEO_H264_I_FRAME_QP:
+ 		WRITE_ONCE(ctx->i_qp, ctrl->val);
++		atomic_set(&ctx->rc_reset_pending, 1);
+ 		break;
+ 	case V4L2_CID_MPEG_VIDEO_H264_P_FRAME_QP:
+ 		WRITE_ONCE(ctx->p_qp, ctrl->val);
++		WRITE_ONCE(ctx->rc_qp, ctrl->val);
++		atomic_set(&ctx->rc_reset_pending, 1);
++		break;
++	case V4L2_CID_MPEG_VIDEO_BITRATE_MODE:
++		WRITE_ONCE(ctx->bitrate_mode, ctrl->val);
++		atomic_set(&ctx->rc_reset_pending, 1);
++		break;
++	case V4L2_CID_MPEG_VIDEO_BITRATE:
++		WRITE_ONCE(ctx->bitrate, ctrl->val);
++		atomic_set(&ctx->rc_reset_pending, 1);
++		break;
++	case V4L2_CID_MPEG_VIDEO_BITRATE_PEAK:
++		WRITE_ONCE(ctx->peak_bitrate, ctrl->val);
++		atomic_set(&ctx->rc_reset_pending, 1);
++		break;
++	case V4L2_CID_MPEG_VIDEO_FRAME_RC_ENABLE:
++		WRITE_ONCE(ctx->frame_rc_enable, ctrl->val);
++		atomic_set(&ctx->rc_reset_pending, 1);
+ 		break;
+ 	case V4L2_CID_MPEG_VIDEO_FORCE_KEY_FRAME:
+ 		WRITE_ONCE(ctx->force_keyframe, true);
+@@ -1258,7 +1511,7 @@ static int meson_venc_ctrls_init(struct meson_venc_ctx *ctx)
+ {
+ 	struct v4l2_ctrl_handler *handler = &ctx->ctrl_handler;
+ 
+-	v4l2_ctrl_handler_init(handler, 10);
++	v4l2_ctrl_handler_init(handler, 13);
+ 	v4l2_ctrl_new_std(handler, NULL, V4L2_CID_MIN_BUFFERS_FOR_OUTPUT,
+ 			  1, 1, 1, 1);
+ 	v4l2_ctrl_new_std(handler, NULL, V4L2_CID_MPEG_VIDEO_B_FRAMES,
+@@ -1272,6 +1525,21 @@ static int meson_venc_ctrls_init(struct meson_venc_ctx *ctx)
+ 	v4l2_ctrl_new_std(handler, &meson_venc_ctrl_ops,
+ 			  V4L2_CID_MPEG_VIDEO_H264_P_FRAME_QP,
+ 			  0, 51, 1, MESON_VENC_CQP);
++	v4l2_ctrl_new_std_menu(handler, &meson_venc_ctrl_ops,
++			       V4L2_CID_MPEG_VIDEO_BITRATE_MODE,
++			       V4L2_MPEG_VIDEO_BITRATE_MODE_CQ, 0,
++			       V4L2_MPEG_VIDEO_BITRATE_MODE_CQ);
++	v4l2_ctrl_new_std(handler, &meson_venc_ctrl_ops,
++			  V4L2_CID_MPEG_VIDEO_BITRATE,
++			  MESON_VENC_MIN_BITRATE, MESON_VENC_MAX_BITRATE,
++			  1000, MESON_VENC_DEFAULT_BITRATE);
++	v4l2_ctrl_new_std(handler, &meson_venc_ctrl_ops,
++			  V4L2_CID_MPEG_VIDEO_BITRATE_PEAK,
++			  MESON_VENC_MIN_BITRATE, MESON_VENC_MAX_BITRATE,
++			  1000, MESON_VENC_DEFAULT_PEAK_BITRATE);
++	v4l2_ctrl_new_std(handler, &meson_venc_ctrl_ops,
++			  V4L2_CID_MPEG_VIDEO_FRAME_RC_ENABLE,
++			  0, 1, 1, 1);
+ 	v4l2_ctrl_new_std(handler, &meson_venc_ctrl_ops,
+ 			  V4L2_CID_MPEG_VIDEO_FORCE_KEY_FRAME, 0, 0, 0, 0);
+ 	v4l2_ctrl_new_std_menu(handler, NULL,
+@@ -1452,6 +1720,46 @@ static int meson_venc_s_fmt(struct file *file, void *priv,
+ 	return 0;
+ }
+ 
++static int meson_venc_g_parm(struct file *file, void *priv,
++			     struct v4l2_streamparm *parm)
++{
++	struct meson_venc_ctx *ctx = fh_to_ctx(priv);
++	struct v4l2_outputparm *output = &parm->parm.output;
++
++	if (parm->type != V4L2_BUF_TYPE_VIDEO_OUTPUT_MPLANE)
++		return -EINVAL;
++
++	memset(output, 0, sizeof(*output));
++	output->capability = V4L2_CAP_TIMEPERFRAME;
++	output->timeperframe.numerator = 1;
++	output->timeperframe.denominator = READ_ONCE(ctx->frame_rate);
++	return 0;
++}
++
++static int meson_venc_s_parm(struct file *file, void *priv,
++			     struct v4l2_streamparm *parm)
++{
++	struct meson_venc_ctx *ctx = fh_to_ctx(priv);
++	struct v4l2_fract *timeperframe =
++		&parm->parm.output.timeperframe;
++	u32 frame_rate;
++
++	if (parm->type != V4L2_BUF_TYPE_VIDEO_OUTPUT_MPLANE)
++		return -EINVAL;
++
++	if (!timeperframe->numerator || !timeperframe->denominator) {
++		frame_rate = MESON_VENC_DEFAULT_FPS;
++	} else {
++		frame_rate = DIV_ROUND_CLOSEST(timeperframe->denominator,
++					       timeperframe->numerator);
++		frame_rate = clamp_t(u32, frame_rate, 1, MESON_VENC_MAX_FPS);
++	}
++	WRITE_ONCE(ctx->frame_rate, frame_rate);
++	atomic_set(&ctx->rc_reset_pending, 1);
++
++	return meson_venc_g_parm(file, priv, parm);
++}
++
+ static int meson_venc_subscribe_event(struct v4l2_fh *fh,
+ 				      const struct v4l2_event_subscription *sub)
+ {
+@@ -1472,6 +1780,8 @@ static const struct v4l2_ioctl_ops meson_venc_ioctl_ops = {
+ 	.vidioc_g_fmt_vid_cap_mplane = meson_venc_g_fmt,
+ 	.vidioc_s_fmt_vid_out_mplane = meson_venc_s_fmt,
+ 	.vidioc_s_fmt_vid_cap_mplane = meson_venc_s_fmt,
++	.vidioc_g_parm = meson_venc_g_parm,
++	.vidioc_s_parm = meson_venc_s_parm,
+ 	.vidioc_reqbufs = v4l2_m2m_ioctl_reqbufs,
+ 	.vidioc_querybuf = v4l2_m2m_ioctl_querybuf,
+ 	.vidioc_prepare_buf = v4l2_m2m_ioctl_prepare_buf,
+@@ -1554,6 +1864,9 @@ static void meson_venc_reset_stream_state(struct meson_venc_ctx *ctx)
+ 	ctx->idr_pic_id = 0;
+ 	ctx->recon_index = 0;
+ 	ctx->reference_index = 1;
++	ctx->rc_qp = clamp_t(u32, READ_ONCE(ctx->p_qp), 0, 51);
++	meson_venc_rate_control_reset(ctx);
++	atomic_set(&ctx->rc_reset_pending, 0);
+ }
+ 
+ static int meson_venc_start_streaming(struct vb2_queue *vq,
+@@ -1707,12 +2020,15 @@ static void meson_venc_device_run(void *priv)
+ 	WRITE_ONCE(ctx->aborting, false);
+ 	keyframe = !ctx->frame_count || READ_ONCE(ctx->force_keyframe) ||
+ 		   !(ctx->frame_count % READ_ONCE(ctx->gop_size));
++	meson_venc_rate_control_begin(ctx, keyframe);
+ 	if (keyframe) {
+ 		WRITE_ONCE(ctx->force_keyframe, false);
+ 		ret = meson_venc_encode_idr(ctx, src, dst, &payload);
+ 	} else {
+ 		ret = meson_venc_encode_p(ctx, src, dst, &payload);
+ 	}
++	if (!ret)
++		ret = meson_venc_rate_control_finish(ctx, dst, &payload, keyframe);
+ 	if (ret) {
+ 		WRITE_ONCE(ctx->force_keyframe, true);
+ 		meson_venc_power_off(ctx->venc);
+@@ -1761,6 +2077,8 @@ static int meson_venc_open(struct file *file)
+ 
+ 	ctx->venc = venc;
+ 	mutex_init(&ctx->q_lock);
++	ctx->frame_rate = MESON_VENC_DEFAULT_FPS;
++	atomic_set(&ctx->rc_reset_pending, 0);
+ 	meson_venc_set_default_formats(ctx);
+ 
+ 	v4l2_fh_init(&ctx->fh, video_devdata(file));
+@@ -1888,7 +2206,7 @@ static int meson_venc_probe(struct platform_device *pdev)
+ 
+ 	platform_set_drvdata(pdev, venc);
+ 	dev_info(&pdev->dev,
+-		 "registered %s with fixed-CQP GXL H.264 backend and IRQ %d\n",
++		 "registered %s with GXL H.264 CQP/CBR/VBR backend and IRQ %d\n",
+ 		 video_device_node_name(&venc->vdev), core->irq);
+ 
+ 	return 0;
+-- 
+2.47.3
+

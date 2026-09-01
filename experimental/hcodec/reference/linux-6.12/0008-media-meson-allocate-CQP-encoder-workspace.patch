@@ -1,0 +1,297 @@
+From d5d8eb5dec620957fd1763f036526ab0e53bfe3b Mon Sep 17 00:00:00 2001
+From: Meson Codec <meson-codec@localhost>
+Date: Sun, 23 Aug 2026 16:22:48 +0800
+Subject: [PATCH] media: meson: allocate CQP encoder workspace
+
+Allocate DCT, two reconstructed NV12 frames and the firmware assistant
+area from parent-owned coherent DMA. Size the layout from the negotiated
+OUTPUT dimensions while preserving the vendor 1080p hardware offsets.
+
+Allocate six Canvas IDs for the two reconstructed Y/UV/V descriptors and
+program the static DCT, assistant, deblock and reference registers after
+firmware upload. Do not carry forward private bitstream, scaler or CBR
+buffers.
+
+Signed-off-by: Meson Codec <meson-codec@localhost>
+---
+ .../platform/amlogic/meson-venc/meson-venc.c  | 197 +++++++++++++++++-
+ 1 file changed, 193 insertions(+), 4 deletions(-)
+
+diff --git a/drivers/media/platform/amlogic/meson-venc/meson-venc.c b/drivers/media/platform/amlogic/meson-venc/meson-venc.c
+index 504c0ab..1084c6d 100644
+--- a/drivers/media/platform/amlogic/meson-venc/meson-venc.c
++++ b/drivers/media/platform/amlogic/meson-venc/meson-venc.c
+@@ -26,6 +26,7 @@
+ #include <linux/sizes.h>
+ #include <linux/slab.h>
+ #include <linux/regmap.h>
++#include <linux/soc/amlogic/meson-canvas.h>
+ 
+ #include <media/v4l2-ctrls.h>
+ #include <media/v4l2-device.h>
+@@ -50,6 +51,9 @@
+ #define MESON_VENC_MC_DMA_COUNT	0x1000
+ #define MESON_VENC_CLOCK_RATE	500000000UL
+ #define MESON_VENC_DMA_TIMEOUT_US 1000000
++#define MESON_VENC_ASSIST_SIZE	(768 * SZ_1K)
++#define MESON_VENC_WORK_ALIGN	SZ_64K
++#define MESON_VENC_CANVAS_COUNT	6
+ 
+ #define AO_RTI_GEN_PWR_SLEEP0	0xe8
+ #define AO_RTI_GEN_PWR_ISO0	0xec
+@@ -70,6 +74,17 @@
+ #define HCODEC_IMEM_DMA_ADR		0x4d04
+ #define HCODEC_IMEM_DMA_COUNT		0x4d08
+ #define HCODEC_HENC_SCRATCH_0		0x6b00
++#define HCODEC_HENC_SCRATCH_1		0x6b04
++#define HCODEC_ANC0_CANVAS_ADDR		0x6640
++#define HCODEC_DBKR_CANVAS_ADDR		0x66c0
++#define HCODEC_DBKW_CANVAS_ADDR		0x66c4
++#define HCODEC_REC_CANVAS_ADDR		0x66c8
++#define HCODEC_VLC_HCMD_CONFIG		0x7550
++#define HCODEC_QDCT_MB_START_PTR	0x7c40
++#define HCODEC_QDCT_MB_END_PTR		0x7c44
++#define HCODEC_QDCT_MB_WR_PTR		0x7c48
++#define HCODEC_QDCT_MB_RD_PTR		0x7c4c
++#define HCODEC_QDCT_MB_BUFF		0x7c5c
+ 
+ /* DOS top-level registers. */
+ #define DOS_GEN_CTRL0			0xfc08
+@@ -91,6 +106,22 @@ struct meson_venc_q_data {
+ 	u32 sequence;
+ };
+ 
++struct meson_venc_workspace {
++	void *vaddr;
++	dma_addr_t dma;
++	size_t size;
++	size_t dct_offset;
++	size_t dct_size;
++	size_t recon_offset[2];
++	size_t recon_size;
++	size_t assist_offset;
++	u32 stride;
++	u32 height;
++	u8 canvas[MESON_VENC_CANVAS_COUNT];
++	u8 canvas_count;
++	u32 recon_canvas[2];
++};
++
+ struct meson_venc_dev {
+ 	struct device *dev;
+ 	const struct meson_codec_child_data *core;
+@@ -110,6 +141,7 @@ struct meson_venc_ctx {
+ 	struct mutex q_lock;
+ 	struct v4l2_fh fh;
+ 	struct meson_venc_q_data q_data[MESON_VENC_QUEUE_COUNT];
++	struct meson_venc_workspace workspace;
+ 	bool streaming_output;
+ 	bool streaming_capture;
+ 	bool owns_hw;
+@@ -125,6 +157,153 @@ static void meson_venc_write(struct meson_venc_dev *venc, u32 reg, u32 val)
+ 	writel_relaxed(val, venc->core->dos_base + reg);
+ }
+ 
++static void meson_venc_workspace_free(struct meson_venc_ctx *ctx)
++{
++	struct meson_venc_workspace *ws = &ctx->workspace;
++	unsigned int i;
++
++	for (i = 0; i < ws->canvas_count; i++)
++		meson_canvas_free(ctx->venc->core->canvas, ws->canvas[i]);
++
++	if (ws->vaddr)
++		dma_free_coherent(ctx->venc->core->dma_dev, ws->size,
++				  ws->vaddr, ws->dma);
++
++	memset(ws, 0, sizeof(*ws));
++}
++
++static int meson_venc_workspace_config_canvas(struct meson_venc_ctx *ctx)
++{
++	struct meson_venc_workspace *ws = &ctx->workspace;
++	struct meson_canvas *canvas = ctx->venc->core->canvas;
++	unsigned int frame;
++	unsigned int plane;
++	int ret;
++
++	for (plane = 0; plane < MESON_VENC_CANVAS_COUNT; plane++) {
++		ret = meson_canvas_alloc(canvas, &ws->canvas[plane]);
++		if (ret)
++			return ret;
++		ws->canvas_count++;
++	}
++
++	for (frame = 0; frame < ARRAY_SIZE(ws->recon_offset); frame++) {
++		dma_addr_t y = ws->dma + ws->recon_offset[frame];
++		dma_addr_t uv = y + (size_t)ws->stride * ws->height;
++		u8 *id = &ws->canvas[frame * 3];
++
++		ret = meson_canvas_config(canvas, id[0], lower_32_bits(y),
++					  ws->stride, ws->height,
++					  MESON_CANVAS_WRAP_NONE,
++					  MESON_CANVAS_BLKMODE_LINEAR, 0);
++		if (ret)
++			return ret;
++
++		ret = meson_canvas_config(canvas, id[1], lower_32_bits(uv),
++					  ws->stride, ws->height / 2,
++					  MESON_CANVAS_WRAP_NONE,
++					  MESON_CANVAS_BLKMODE_LINEAR, 0);
++		if (ret)
++			return ret;
++
++		ret = meson_canvas_config(canvas, id[2], lower_32_bits(uv),
++					  ws->stride, ws->height / 2,
++					  MESON_CANVAS_WRAP_NONE,
++					  MESON_CANVAS_BLKMODE_LINEAR, 0);
++		if (ret)
++			return ret;
++
++		ws->recon_canvas[frame] = id[0] | (id[1] << 8) |
++					  (id[2] << 16);
++	}
++
++	return 0;
++}
++
++static int meson_venc_workspace_alloc(struct meson_venc_ctx *ctx)
++{
++	struct meson_venc_q_data *out;
++	struct meson_venc_workspace *ws = &ctx->workspace;
++	size_t pixels;
++	int ret;
++
++	if (ws->vaddr)
++		return 0;
++
++	out = &ctx->q_data[MESON_VENC_QUEUE_OUTPUT];
++	ws->stride = ALIGN(out->width, MESON_VENC_STRIDE_ALIGN);
++	ws->height = ALIGN(out->height, 16);
++	pixels = (size_t)ws->stride * ws->height;
++
++	ws->dct_offset = 0;
++	ws->dct_size = ALIGN(pixels * 4, MESON_VENC_WORK_ALIGN);
++	ws->recon_offset[0] = ws->dct_size;
++	ws->recon_size = ALIGN(pixels * 3 / 2, MESON_VENC_WORK_ALIGN);
++	ws->recon_offset[1] = ws->recon_offset[0] + ws->recon_size;
++	ws->assist_offset = ALIGN(ws->recon_offset[1] + ws->recon_size +
++				  MESON_VENC_WORK_ALIGN,
++				  MESON_VENC_WORK_ALIGN);
++	ws->size = ALIGN(ws->assist_offset + MESON_VENC_ASSIST_SIZE,
++			 MESON_VENC_WORK_ALIGN);
++
++	ws->vaddr = dma_alloc_coherent(ctx->venc->core->dma_dev, ws->size,
++				       &ws->dma, GFP_KERNEL);
++	if (!ws->vaddr)
++		return -ENOMEM;
++
++	if (upper_32_bits(ws->dma) ||
++	    upper_32_bits(ws->dma + ws->size - 1)) {
++		dev_err(ctx->venc->dev,
++			"workspace DMA range exceeds 32 bits\n");
++		ret = -ERANGE;
++		goto free_workspace;
++	}
++
++	memset(ws->vaddr, 0, ws->size);
++	ret = meson_venc_workspace_config_canvas(ctx);
++	if (ret) {
++		dev_err(ctx->venc->dev, "failed to configure recon Canvas: %d\n",
++			ret);
++		goto free_workspace;
++	}
++
++	dev_dbg(ctx->venc->dev,
++		"workspace %zu bytes for %ux%u, DMA %pad\n",
++		ws->size, out->width, out->height, &ws->dma);
++
++	return 0;
++
++free_workspace:
++	meson_venc_workspace_free(ctx);
++	return ret;
++}
++
++static void meson_venc_workspace_program(struct meson_venc_ctx *ctx)
++{
++	struct meson_venc_workspace *ws = &ctx->workspace;
++	struct meson_venc_dev *venc = ctx->venc;
++	u32 dct = lower_32_bits(ws->dma + ws->dct_offset);
++	u32 assist = lower_32_bits(ws->dma + ws->assist_offset);
++
++	meson_venc_write(venc, HCODEC_QDCT_MB_START_PTR, dct);
++	meson_venc_write(venc, HCODEC_QDCT_MB_END_PTR,
++			 dct + ws->dct_size - 1);
++	meson_venc_write(venc, HCODEC_QDCT_MB_WR_PTR, dct);
++	meson_venc_write(venc, HCODEC_QDCT_MB_RD_PTR, dct);
++	meson_venc_write(venc, HCODEC_QDCT_MB_BUFF, 0);
++	meson_venc_write(venc, HCODEC_HENC_SCRATCH_1, assist);
++
++	meson_venc_write(venc, HCODEC_REC_CANVAS_ADDR,
++			 ws->recon_canvas[0]);
++	meson_venc_write(venc, HCODEC_DBKR_CANVAS_ADDR,
++			 ws->recon_canvas[0]);
++	meson_venc_write(venc, HCODEC_DBKW_CANVAS_ADDR,
++			 ws->recon_canvas[0]);
++	meson_venc_write(venc, HCODEC_ANC0_CANVAS_ADDR,
++			 ws->recon_canvas[1]);
++	meson_venc_write(venc, HCODEC_VLC_HCMD_CONFIG, 0);
++}
++
+ static void meson_venc_reset(struct meson_venc_dev *venc)
+ {
+ 	meson_venc_read(venc, DOS_SW_RESET1);
+@@ -275,8 +454,9 @@ static int meson_venc_load_firmware(struct meson_venc_dev *venc)
+ 	return ret;
+ }
+ 
+-static int meson_venc_hw_prepare(struct meson_venc_dev *venc)
++static int meson_venc_hw_prepare(struct meson_venc_ctx *ctx)
+ {
++	struct meson_venc_dev *venc = ctx->venc;
+ 	int ret;
+ 
+ 	ret = meson_venc_power_on(venc);
+@@ -284,10 +464,15 @@ static int meson_venc_hw_prepare(struct meson_venc_dev *venc)
+ 		return ret;
+ 
+ 	ret = meson_venc_load_firmware(venc);
+-	if (ret)
++	if (ret) {
+ 		meson_venc_power_off(venc);
++		return ret;
++	}
+ 
+-	return ret;
++	meson_venc_reset(venc);
++	meson_venc_workspace_program(ctx);
++
++	return 0;
+ }
+ 
+ static irqreturn_t meson_venc_irq(int irq, void *data)
+@@ -604,8 +789,11 @@ static int meson_venc_start_streaming(struct vb2_queue *vq,
+ 		}
+ 		ctx->owns_hw = true;
+ 
+-		ret = meson_venc_hw_prepare(ctx->venc);
++		ret = meson_venc_workspace_alloc(ctx);
++		if (!ret)
++			ret = meson_venc_hw_prepare(ctx);
+ 		if (ret) {
++			meson_venc_workspace_free(ctx);
+ 			ctx->owns_hw = false;
+ 			mutex_unlock(ctx->venc->core->hw_lock);
+ 			while ((vbuf = V4L2_TYPE_IS_OUTPUT(vq->type) ?
+@@ -648,6 +836,7 @@ static void meson_venc_stop_streaming(struct vb2_queue *vq)
+ 	if (ctx->owns_hw && !ctx->streaming_output &&
+ 	    !ctx->streaming_capture) {
+ 		meson_venc_power_off(ctx->venc);
++		meson_venc_workspace_free(ctx);
+ 		ctx->owns_hw = false;
+ 		mutex_unlock(ctx->venc->core->hw_lock);
+ 	}
+-- 
+2.47.3
+

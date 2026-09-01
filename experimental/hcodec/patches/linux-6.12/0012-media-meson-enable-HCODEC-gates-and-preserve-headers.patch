@@ -1,0 +1,203 @@
+From 7235e1bc000daf6a915d98cf05528e446aeef186 Mon Sep 17 00:00:00 2001
+From: Meson Codec <meson-codec@localhost>
+Date: Sun, 23 Aug 2026 19:54:35 +0800
+Subject: [PATCH] media: meson: enable HCODEC gates and preserve headers
+
+Hardware testing on GXM showed that the parent DOS bus clock alone is
+not enough to access HCODEC registers. Enable the HCODEC bits in
+DOS_GCLK_EN0 across the powered interval, while preserving gates used by
+the decoder.
+
+The bitstream write pointer is eight-byte aligned by the hardware.
+Resume IDR output at an aligned position after SPS/PPS and clear the
+Annex-B padding bytes so that the PPS is neither overwritten nor rejected
+by decoders.
+
+Signed-off-by: Meson Codec <meson-codec@localhost>
+---
+ .../platform/amlogic/meson-venc/meson-venc.c  | 70 ++++++++++++++++---
+ 1 file changed, 61 insertions(+), 9 deletions(-)
+
+diff --git a/drivers/media/platform/amlogic/meson-venc/meson-venc.c b/drivers/media/platform/amlogic/meson-venc/meson-venc.c
+index c575a18..ddcf956 100644
+--- a/drivers/media/platform/amlogic/meson-venc/meson-venc.c
++++ b/drivers/media/platform/amlogic/meson-venc/meson-venc.c
+@@ -13,6 +13,7 @@
+ #include <linux/clk.h>
+ #include <linux/completion.h>
+ #include <linux/delay.h>
++#include <linux/dma-buf.h>
+ #include <linux/dma-mapping.h>
+ #include <linux/errno.h>
+ #include <linux/firmware.h>
+@@ -72,6 +73,7 @@
+ #define HCODEC_CPU_RESET_MASK	(BIT(11) | BIT(12))
+ #define HCODEC_STOP_RESET_MASK	(HCODEC_CORE_RESET_MASK | \
+ 				 HCODEC_CPU_RESET_MASK)
++#define DOS_GCLK_EN0_HCODEC	GENMASK(26, 12)
+ 
+ /* HCODEC register window inside the parent-owned DOS mapping. */
+ #define HCODEC_ASSIST_MMC_CTRL1		0x4008
+@@ -192,6 +194,7 @@ enum meson_venc_command {
+ /* DOS top-level registers. */
+ #define DOS_GEN_CTRL0			0xfc08
+ #define DOS_SW_RESET1			0xfc1c
++#define DOS_GCLK_EN0			0xfc04
+ #define DOS_MEM_PD_HCODEC		0xfcc8
+ 
+ enum meson_venc_queue_id {
+@@ -620,6 +623,7 @@ static int meson_venc_job_program_buffers(struct meson_venc_ctx *ctx,
+ 	struct meson_venc_q_data *out;
+ 	dma_addr_t src_dma;
+ 	dma_addr_t dst_dma;
++	dma_addr_t dst_write_dma;
+ 	size_t src_y_size;
+ 	size_t src_size;
+ 	size_t dst_size;
+@@ -639,13 +643,13 @@ static int meson_venc_job_program_buffers(struct meson_venc_ctx *ctx,
+ 	    dst_offset >= dst_size)
+ 		return -EINVAL;
+ 
+-	dst_dma += dst_offset;
+-	dst_size -= dst_offset;
++	dst_write_dma = dst_dma + dst_offset;
+ 
+ 	if (upper_32_bits(src_dma) ||
+ 	    upper_32_bits(src_dma + src_size - 1) ||
+ 	    upper_32_bits(dst_dma) ||
+-	    upper_32_bits(dst_dma + dst_size - 1))
++	    upper_32_bits(dst_dma + dst_size - 1) ||
++	    upper_32_bits(dst_write_dma))
+ 		return -ERANGE;
+ 
+ 	ret = meson_canvas_config(venc->core->canvas, canvas_y,
+@@ -672,7 +676,7 @@ static int meson_venc_job_program_buffers(struct meson_venc_ctx *ctx,
+ 	meson_venc_write(venc, HCODEC_VLC_VB_END_PTR,
+ 			 lower_32_bits(dst_dma + dst_size - 1));
+ 	meson_venc_write(venc, HCODEC_VLC_VB_WR_PTR,
+-			 lower_32_bits(dst_dma));
++			 lower_32_bits(dst_write_dma));
+ 	meson_venc_write(venc, HCODEC_VLC_VB_SW_RD_PTR,
+ 			 lower_32_bits(dst_dma));
+ 	meson_venc_write(venc, HCODEC_VLC_VB_CONTROL, 1);
+@@ -730,6 +734,10 @@ static int meson_venc_power_on(struct meson_venc_dev *venc)
+ 		goto disable_dos;
+ 	}
+ 
++	val = meson_venc_read(venc, DOS_GCLK_EN0);
++	meson_venc_write(venc, DOS_GCLK_EN0,
++			 val | DOS_GCLK_EN0_HCODEC);
++
+ 	meson_venc_write(venc, DOS_MEM_PD_HCODEC, 0);
+ 	regmap_update_bits(venc->core->regmap_ao, AO_RTI_GEN_PWR_ISO0,
+ 			   HCODEC_PWR_ISO_MASK, 0);
+@@ -772,6 +780,7 @@ static int meson_venc_stop_cpu(struct meson_venc_dev *venc)
+ 
+ static void meson_venc_power_off(struct meson_venc_dev *venc)
+ {
++	u32 val;
+ 	int ret;
+ 
+ 	if (!READ_ONCE(venc->powered))
+@@ -785,6 +794,9 @@ static void meson_venc_power_off(struct meson_venc_dev *venc)
+ 	regmap_update_bits(venc->core->regmap_ao, AO_RTI_GEN_PWR_ISO0,
+ 			   HCODEC_PWR_ISO_MASK, HCODEC_PWR_ISO_MASK);
+ 	meson_venc_write(venc, DOS_MEM_PD_HCODEC, U32_MAX);
++	val = meson_venc_read(venc, DOS_GCLK_EN0);
++	meson_venc_write(venc, DOS_GCLK_EN0,
++			 val & ~DOS_GCLK_EN0_HCODEC);
+ 	clk_disable_unprepare(venc->core->hcodec_clk);
+ 	regmap_update_bits(venc->core->regmap_ao, AO_RTI_GEN_PWR_SLEEP0,
+ 			   HCODEC_PWR_SLEEP_MASK, HCODEC_PWR_SLEEP_MASK);
+@@ -938,6 +950,39 @@ static int meson_venc_command(struct meson_venc_ctx *ctx, u32 command,
+ 	return 0;
+ }
+ 
++static int meson_venc_clear_capture(struct vb2_v4l2_buffer *dst,
++				    size_t offset, size_t length)
++{
++	struct dma_buf *dbuf = dst->vb2_buf.planes[0].dbuf;
++	void *vaddr;
++	int ret = 0;
++
++	if (!length)
++		return 0;
++
++	if (dbuf) {
++		ret = dma_buf_begin_cpu_access(dbuf, DMA_BIDIRECTIONAL);
++		if (ret)
++			return ret;
++	}
++
++	vaddr = vb2_plane_vaddr(&dst->vb2_buf, 0);
++	if (!vaddr)
++		ret = -EFAULT;
++	else
++		memset(vaddr + offset, 0, length);
++
++	if (dbuf) {
++		int end_ret;
++
++		end_ret = dma_buf_end_cpu_access(dbuf, DMA_BIDIRECTIONAL);
++		if (!ret)
++			ret = end_ret;
++	}
++
++	return ret;
++}
++
+ static int meson_venc_encode_idr(struct meson_venc_ctx *ctx,
+ 				 struct vb2_v4l2_buffer *src,
+ 				 struct vb2_v4l2_buffer *dst,
+@@ -946,6 +991,7 @@ static int meson_venc_encode_idr(struct meson_venc_ctx *ctx,
+ 	struct meson_venc_dev *venc = ctx->venc;
+ 	size_t dst_size = vb2_plane_size(&dst->vb2_buf, 0);
+ 	u32 headers;
++	u32 header_span;
+ 	u32 frame;
+ 	int ret;
+ 
+@@ -968,11 +1014,13 @@ static int meson_venc_encode_idr(struct meson_venc_ctx *ctx,
+ 			headers, dst_size);
+ 		return -EOVERFLOW;
+ 	}
++	header_span = ALIGN(headers, 8);
+ 
+ 	/* The BSP resets HCODEC after PICTURE_DONE. Preserve the headers and
+-	 * point the new bitstream ring immediately after them before IDR.
++	 * resume at the next hardware-supported write-pointer boundary. Annex-B
++	 * permits zero padding between NAL units, so clear the alignment gap.
+ 	 */
+-	ret = meson_venc_prepare_command(ctx, src, dst, headers);
++	ret = meson_venc_prepare_command(ctx, src, dst, header_span);
+ 	if (ret)
+ 		return ret;
+ 	ret = meson_venc_command(ctx, MESON_VENC_CMD_IDR,
+@@ -981,13 +1029,16 @@ static int meson_venc_encode_idr(struct meson_venc_ctx *ctx,
+ 		return ret;
+ 
+ 	frame = meson_venc_read(venc, HCODEC_VLC_TOTAL_BYTES);
+-	if (!frame || frame > dst_size - headers) {
++	if (!frame || frame > dst_size - header_span) {
+ 		dev_err(venc->dev, "invalid IDR size %u (remaining %zu)\n",
+-			frame, dst_size - headers);
++			frame, dst_size - header_span);
+ 		return -EOVERFLOW;
+ 	}
++	ret = meson_venc_clear_capture(dst, headers, header_span - headers);
++	if (ret)
++		return ret;
+ 
+-	*payload = headers + frame;
++	*payload = header_span + frame;
+ 	return 0;
+ }
+ 
+@@ -1607,3 +1658,4 @@ MODULE_AUTHOR("Meson Codec contributors");
+ MODULE_LICENSE("GPL");
+ MODULE_FIRMWARE(MESON_VENC_FW_NAME);
+ MODULE_ALIAS("platform:" MESON_VENC_NAME);
++MODULE_IMPORT_NS(DMA_BUF);
+-- 
+2.47.3
+

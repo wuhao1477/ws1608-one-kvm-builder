@@ -1,0 +1,43 @@
+From 6a5d6a6d94cda8d40fc1e30c306655522f8493c2 Mon Sep 17 00:00:00 2001
+From: Meson Codec contributors <noreply@example.com>
+Date: Sun, 24 Aug 2026 00:10:00 +0800
+Subject: [PATCH 18/18] ARM: dts: amlogic: describe Meson8b HCODEC encoder
+
+Describe the standalone HCODEC resource owner used by the Meson8b V4L2
+memory-to-memory encoder. Keep it disabled in the common SoC description;
+downstream board DTS files such as OneCloud must opt in after validating that
+no other node owns the overlapping DOS range.
+
+Signed-off-by: Meson Codec contributors <noreply@example.com>
+---
+ arch/arm/boot/dts/amlogic/meson8b.dtsi | 14 ++++++++++++++
+ 1 file changed, 14 insertions(+)
+
+diff --git a/arch/arm/boot/dts/amlogic/meson8b.dtsi b/arch/arm/boot/dts/amlogic/meson8b.dtsi
+index 03c2b8c24223..dfed55e6c37b 100644
+--- a/arch/arm/boot/dts/amlogic/meson8b.dtsi
++++ b/arch/arm/boot/dts/amlogic/meson8b.dtsi
+@@ -276,6 +276,20 @@ mali: gpu@c0000 {
+ 			operating-points-v2 = <&gpu_opp_table>;
+ 			#cooling-cells = <2>; /* min followed by max */
+ 		};
++
++		venc: video-codec@50000 {
++			compatible = "amlogic,meson8b-hcodec";
++			reg = <0x50000 0x10000>;
++			reg-names = "dos";
++			interrupts = <GIC_SPI 45 IRQ_TYPE_EDGE_RISING>;
++			interrupt-names = "venc";
++			clocks = <&clkc CLKID_DOS>,
++				 <&clkc CLKID_VDEC_HCODEC>;
++			clock-names = "dos", "hcodec";
++			amlogic,ao-sysctrl = <&pmu>;
++			amlogic,canvas = <&canvas>;
++			status = "disabled";
++		};
+ 
+ 		hdmi_tx: hdmi-tx@42000 {
+ 			compatible = "amlogic,meson8b-hdmi-tx";
+ 
+-- 
+2.51.0
