@@ -127,11 +127,11 @@
 - Consumes: Tasks 1-4 的全部输出。
 - Produces: `ws1608-hcodec-armv7-run-${GITHUB_RUN_NUMBER}-${GITHUB_RUN_ATTEMPT}.tar.xz`、manifest、`SHA256SUMS` 和 14 天 artifact。
 
-- [ ] **Step 1: 写失败测试**：workflow 只有 PR/手动触发，无 schedule/repository_dispatch/tag/Release，PR/手动都跑完整构建，artifact 白名单明确。
-- [ ] **Step 2: 实现打包**：manifest 记录 kernel/DTB/module/tool/base/source/patch/compiler 摘要、`cma=128M`、硬件 false、固件不包含；使用排序、固定时间戳和 xz。
-- [ ] **Step 3: 实现验证**：检查白名单、摘要、tar/xz 往返、ARM ELF、配置差异、DT binding、签名报告、无固件二进制和无旧 AMLENC 路径。
-- [ ] **Step 4: 编写 workflow**：使用 `ubuntu-24.04`、digest-pinned Docker 和固定 Actions SHA；contract、build、artifact 下载后复验全部存在。
-- [ ] **Step 5: 验证并提交**：运行 HCODEC tests、`bash -n`、固定版本 actionlint，提交 `ci(hcodec): 增加ARMv7候选构建`。
+- [x] **Step 1: 写失败测试**：workflow 只有 PR/手动触发，无 schedule/repository_dispatch/tag/Release，PR/手动都跑完整构建，artifact 白名单明确。
+- [x] **Step 2: 实现打包**：manifest 记录 kernel/DTB/module/tool/base/source/patch/compiler 摘要、`cma=128M`、硬件 false、固件不包含；使用排序、固定时间戳和 xz。
+- [x] **Step 3: 实现验证**：检查白名单、摘要、tar/xz 往返、ARM ELF、配置差异、DT binding、签名报告、无固件二进制和无旧 AMLENC 路径。
+- [x] **Step 4: 编写 workflow**：使用 `ubuntu-24.04`、digest-pinned Docker 和固定 Actions SHA；contract、build、artifact 下载后复验全部存在。
+- [x] **Step 5: 验证并提交**：运行 HCODEC tests、`bash -n`、固定版本 actionlint，提交 `ci(hcodec): 增加ARMv7候选构建`。
 
 ---
 

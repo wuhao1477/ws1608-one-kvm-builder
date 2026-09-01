@@ -1,0 +1,83 @@
+name: HCODEC ARMv7 Candidate
+
+on:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  ARMBIAN_IMAGE: ubuntu:24.04@sha256:1e0a86e57d247923571b75e0aaf48a1449cf8c543d51fb3e07a4a7d7bfa79316
+
+jobs:
+  contract:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7
+        with:
+          persist-credentials: false
+      - run: npm test
+      - run: bash -n experimental/hcodec/scripts/*.sh
+
+  build:
+    needs: contract
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7
+        with:
+          go-version: '1.24.x'
+          cache: false
+      - name: Install build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y curl device-tree-compiler u-boot-tools kmod qemu-user-static gcc-arm-linux-gnueabihf binutils-arm-linux-gnueabihf build-essential file mtools xz-utils
+      - name: Build pinned AmlImg tool
+        run: echo "AMLIMG_BIN=$(./scripts/build-tools.sh)" >> "$GITHUB_ENV"
+      - name: Download stable base image
+        run: |
+          source config/base.env
+          curl --fail --location --retry 5 "$BASE_IMAGE_URL" -o "$RUNNER_TEMP/base.burn.img.xz"
+          printf '%s  %s\n' "$BASE_IMAGE_SHA256" "$RUNNER_TEMP/base.burn.img.xz" | sha256sum --check
+          echo "BASE_IMAGE_XZ=$RUNNER_TEMP/base.burn.img.xz" >> "$GITHUB_ENV"
+          echo "HCODEC_BASE_EVIDENCE=$GITHUB_WORKSPACE/.build/hcodec/base-evidence" >> "$GITHUB_ENV"
+      - name: Build and package candidate
+        env:
+          ALLOW_ROOT: yes
+          PRE_PREPARED_HOST: yes
+          ARMBIAN_INSIDE_DOCKERFILE_BUILD: yes
+          SKIP_LOG_ARCHIVE: yes
+          KERNEL_CONFIGURE: no
+          SHARE_LOG: no
+        run: |
+          mkdir -p out/hcodec/kernel out/hcodec/tools out/hcodec/artifact
+          experimental/hcodec/scripts/collect-base-evidence.sh collect "$HCODEC_BASE_EVIDENCE"
+          docker run --rm --platform linux/amd64 --privileged \
+            -e ALLOW_ROOT=yes -e PRE_PREPARED_HOST=yes -e ARMBIAN_INSIDE_DOCKERFILE_BUILD=yes \
+            -e SKIP_LOG_ARCHIVE=yes -e KERNEL_CONFIGURE=no -e SHARE_LOG=no \
+            -e HCODEC_BASE_EVIDENCE=/repo/.build/hcodec/base-evidence \
+            -v "$GITHUB_WORKSPACE:/repo" -w /repo "$ARMBIAN_IMAGE" bash -lc '
+              set -Eeuo pipefail
+              export DEBIAN_FRONTEND=noninteractive
+              apt-get update
+              apt-get install -y bc bison build-essential flex git kmod libssl-dev lzop rsync u-boot-tools xz-utils curl device-tree-compiler gcc-arm-linux-gnueabihf binutils-arm-linux-gnueabihf
+              /repo/experimental/hcodec/scripts/build-kernel.sh
+            '
+          experimental/hcodec/scripts/build-tools.sh out/hcodec/tools
+          experimental/hcodec/scripts/package-artifact.sh out/hcodec/kernel out/hcodec/tools out/hcodec/artifact "${GITHUB_RUN_NUMBER}" "${GITHUB_RUN_ATTEMPT}"
+          experimental/hcodec/scripts/verify-artifact.sh out/hcodec/artifact
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: hcodec-armv7-candidate
+          path: out/hcodec/artifact/*
+          if-no-files-found: error
+          retention-days: 14
+      - uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7
+        with:
+          name: hcodec-armv7-candidate
+          path: out/hcodec/downloaded
+      - name: Re-verify downloaded artifact
+        run: experimental/hcodec/scripts/verify-artifact.sh out/hcodec/downloaded
