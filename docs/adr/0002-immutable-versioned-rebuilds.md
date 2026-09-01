@@ -22,6 +22,9 @@ One-KVM Rust Deb 版本。旧流程只按 tag 判断是否更新，上游同 tag
 7. build job 和 release job 都验证 manifest、报告、xz 往返和校验和。
 8. draft/prerelease 不算成功输入，其 tag ref 仍视为已占用。
 9. 强制 dispatch 使用独立 concurrency group；普通检查保持串行，防止并发请求丢失或争用 tag。
+10. 改变内核、DTB 或固件的 HCODEC 候选只能发布为明确的 prerelease，且
+    `hardware_boot_tested=false`、`hardware_encoder_tested=false` 时不得
+    标记为稳定或覆盖稳定资产。
 
 ## 结果
 
@@ -33,3 +36,6 @@ One-KVM Rust Deb 版本。旧流程只按 tag 判断是否更新，上游同 tag
 
 该决策不改变 ADR-0001 的硬件边界。Armbian、内核、DTB 和 U-Boot 仍只
 在完成 WS1608 实机验收后更新稳定基础。
+
+[ADR-0003](0003-armbian-6.12-hcodec-route.md) 进一步规定 H.264 候选只走
+Armbian/Linux 6.12 HCODEC V4L2 M2M，并与稳定 One-KVM 自动发布身份隔离。

@@ -2,53 +2,47 @@
 
 ## 当前稳定基础
 
-当前候选构建使用：
+唯一稳定输入由 [`config/base.env`](../config/base.env) 定义：
 
 ```text
-Armbian_26.8.0-trunk.413_Onecloud_trixie_6.12.28_HDMI-consolefix.burn.img
+BASE_RELEASE_TAG=base-20260804-consolefix
+BASE_IMAGE_NAME=Armbian_26.8.0-trunk.413_Onecloud_trixie_6.12.28_HDMI-consolefix.burn.img.xz
+BASE_KERNEL=6.12.28-current-meson
 ```
 
-该镜像从 `base-20260719` 派生，只修复 `/boot/armbianEnv.txt` 的 U-Boot console 引号，并作为不可变资产保存在 `base-20260804-consolefix` Release。静态检查确认有效参数包含 `console=tty1` 与 `console=ttyAML0,115200n8`；实体 WS1608 刷写仍待验收。自动构建只修改它的 rootfs；DDR、U-Boot、bootloader、内核、DTB、resource 和其它启动文件保持不变。
+该镜像来自 Armbian 26.8 / Debian Trixie，并修复 U-Boot 文本环境中的 console
+引号。稳定系统已有实体启动、HDMI、网络、SSH、eMMC 和 One-KVM 运行证据。
+自动构建只修改 rootfs；DDR、U-Boot、bootloader、内核、DTB、resource 和
+HDMI 参数保持不变。
 
-基础包的静态验证不代表仓库生成的每个 One-KVM Release 已完成实体刷写。当前成品的验证边界见 [hardware-validation.md](hardware-validation.md)。
+## HCODEC 候选来源
 
-## 历史参考镜像
+硬件编码继续使用 Armbian/Linux 6.12 系统，不建立旧内核用户空间。候选必须
+固定以下输入：
 
-### Armbian Jammy 6.1.9
+- 与稳定基础匹配的 Linux 6.12 ARMv7 源码与 `.config`；
+- 选定的 `meson-venc` 驱动基线及完整摘要；
+- Meson8b 时钟、HHI、Canvas、DOS、IRQ 和 OneCloud DT 改动；
+- 可追溯的 `meson/venc/meson8b_h264.bin` 来源和 SHA-256；
+- 由同一源码构建的 ARMv7 V4L2 测试工具。
 
-本次工作曾比较过以下本地镜像：
+研究资料包含 18 个补丁和一个更新的最终驱动，两者不是同一修订。实施时只能
+选择一个一致基线；不能把 AArch64 6.12.98 预编译模块复制进当前镜像。
 
-```text
-Armbian_23.02.0-trunk_Onecloud_jammy_edge_6.1.9.burn.img
-```
+HCODEC 候选改变内核或 DTB，因此必须使用独立 prerelease 身份，并重新完成
+启动、HDMI、网络、eMMC、OTG、视频和编码验收。
 
-仅按文件名可以确定，它属于较早的 Armbian 23.02 trunk、Ubuntu Jammy 用户空间和 6.1.9 edge 内核；当前稳定基础是 Armbian 26.8 trunk、Debian Trixie 用户空间和 6.12.28 current-meson 内核。该旧包没有作为当前仓库的固定输入，也没有记录与当前 Release 等价的摘要和完整硬件验收，因此只保留为恢复或对比参考，不能在维护时直接替换 `config/base.env`。
+## 已废弃历史
 
-### 官方 One-KVM Bookworm 5.9.0-rc7
+Linux 3.10.107、Debian Bullseye、私有 AMLENC 字符设备、双内核和 kexec
+实验未达到可靠启动门槛，已由 [ADR-0003](adr/0003-armbian-6.12-hcodec-route.md)
+废弃。历史 tag 和提交保留审计用途，但不再作为构建输入。
 
-上游曾发布以下 OneCloud 直刷包：
+## 其他参考镜像
 
-[One-KVM_24.5.0_Onecloud_bookworm_5.9.0-rc7.burn.img.xz](https://github.com/mofeng-git/One-KVM/releases/download/v260329/One-KVM_24.5.0_Onecloud_bookworm_5.9.0-rc7.burn.img.xz)
+- Armbian Jammy 6.1.9：只作恢复和差异参考，未进入当前固定输入。
+- 官方 One-KVM Bookworm 5.9.0-rc7：只用于理解 OneCloud 封装，不能拆取
+  bootloader、DTB 或 rootfs 混入当前基础。
 
-它是官方预封装参考包，文件名表明其用户空间为 Debian Bookworm、内核为 5.9.0-rc7。它适合用于理解 OneCloud 的直刷封装方式，但不是当前仓库的基础：本仓库保留已经在目标 WS1608 上验证过的 Trixie 6.12.28 HDMI 启动链，并从上游最新稳定 Release 安装唯一的 `armhf.deb`。
-
-不要从官方参考包中单独复制 bootloader、DTB、rootfs 或 VERIFY 文件到当前基础。这些组件必须作为一个组合完成实体启动、HDMI、网络和 OTG 验收。
-
-## 选型结论
-
-当前唯一稳定方案是“固定已验证的 Trixie 6.12.28 HDMI-test 基础，只自动更新 One-KVM armhf 包”。它满足三个约束：
-
-- 可由 Amlogic USB Burning Tool 直接刷写。
-- 保留已验证的 WS1608 启动链和 HDMI 行为。
-- 无上游更新时每周只检查，不进行大镜像构建。
-
-每个成品使用 `ws1608-one-kvm-<Deb版本>-<上游tag>-bRRRAAA` 的不可变身份；同一版本的重复构建不会覆盖旧 Release。
-
-Jammy 6.1.9 和官方 Bookworm 5.9.0-rc7 均为历史参考，不进入稳定流水线。新的 Armbian、内核、DTB 或 U-Boot 只能先进入候选测试，按 [hardware-validation.md](hardware-validation.md) 完成实体验收后，再创建新的不可变基础 Release。
-
-## 来源与事实边界
-
-- 当前基础文件名、URL 和摘要以 [`config/base.env`](../config/base.env) 为准。
-- 当前 One-KVM 版本和输入摘要以对应 Release 的 `manifest.json` 为准。
-- 旧本地镜像路径属于维护者环境，不写入公开仓库；文档只保留不含用户名的文件名。
-- 没有实机记录的镜像不得标注为“确定能启动”。
+任何新的 Armbian、内核、DTB 或 U-Boot 组合都先作为候选完成实体测试，再
+通过新 ADR 决定是否提升。仅有文件名、CI 或其他 SoC 结果不能证明可用。
