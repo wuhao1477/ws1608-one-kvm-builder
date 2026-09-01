@@ -133,11 +133,15 @@ CMA 不足，`cma=128M` 是候选配置而不是已验证定值。
 | `experimental/amlenc/docs/bringup.md` | 重写为 Armbian 6.12 HCODEC 实机验证指南 |
 | `experimental/amlenc/docs/licensing.md` | 改为 Linux 6.12 GPL 驱动、固件和工具许可证边界 |
 
-新增文档：
+已创建文档：
 
 - `docs/adr/0003-armbian-6.12-hcodec-route.md`：正式记录路线变更；
 - `docs/superpowers/plans/2026-09-01-armbian-hcodec-documentation-plan.md`：
   批量文档迁移实施计划。
+
+第三方代码、预编译二进制和固件的发布边界分别记录在 `THIRD_PARTY.md` 与
+`experimental/amlenc/docs/licensing.md`。研究压缩包本身保持未跟踪，不进入
+公开提交。
 
 ## 文档验收标准
 

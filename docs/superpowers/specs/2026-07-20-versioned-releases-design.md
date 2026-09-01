@@ -1,5 +1,9 @@
 # Versioned One-KVM Releases Design
 
+> 历史状态：该设计继续适用于稳定 One-KVM rootfs 自动发布。硬件编码采用
+> Armbian/Linux 6.12 HCODEC V4L2 M2M，见
+> [ADR-0003](../../adr/0003-armbian-6.12-hcodec-route.md)。
+
 ## Goal
 
 Build and publish a WS1608 burn image only when the latest stable One-KVM

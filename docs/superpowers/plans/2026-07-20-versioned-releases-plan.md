@@ -1,5 +1,9 @@
 # Versioned One-KVM Releases Implementation Plan
 
+> 历史状态：本计划已经用于稳定 One-KVM rootfs 自动更新与不可变 Release。
+> 它不定义硬件编码实现；当前 HCODEC 路线由
+> [ADR-0003](../../adr/0003-armbian-6.12-hcodec-route.md) 管理。
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Publish immutable, repeatable WS1608 builds whose identity visibly includes the One-KVM Rust version, while skipping unchanged weekly inputs and blocking every unverified Release.
