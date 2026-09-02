@@ -15,12 +15,13 @@ test('ships the ordered 18 reference patches plus Meson8b correction and diagnos
   const files = fs.readdirSync(patchDir).filter((file) => file.endsWith('.patch')).sort();
 
   assert.equal(reference.length, 18);
-  assert.equal(files.length, 20);
+  assert.equal(files.length, 21);
   assert.deepEqual(files.slice(0, 18), reference);
   assert.match(files[0], /^0001-/);
   assert.match(files[17], /^0018-/);
   assert.equal(files[18], '0019-meson8b-hhi-and-dt-fix.patch');
   assert.equal(files[19], '0020-media-meson-add-HCODEC-runtime-diagnostics.patch');
+  assert.equal(files[20], '0021-media-meson-add-V4L2-queue-diagnostics.patch');
 });
 
 test('runtime diagnostics patch traces the first encode command path', () => {
@@ -39,6 +40,26 @@ test('runtime diagnostics patch traces the first encode command path', () => {
     'meson_venc_command',
     'meson_venc_irq',
     'meson_venc_device_run',
+  ]) {
+    assert.match(patch, new RegExp(value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')));
+  }
+});
+
+test('V4L2 queue diagnostics patch traces the ioctl path before first hardware command', () => {
+  const patch = fs.readFileSync(
+    `${patchDir}/0021-media-meson-add-V4L2-queue-diagnostics.patch`,
+    'utf8',
+  );
+
+  for (const value of [
+    'meson_venc_queue_setup',
+    'meson_venc_buf_prepare',
+    'meson_venc_buf_queue',
+    'meson_venc_start_streaming',
+    'queue_setup:',
+    'buf_prepare:',
+    'buf_queue:',
+    'start_streaming:',
   ]) {
     assert.match(patch, new RegExp(value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')));
   }

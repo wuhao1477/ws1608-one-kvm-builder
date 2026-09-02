@@ -1,0 +1,130 @@
+From 6fe4376b01dbefcc0eb0818c0e73e61a6d52b720 Mon Sep 17 00:00:00 2001
+From: Codex <codex@openai.com>
+Date: Thu, 3 Sep 2026 19:22:00 +0800
+Subject: [PATCH 21/21] media: meson: add V4L2 queue diagnostics
+
+The first Meson8b encode smoke test can lock the board without reaching the
+existing device_run or command breadcrumbs. Extend the default-on runtime
+diagnostics to the vb2/V4L2 queue boundary so the next hardware run can identify
+whether the last visible transition is buffer allocation, buffer queueing,
+STREAMON, workspace allocation, or HCODEC hardware preparation.
+
+This only logs queue state and start_streaming progress. It does not change
+buffer ownership, queue ordering, hardware setup, or the encoder protocol.
+
+Signed-off-by: Codex <codex@openai.com>
+---
+ .../media/platform/amlogic/meson-venc/meson-venc.c | 51 +++++++++++++++++++---
+ 1 file changed, 48 insertions(+), 3 deletions(-)
+
+diff --git a/drivers/media/platform/amlogic/meson-venc/meson-venc.c b/drivers/media/platform/amlogic/meson-venc/meson-venc.c
+index b856e55..e923f7a 100644
+--- a/drivers/media/platform/amlogic/meson-venc/meson-venc.c
++++ b/drivers/media/platform/amlogic/meson-venc/meson-venc.c
+@@ -2082,6 +2082,12 @@ static int meson_venc_queue_setup(struct vb2_queue *vq,
+ 	if (!q_data)
+ 		return -EINVAL;
+ 
++	if (meson_venc_trace_runtime_enabled)
++		dev_info(ctx->venc->dev,
++			 "trace: queue_setup: type=%u buffers=%u planes=%u sizeimage=%u\n",
++			 (unsigned int)vq->type, *nbuffers, *nplanes,
++			 q_data->sizeimage);
++
+ 	if (*nplanes)
+ 		return *nplanes == 1 && sizes[0] >= q_data->sizeimage ? 0 :
+ 		       -EINVAL;
+@@ -2110,6 +2116,13 @@ static int meson_venc_buf_prepare(struct vb2_buffer *vb)
+ 	q_data = meson_venc_get_q_data(ctx, vb->vb2_queue->type);
+ 	if (!q_data)
+ 		return -EINVAL;
++
++	if (meson_venc_trace_runtime_enabled)
++		dev_info(ctx->venc->dev,
++			 "trace: buf_prepare: type=%u index=%u plane_size=%lu sizeimage=%u\n",
++			 (unsigned int)vb->vb2_queue->type, vb->index,
++			 vb2_plane_size(vb, 0), q_data->sizeimage);
++
+ 	if (vb2_plane_size(vb, 0) < q_data->sizeimage)
+ 		return -EINVAL;
+ 
+@@ -2124,8 +2137,15 @@ static void meson_venc_buf_queue(struct vb2_buffer *vb)
+ static void meson_venc_buf_queue(struct vb2_buffer *vb)
+ {
+ 	struct meson_venc_ctx *ctx = vb2_get_drv_priv(vb->vb2_queue);
++	struct vb2_v4l2_buffer *vbuf = to_vb2_v4l2_buffer(vb);
+ 
+-	v4l2_m2m_buf_queue(ctx->fh.m2m_ctx, to_vb2_v4l2_buffer(vb));
++	if (meson_venc_trace_runtime_enabled)
++		dev_info(ctx->venc->dev,
++			 "trace: buf_queue: type=%u index=%u sequence=%u payload=%lu\n",
++			 (unsigned int)vb->vb2_queue->type, vb->index,
++			 vbuf->sequence, vb2_get_plane_payload(vb, 0));
++
++	v4l2_m2m_buf_queue(ctx->fh.m2m_ctx, vbuf);
+ }
+ 
+ static void meson_venc_reset_stream_state(struct meson_venc_ctx *ctx)
+@@ -2153,8 +2173,19 @@ static int meson_venc_start_streaming(struct vb2_queue *vq,
+ 	if (!q_data)
+ 		return -EINVAL;
+ 
++	if (meson_venc_trace_runtime_enabled)
++		dev_info(ctx->venc->dev,
++			 "trace: start_streaming: type=%u count=%u owns=%u output=%u capture=%u sizeimage=%u\n",
++			 (unsigned int)vq->type, count, ctx->owns_hw ? 1 : 0,
++			 ctx->streaming_output ? 1 : 0,
++			 ctx->streaming_capture ? 1 : 0, q_data->sizeimage);
++
+ 	if (!ctx->owns_hw) {
++		meson_venc_trace_runtime(ctx->venc,
++					 "start_streaming: requesting hardware lock");
+ 		if (!mutex_trylock(ctx->venc->core->hw_lock)) {
++			meson_venc_trace_runtime(ctx->venc,
++						 "start_streaming: hardware busy");
+ 			while ((vbuf = V4L2_TYPE_IS_OUTPUT(vq->type) ?
+ 				v4l2_m2m_src_buf_remove(ctx->fh.m2m_ctx) :
+ 				v4l2_m2m_dst_buf_remove(ctx->fh.m2m_ctx)))
+@@ -2162,12 +2193,26 @@ static int meson_venc_start_streaming(struct vb2_queue *vq,
+ 			return -EBUSY;
+ 		}
+ 		ctx->owns_hw = true;
++		meson_venc_trace_runtime(ctx->venc,
++					 "start_streaming: hardware lock acquired");
+ 		meson_venc_reset_stream_state(ctx);
+ 
++		meson_venc_trace_runtime(ctx->venc,
++					 "start_streaming: allocating workspace");
+ 		ret = meson_venc_workspace_alloc(ctx);
+-		if (!ret)
++		if (!ret) {
++			meson_venc_trace_runtime(ctx->venc,
++						 "start_streaming: workspace ready");
++			meson_venc_trace_runtime(ctx->venc,
++						 "start_streaming: preparing hardware");
+ 			ret = meson_venc_hw_prepare(ctx);
++		}
++		if (!ret)
++			meson_venc_trace_runtime(ctx->venc,
++						 "start_streaming: hardware ready");
+ 		if (ret) {
++			dev_err(ctx->venc->dev,
++				"start_streaming setup failed: %d\n", ret);
+ 			meson_venc_workspace_free(ctx);
+ 			ctx->owns_hw = false;
+ 			mutex_unlock(ctx->venc->core->hw_lock);
+@@ -2184,6 +2229,12 @@ static int meson_venc_start_streaming(struct vb2_queue *vq,
+ 	else
+ 		ctx->streaming_capture = true;
+ 
++	if (meson_venc_trace_runtime_enabled)
++		dev_info(ctx->venc->dev,
++			 "trace: start_streaming: active type=%u output=%u capture=%u\n",
++			 (unsigned int)vq->type, ctx->streaming_output ? 1 : 0,
++			 ctx->streaming_capture ? 1 : 0);
++
+ 	q_data->sequence = 0;
+ 	return 0;
+ }
+-- 
+2.51.0

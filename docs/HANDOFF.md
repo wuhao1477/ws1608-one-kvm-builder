@@ -1,6 +1,6 @@
 # WS1608 One-KVM 构建器交接
 
-更新时间：2026-09-02
+更新时间：2026-09-03
 
 ## 当前结论
 
@@ -14,6 +14,9 @@
 - H.264 硬件编码改走 Linux 6.12 `meson-venc` HCODEC V4L2 M2M。
 - Linux 3.10、私有 AMLENC ABI、双内核和 kexec 已废弃，不再构建或刷写。
 - HCODEC 尚未通过 WS1608 实机编码验证，当前不能发布硬件成功结论。
+- `codex/hcodec-armv7-cloud-verify` 的 run-8 候选已实机启动，`cma=128M`
+  生效且 `/dev/video0` 注册成功；首帧 640×480 H.264 probe 导致设备硬锁，
+  已从 `/root/hcodec/backups/run-8-1/` 恢复稳定系统。
 - ARMv7 静态候选构建已完成，分支为 `codex/hcodec-armv7`，实现提交为
   `1b87398e5393bf465a36cef7388f684a718c7fc7` 与 `6215ec6`；artifact 仅由独立 workflow
   生成并保留 14 天，不创建 Release。
@@ -48,9 +51,10 @@ One-KVM `0.2.6` 已有 `h264_v4l2m2m` 后端，Amlogic 实验探测需要
 
 - 资料中的 `meson-venc.ko` 是 AArch64 `6.12.98-ipkvm-release`，不能用于
   当前 ARMv7 内核。
-- 18 个补丁已针对锁定的 `6.12.28` 基线顺序应用，并追加 OneCloud 节点修正；实体
-  probe 和时钟/HHI 运行结果仍未取得。
-- 公共 Meson8b HCODEC 节点已在候选 DTB 中启用，OneCloud 板级资源仍未经过实体 probe 验证。
+- 18 个补丁已针对锁定的 `6.12.28` 基线顺序应用，并追加 OneCloud 节点修正；
+  run-8 已验证实体 probe 可注册 `/dev/video0`。
+- 首帧编码硬锁时未收到 `device_run/command/irq` 诊断输出，下一版需要把日志
+  前移到 `REQBUFS/QBUF/STREAMON/start_streaming` 阶段。
 - `meson/venc/meson8b_h264.bin` 固件只有提取脚本，没有可追溯成品。
 - 1080p 编码缓冲预算约 59.30 MiB（NV12）至 63.26 MiB（YUYV），
   `cma=128M` 只是候选设置。
@@ -59,10 +63,10 @@ One-KVM `0.2.6` 已有 `h264_v4l2m2m` 后端，Amlogic 实验探测需要
 ## 接手后的顺序
 
 1. 下载候选 workflow artifact，并按 `experimental/hcodec/docs/artifact.md` 独立复验。
-2. 在实体板上手动加载匹配模块，验证 Meson8b 时钟、HHI、设备树和固件 probe。
-3. 先通过独立 V4L2 640×480、1280×720 探针，再评估 1080p。
-6. 独立码流通过后临时接入 One-KVM，不修改稳定服务配置。
-7. 完成启动、视频、HID、虚拟介质、重启和长时间运行后再讨论候选发布。
+2. 刷入下一版带 V4L2 队列诊断的候选，确认硬锁前最后一条 `trace:`。
+3. 只运行 640×480 单帧探针；定位硬锁阶段前不继续 720p/1080p。
+4. 独立码流通过后临时接入 One-KVM，不修改稳定服务配置。
+5. 完成启动、视频、HID、虚拟介质、重启和长时间运行后再讨论候选发布。
 
 ## 维护边界
 

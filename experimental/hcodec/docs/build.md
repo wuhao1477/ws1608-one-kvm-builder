@@ -17,3 +17,8 @@ GitHub Actions 工作流为 `.github/workflows/hcodec-candidate.yml`，响应
 `meson-venc` 保持模块形式，不自动加载。`cma=128M` 只写入候选 manifest，
 不修改稳定镜像。所有候选的 `hardware_boot_tested` 和
 `hardware_encoder_tested` 均为 `false`。
+
+run-8 候选已在 WS1608 上完成启动验证并注册 `/dev/video0`，但 640×480 单帧
+H.264 probe 触发硬锁。后续候选保留 Armbian/Linux 6.12 路线，并追加
+V4L2 队列与 `start_streaming` 诊断，用于确认硬锁发生在用户态 ioctl 边界、
+工作区分配、硬件准备还是首个编码命令之前。
