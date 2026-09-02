@@ -1,6 +1,9 @@
 name: HCODEC ARMv7 Candidate
 
 on:
+  push:
+    branches:
+      - 'codex/hcodec-*'
   pull_request:
   workflow_dispatch:
 

@@ -36,6 +36,7 @@ test('packages a single deterministic tar.xz with manifests and kernel/tools pay
 
 test('workflow only runs on pull requests or manual dispatch and keeps artifact isolated', () => {
   const text = fs.readFileSync(workflow, 'utf8');
+  assert.match(text, /push:\s*\n\s*branches:\s*\n\s*-\s*['"]codex\/hcodec-\*['"]/);
   assert.match(text, /pull_request:/);
   assert.match(text, /workflow_dispatch:/);
   assert.doesNotMatch(text, /schedule:|repository_dispatch:|create-release|gh release/);

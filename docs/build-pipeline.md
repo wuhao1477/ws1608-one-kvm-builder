@@ -74,8 +74,10 @@ build job 上传后立即下载复验；release job 再次复验，创建指向 
 
 ## HCODEC 候选流程
 
-HCODEC 候选流程由 `.github/workflows/hcodec-candidate.yml` 实现。它不得加入
-schedule，也不得调用稳定发布 job。实施顺序固定为：
+HCODEC 候选流程由 `.github/workflows/hcodec-candidate.yml` 实现。它只允许
+`codex/hcodec-*` 分支 push、Pull Request 和手动运行，不加入 schedule，也
+不得调用稳定发布 job。新分支应先取得云构建 artifact 并完成实体刷写验证，
+之后才创建 PR。实施顺序固定为：
 
 1. 固定与 Armbian 6.12.28 基础匹配的 ARMv7 内核源码和 `.config`；
 2. 固定一致的 `meson-venc` 源码、补丁摘要和固件提取输入；

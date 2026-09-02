@@ -4,8 +4,9 @@
 Linux `f08cdc6cc92e3d23a05745f0f12f8caa348a27b4`、`6.12.28-current-meson` 和
 Ubuntu 24.04 digest `sha256:1e0a86e57d247923571b75e0aaf48a1449cf8c543d51fb3e07a4a7d7bfa79316`。
 
-GitHub Actions 工作流为 `.github/workflows/hcodec-candidate.yml`，仅响应
-Pull Request 和 `workflow_dispatch`。构建顺序为：
+GitHub Actions 工作流为 `.github/workflows/hcodec-candidate.yml`，响应
+`codex/hcodec-*` 分支的 `push`、Pull Request 和 `workflow_dispatch`。`push`
+触发只用于在创建 PR 前取得云构建证据，不创建 Release 或 tag。构建顺序为：
 
 1. 运行仓库与 HCODEC 契约测试；
 2. 从固定基础镜像提取配置、DTB、uImage 地址和签名策略；
