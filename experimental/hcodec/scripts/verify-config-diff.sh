@@ -17,6 +17,7 @@ normalize() {
   grep -E '^(CONFIG_[A-Z0-9_]+=|# CONFIG_[A-Z0-9_]+ is not set$)' "$1" |
     grep -v '^CONFIG_VIDEO_MESON_VENC=' |
     grep -v '^# CONFIG_VIDEO_MESON_VENC is not set$' |
+    grep -v -E '^(CONFIG_CC_CAN_LINK|CONFIG_CC_CAN_LINK_STATIC|CONFIG_RUSTC_LLVM_VERSION|CONFIG_RUSTC_VERSION)=' |
     LC_ALL=C sort
 }
 normalize "$BASE_CONFIG" >"$work/base"
@@ -26,6 +27,21 @@ cmp -s "$work/base" "$work/candidate" || {
   echo 'candidate config differs outside CONFIG_VIDEO_MESON_VENC' >&2
   exit 1
 }
+
+for expected in \
+  CONFIG_CC_CAN_LINK=y \
+  CONFIG_CC_CAN_LINK_STATIC=y \
+  CONFIG_RUSTC_LLVM_VERSION=0 \
+  CONFIG_RUSTC_VERSION=0; do
+  key=${expected%%=*}
+  if grep -Eq "^${key}=" "$BASE_CONFIG" \
+    || grep -Eq "^${key}=" "$CANDIDATE_CONFIG"; then
+    grep -Fxq "$expected" "$CANDIDATE_CONFIG" || {
+      echo "unexpected compiler probe state: $key" >&2
+      exit 1
+    }
+  fi
+done
 
 for expected in \
   CONFIG_MODULES=y \
