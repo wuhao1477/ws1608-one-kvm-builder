@@ -14,9 +14,10 @@
 - H.264 硬件编码改走 Linux 6.12 `meson-venc` HCODEC V4L2 M2M。
 - Linux 3.10、私有 AMLENC ABI、双内核和 kexec 已废弃，不再构建或刷写。
 - HCODEC 尚未通过 WS1608 实机编码验证，当前不能发布硬件成功结论。
-- `codex/hcodec-armv7-cloud-verify` 的 run-8 候选已实机启动，`cma=128M`
-  生效且 `/dev/video0` 注册成功；首帧 640×480 H.264 probe 导致设备硬锁，
-  已从 `/root/hcodec/backups/run-8-1/` 恢复稳定系统。
+- `codex/hcodec-armv7-cloud-verify` 的 run-9 候选已实机启动，`cma=128M`
+  生效且 `/dev/video0` 注册成功；640×480 单帧 probe 记录到
+  `SEQUENCE`、`PICTURE` 成功，`IDR` 命令在 VLC offset 续写阶段超时并返回
+  `-110`。
 - ARMv7 静态候选构建已完成，分支为 `codex/hcodec-armv7`，实现提交为
   `1b87398e5393bf465a36cef7388f684a718c7fc7` 与 `6215ec6`；artifact 仅由独立 workflow
   生成并保留 14 天，不创建 Release。
@@ -53,8 +54,10 @@ One-KVM `0.2.6` 已有 `h264_v4l2m2m` 后端，Amlogic 实验探测需要
   当前 ARMv7 内核。
 - 18 个补丁已针对锁定的 `6.12.28` 基线顺序应用，并追加 OneCloud 节点修正；
   run-8 已验证实体 probe 可注册 `/dev/video0`。
-- 首帧编码硬锁时未收到 `device_run/command/irq` 诊断输出，下一版需要把日志
-  前移到 `REQBUFS/QBUF/STREAMON/start_streaming` 阶段。
+- run-9 已确认 V4L2 队列、`start_streaming`、workspace 分配、硬件准备和
+  `SEQUENCE/PICTURE` 命令可通过；当前失败点是 Meson8b `IDR` 命令。
+- run-10 只验证一个假设：Meson8b 固件需要把 offset 帧写入的 VLC ring
+  start/sw-read 指针移动到 `dst + header_span`，而不是只移动 write pointer。
 - `meson/venc/meson8b_h264.bin` 固件只有提取脚本，没有可追溯成品。
 - 1080p 编码缓冲预算约 59.30 MiB（NV12）至 63.26 MiB（YUYV），
   `cma=128M` 只是候选设置。
@@ -63,8 +66,8 @@ One-KVM `0.2.6` 已有 `h264_v4l2m2m` 后端，Amlogic 实验探测需要
 ## 接手后的顺序
 
 1. 下载候选 workflow artifact，并按 `experimental/hcodec/docs/artifact.md` 独立复验。
-2. 刷入下一版带 V4L2 队列诊断的候选，确认硬锁前最后一条 `trace:`。
-3. 只运行 640×480 单帧探针；定位硬锁阶段前不继续 720p/1080p。
+2. 推送 run-10 offset ring-base 修正后等待 GitHub Actions artifact。
+3. 刷入 run-10，只运行 640×480 单帧探针；通过前不继续 720p/1080p。
 4. 独立码流通过后临时接入 One-KVM，不修改稳定服务配置。
 5. 完成启动、视频、HID、虚拟介质、重启和长时间运行后再讨论候选发布。
 

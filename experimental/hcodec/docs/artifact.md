@@ -14,6 +14,8 @@ Release。
 内核版本和硬件状态字段。固件只保留固定源码、提取脚本和摘要，
 `binary_included=false`。该 artifact 是静态构建候选，不代表实体 WS1608 已启动或完成编码。
 
-run-8 已证明候选内核可启动并注册 HCODEC V4L2 设备，但首帧编码会硬锁。下一版
-artifact 的目的不是声明编码成功，而是通过默认开启的 `trace_runtime` 日志记录
-`queue_setup`、`buf_prepare`、`buf_queue` 和 `start_streaming` 阶段。
+run-9 已证明候选内核可启动并注册 HCODEC V4L2 设备，并把最小 probe 失败点
+定位到 `IDR` 命令：`queue_setup`、`buf_prepare`、`buf_queue`、
+`start_streaming`、workspace、硬件准备、`SEQUENCE` 和 `PICTURE` 均已通过。
+run-10 artifact 的目的不是声明编码成功，而是验证 Meson8b 在 SPS/PPS 后
+执行 IDR 时是否需要把 VLC ring base 移到 offset 写入起点。

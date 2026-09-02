@@ -13,9 +13,10 @@ Linux 6.12 HCODEC 研究路线。
 - 稳定底座已经具备实体启动、HDMI、网络、SSH、eMMC 和 One-KVM 运行证据。
 - H.264 HCODEC 候选尚未通过 WS1608 实机编码测试；不得把资料或 CI 结果
   写成硬件已经可用。
-- `codex/hcodec-armv7-cloud-verify` 的 run-8 候选已能启动并注册
-  `/dev/video0`，但首帧 640×480 H.264 probe 会导致设备硬锁；当前继续
-  追加 V4L2 队列阶段诊断后再构建新 artifact。
+- `codex/hcodec-armv7-cloud-verify` 的 run-9 候选已能启动并注册
+  `/dev/video0`，640×480 单帧 probe 已定位到 `IDR` 命令超时：
+  `SEQUENCE` 与 `PICTURE` 成功，IDR 在 Meson8b VLC offset 续写阶段返回
+  firmware error。当前 run-10 只验证 Meson8b offset ring-base 修正。
 
 ## 自动更新规则
 
@@ -47,9 +48,9 @@ One-KVM 使用 `h264_v4l2m2m` 后端。
 - `cma=128M` 是基于 1080p 缓冲预算的候选值，不是实机结论；
 - One-KVM 实验探测需要 `ONE_KVM_V4L2M2M_ALLOW=1`，通过独立编码测试前
   不写入稳定服务配置。
-- 首轮 ARMv7 实机验证已确认 HCODEC probe 可到达 `/dev/video0`，但最小
-  编码尚未通过；后续候选先定位 `REQBUFS/QBUF/STREAMON/start_streaming`
-  阶段，再继续硬件命令修复。
+- ARMv7 实机验证已确认 HCODEC probe 可到达 `/dev/video0`，V4L2 队列、
+  `start_streaming`、workspace 分配和 `SEQUENCE/PICTURE` 命令可通过；
+  当前最小编码仍卡在 `IDR` 帧命令。
 
 Linux 3.10、Bullseye、`/dev/amvenc_avc`、`libvpcodec`、双内核和 kexec
 路线已经废弃，仅作为历史研究记录保留。正式决策见

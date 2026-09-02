@@ -1,0 +1,63 @@
+diff --git a/drivers/media/platform/amlogic/meson-venc/meson-venc.c b/drivers/media/platform/amlogic/meson-venc/meson-venc.c
+index 0b4a22c6d2e3..9b68a73cf1b0 100644
+--- a/drivers/media/platform/amlogic/meson-venc/meson-venc.c
++++ b/drivers/media/platform/amlogic/meson-venc/meson-venc.c
+@@ -897,9 +897,11 @@ static int meson_venc_job_program_buffers(struct meson_venc_ctx *ctx,
+ 	struct meson_venc_q_data *out;
+ 	dma_addr_t src_dma;
+ 	dma_addr_t dst_dma;
++	dma_addr_t dst_base_dma;
+ 	dma_addr_t dst_write_dma;
+ 	size_t src_y_size;
+ 	size_t src_size;
++	size_t dst_ring_size;
+ 	size_t dst_size;
+ 	u8 canvas_y = ws->canvas[MESON_VENC_INPUT_CANVAS_Y];
+ 	u8 canvas_uv = ws->canvas[MESON_VENC_INPUT_CANVAS_UV];
+@@ -917,12 +919,26 @@ static int meson_venc_job_program_buffers(struct meson_venc_ctx *ctx,
+ 		return -EINVAL;
+ 
+ 	dst_write_dma = dst_dma + dst_offset;
++	dst_base_dma = dst_dma;
++	dst_ring_size = dst_size;
++
++	/* The Meson8b firmware rejects IDR frame commands when the VLC ring
++	 * starts at the capture buffer base but the write pointer is advanced
++	 * past SPS/PPS. Treat the aligned frame offset as this command's local
++	 * ring base; the V4L2 payload still covers headers plus frame bytes.
++	 * Keep the GXL/GXM path unchanged because that protocol was validated
++	 * with a stable base pointer and an advanced write pointer.
++	 */
++	if (dst_offset && !venc->variant->has_gx_protocol) {
++		dst_base_dma = dst_write_dma;
++		dst_ring_size = dst_size - dst_offset;
++	}
+ 
+ 	if (upper_32_bits(src_dma) ||
+ 	    upper_32_bits(src_dma + src_size - 1) ||
+-	    upper_32_bits(dst_dma) ||
+-	    upper_32_bits(dst_dma + dst_size - 1) ||
+-	    upper_32_bits(dst_write_dma))
++	    upper_32_bits(dst_base_dma) ||
++	    upper_32_bits(dst_base_dma + dst_ring_size - 1) ||
++	    upper_32_bits(dst_write_dma))
+ 		return -ERANGE;
+ 
+ 	if (out->fourcc == V4L2_PIX_FMT_YUYV) {
+@@ -961,13 +977,13 @@ static int meson_venc_job_program_buffers(struct meson_venc_ctx *ctx,
+ 	meson_venc_write(venc, HCODEC_VLC_VB_MEM_CTL,
+ 			 BIT(31) | (0x3f << 24) | (0x20 << 16) | 2);
+ 	meson_venc_write(venc, HCODEC_VLC_VB_START_PTR,
+-			 lower_32_bits(dst_dma));
++			 lower_32_bits(dst_base_dma));
+ 	meson_venc_write(venc, HCODEC_VLC_VB_END_PTR,
+-			 lower_32_bits(dst_dma + dst_size - 1));
++			 lower_32_bits(dst_base_dma + dst_ring_size - 1));
+ 	meson_venc_write(venc, HCODEC_VLC_VB_WR_PTR,
+ 			 lower_32_bits(dst_write_dma));
+ 	meson_venc_write(venc, HCODEC_VLC_VB_SW_RD_PTR,
+-			 lower_32_bits(dst_dma));
++			 lower_32_bits(dst_base_dma));
+ 	meson_venc_write(venc, HCODEC_VLC_VB_CONTROL, 1);
+ 	meson_venc_write(venc, HCODEC_VLC_VB_CONTROL,
+ 			 (7 << 3) | BIT(1));
