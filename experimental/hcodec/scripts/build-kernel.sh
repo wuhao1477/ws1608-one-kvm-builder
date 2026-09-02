@@ -71,8 +71,10 @@ git -C "$SOURCE_DIR" merge-base --is-ancestor "$LINUX_COMMIT" HEAD || {
   exit 1
 }
 find "$SOURCE_DIR" -type f -name '*.orig' -delete
-[[ -z "$(git -C "$SOURCE_DIR" status --porcelain)" ]] || {
+[[ -z "$(git -C "$SOURCE_DIR" status --porcelain=v1 --untracked-files=all)" ]] || {
   echo 'Armbian kernel worktree is not clean' >&2
+  echo 'Armbian kernel worktree status:' >&2
+  git -C "$SOURCE_DIR" status --porcelain=v1 --untracked-files=all >&2
   exit 1
 }
 shopt -s nullglob
