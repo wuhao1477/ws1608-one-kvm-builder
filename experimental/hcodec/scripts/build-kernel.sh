@@ -70,7 +70,6 @@ git -C "$SOURCE_DIR" merge-base --is-ancestor "$LINUX_COMMIT" HEAD || {
   echo 'Armbian kernel worktree does not descend from the locked Linux commit' >&2
   exit 1
 }
-find "$SOURCE_DIR" -type f -name '*.orig' -delete
 [[ -z "$(git -C "$SOURCE_DIR" status --porcelain=v1 --untracked-files=all)" ]] || {
   echo 'Armbian kernel worktree is not clean' >&2
   echo 'Armbian kernel worktree status:' >&2
