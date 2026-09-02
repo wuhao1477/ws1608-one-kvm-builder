@@ -10,16 +10,38 @@ const referenceDir = 'experimental/hcodec/reference/linux-6.12';
 const digestScript = 'experimental/hcodec/scripts/patch-digest.sh';
 const applyScript = 'experimental/hcodec/scripts/apply-patches.sh';
 
-test('ships the ordered 18 reference patches plus one Meson8b correction', () => {
+test('ships the ordered 18 reference patches plus Meson8b correction and diagnostics', () => {
   const reference = fs.readdirSync(referenceDir).filter((file) => file.endsWith('.patch')).sort();
   const files = fs.readdirSync(patchDir).filter((file) => file.endsWith('.patch')).sort();
 
   assert.equal(reference.length, 18);
-  assert.equal(files.length, 19);
+  assert.equal(files.length, 20);
   assert.deepEqual(files.slice(0, 18), reference);
   assert.match(files[0], /^0001-/);
   assert.match(files[17], /^0018-/);
   assert.equal(files[18], '0019-meson8b-hhi-and-dt-fix.patch');
+  assert.equal(files[19], '0020-media-meson-add-HCODEC-runtime-diagnostics.patch');
+});
+
+test('runtime diagnostics patch traces the first encode command path', () => {
+  const patch = fs.readFileSync(
+    `${patchDir}/0020-media-meson-add-HCODEC-runtime-diagnostics.patch`,
+    'utf8',
+  );
+
+  for (const value of [
+    'trace_runtime',
+    'meson_venc_trace_runtime',
+    'meson_venc_command_name',
+    'meson_venc_dump_state',
+    'meson_venc_prepare_command',
+    'meson_venc_start_cpu',
+    'meson_venc_command',
+    'meson_venc_irq',
+    'meson_venc_device_run',
+  ]) {
+    assert.match(patch, new RegExp(value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')));
+  }
 });
 
 test('computes a path-independent patch digest', (t) => {
