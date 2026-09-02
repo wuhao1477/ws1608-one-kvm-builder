@@ -66,7 +66,7 @@ jobs:
               set -Eeuo pipefail
               export DEBIAN_FRONTEND=noninteractive
               apt-get update
-              apt-get install -y bc bison build-essential flex git kmod libssl-dev lzop rsync u-boot-tools xz-utils curl device-tree-compiler gcc-arm-linux-gnueabihf binutils-arm-linux-gnueabihf
+              apt-get install -y bc bison build-essential flex git kmod libssl-dev lzop rsync u-boot-tools xz-utils curl device-tree-compiler gcc-arm-linux-gnueabihf binutils-arm-linux-gnueabihf nodejs
               /repo/experimental/hcodec/scripts/build-kernel.sh
             '
           experimental/hcodec/scripts/build-tools.sh out/hcodec/tools
