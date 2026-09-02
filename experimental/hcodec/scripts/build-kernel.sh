@@ -62,7 +62,10 @@ done
     BOARD=onecloud BRANCH=current RELEASE=trixie ROOTFS_TYPE=nfs \
     KERNEL_CONFIGURE=no SHARE_LOG=no
 )
-[[ -d "$SOURCE_DIR/.git" ]] || { echo 'Armbian kernel worktree missing' >&2; exit 1; }
+[[ -e "$SOURCE_DIR/.git" && ! -L "$SOURCE_DIR/.git" ]] || {
+  echo 'Armbian kernel worktree missing' >&2
+  exit 1
+}
 git -C "$SOURCE_DIR" merge-base --is-ancestor "$LINUX_COMMIT" HEAD || {
   echo 'Armbian kernel worktree does not descend from the locked Linux commit' >&2
   exit 1
