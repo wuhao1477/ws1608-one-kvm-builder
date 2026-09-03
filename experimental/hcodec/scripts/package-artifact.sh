@@ -21,6 +21,8 @@ kernel_files=(zImage uImage meson8b-onecloud.dtb modules.tar.xz kernel.config Sy
 tool_files=(meson-venc-smoke meson-venc-capture tools-manifest.json firmware-manifest.json SHA256SUMS)
 for file in "${kernel_files[@]}"; do cp -p "$KERNEL_DIR/$file" "$OUTPUT_DIR/stage/kernel/$file"; done
 for file in "${tool_files[@]}"; do cp -p "$TOOLS_DIR/$file" "$OUTPUT_DIR/stage/tools/$file"; done
+cp -p "$ROOT_DIR/experimental/hcodec/scripts/install-artifact.sh" \
+  "$OUTPUT_DIR/stage/install-artifact.sh"
 find "$OUTPUT_DIR/stage" -type f \( -name '*.bin' -o -name '*.fw' \) -delete
 node - "$OUTPUT_DIR/stage/manifest.json" "$RUN_NUMBER" "$RUN_ATTEMPT" "$OUTPUT_DIR/stage/kernel/source-manifest.json" "$OUTPUT_DIR/stage/tools/tools-manifest.json" <<'NODE'
 const fs = require('fs');

@@ -16,6 +16,7 @@ find "$work" -type f \( -name '*.bin' -o -name '*.fw' \) -print -quit | grep -q 
 find "$work" -type l -print -quit | grep -q . && { echo 'symbolic links are forbidden' >&2; exit 1; } || true
 allowed=$(cat <<'EOF'
 ./SHA256SUMS
+./install-artifact.sh
 ./kernel/Module.symvers
 ./kernel/SHA256SUMS
 ./kernel/System.map
@@ -36,10 +37,11 @@ EOF
 )
 actual=$(cd "$work" && find . -type f | sort)
 [[ "$actual" == "$allowed" ]] || { echo 'artifact contains files outside the whitelist' >&2; exit 1; }
-for file in kernel/zImage kernel/uImage kernel/meson8b-onecloud.dtb kernel/modules.tar.xz \
+for file in install-artifact.sh kernel/zImage kernel/uImage kernel/meson8b-onecloud.dtb kernel/modules.tar.xz \
   kernel/kernel.config kernel/System.map kernel/Module.symvers kernel/module-signing.json kernel/source-manifest.json \
   tools/meson-venc-smoke tools/meson-venc-capture tools/tools-manifest.json tools/firmware-manifest.json \
   manifest.json SHA256SUMS; do [[ -s "$work/$file" && ! -L "$work/$file" ]] || { echo "missing payload: $file" >&2; exit 1; }; done
+[[ -x "$work/install-artifact.sh" ]] || { echo 'installer is not executable' >&2; exit 1; }
 (cd "$work" && sha256sum --check SHA256SUMS)
 node - "$work/manifest.json" <<'NODE'
 const fs = require('fs');

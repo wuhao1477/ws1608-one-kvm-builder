@@ -23,3 +23,7 @@ H.264 probe 已确认 V4L2 队列、`start_streaming`、workspace 分配、硬�
 `SEQUENCE` 和 `PICTURE` 命令通过；失败点是 `IDR` 命令在 SPS/PPS 后的
 VLC offset 续写阶段超时。run-10 只调整 Meson8b offset 帧写入时的 VLC
 ring base，继续由 GitHub Actions 构建 artifact 后再刷机验证。
+
+设备安装必须使用 `install-artifact.sh`：模块包先解到临时 staging，再复制
+目标版本目录；不得把归档直接解到 `/`。直接解包会覆盖 `/lib -> /usr/lib`，
+使系统在重启后无法执行 `init` 和 SSH。

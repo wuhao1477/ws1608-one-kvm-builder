@@ -19,3 +19,9 @@ run-9 已证明候选内核可启动并注册 HCODEC V4L2 设备，并把最小 
 `start_streaming`、workspace、硬件准备、`SEQUENCE` 和 `PICTURE` 均已通过。
 run-10 artifact 的目的不是声明编码成功，而是验证 Meson8b 在 SPS/PPS 后
 执行 IDR 时是否需要把 VLC ring base 移到 offset 写入起点。
+
+安装候选内核时必须使用 `experimental/hcodec/scripts/install-artifact.sh`。
+该脚本先将模块包解到临时目录，再只复制
+`lib/modules/<kernel_release>`；禁止直接用 `tar -xJf ... -C /`，因为归档
+顶层包含 `lib/`，会覆盖 Armbian 的 `/lib -> /usr/lib` 符号链接并导致
+动态程序无法启动。安装前要求根分区至少保留 4 GiB 可用空间。

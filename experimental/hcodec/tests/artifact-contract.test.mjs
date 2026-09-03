@@ -7,6 +7,7 @@ import test from 'node:test';
 
 const packageScript = 'experimental/hcodec/scripts/package-artifact.sh';
 const verifyScript = 'experimental/hcodec/scripts/verify-artifact.sh';
+const installScript = 'experimental/hcodec/scripts/install-artifact.sh';
 const workflow = '.github/workflows/hcodec-candidate.yml';
 
 test('packages a single deterministic tar.xz with manifests and kernel/tools payloads', (t) => {
@@ -32,6 +33,13 @@ test('packages a single deterministic tar.xz with manifests and kernel/tools pay
   assert.equal(fs.readdirSync(output).length, 3);
   assert.match(fs.readFileSync(path.join(output, 'manifest.json'), 'utf8'), /hardware_boot_tested.*false/);
   assert.equal(spawnSync('bash', [verifyScript, output], { encoding: 'utf8' }).status, 0);
+});
+
+test('ships a staged module installer that preserves target system links', () => {
+  const text = fs.readFileSync(installScript, 'utf8');
+  assert.match(text, /modules-stage/);
+  assert.match(text, /lib\/modules\/\$KERNEL_RELEASE/);
+  assert.doesNotMatch(text, /tar -xJf [^\n]+ -C \/(?:\s|$)/);
 });
 
 test('workflow only runs on pull requests or manual dispatch and keeps artifact isolated', () => {
