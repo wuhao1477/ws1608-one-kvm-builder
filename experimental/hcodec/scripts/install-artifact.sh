@@ -32,7 +32,7 @@ for file in uImage System.map kernel.config meson8b-onecloud.dtb; do
   [[ -s "$KERNEL_DIR/$file" ]] || { echo "missing kernel file: $file" >&2; exit 1; }
 done
 
-modules_stage=$(mktemp -d "${TMPDIR:-/tmp}/hcodec-modules-stage.XXXXXX")
+modules_stage=$(mktemp -d "$TARGET_ROOT/root/hcodec-modules-stage.XXXXXX")
 cleanup() { rm -rf "$modules_stage"; }
 trap cleanup EXIT
 tar -xJf "$KERNEL_DIR/modules.tar.xz" -C "$modules_stage" --no-same-owner

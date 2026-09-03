@@ -44,6 +44,7 @@ test('installer source uses a staging tree and never extracts modules at filesys
   const source = fs.readFileSync(installer, 'utf8');
   assert.match(source, /mktemp/);
   assert.match(source, /modules-stage/);
+  assert.match(source, /TARGET_ROOT.*hcodec-modules-stage/);
   assert.match(source, /modules\/\$KERNEL_RELEASE/);
   assert.doesNotMatch(source, /tar -xJf [^\n]+ -C \/(?:\s|$)/);
   assert.match(source, /4000000/);
