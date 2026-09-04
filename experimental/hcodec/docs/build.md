@@ -36,6 +36,13 @@ contract、ARMv7 构建、artifact 上传/下载和独立复验。生成的
 唯一一次 640×480、MMAP、1 帧 probe 在 120 秒内超时，随后设备 SSH 失联，未得到
 有效 Annex-B H.264。该候选标记为硬件编码失败，不继续其他分辨率或测试。
 
+GitHub Actions run `33874935950`（提交 `e5750cf`）已完成 contract、ARMv7 构建、
+artifact 上传/下载和独立复验。`run-15-1` 已安装并重启成功，内核、`/dev/video0`、
+`cma=128M`、`/lib -> /usr/lib` 和 9536 字节微码摘要均正确；该候选补齐
+Meson8b Assist `INT1=0x19`。唯一一次 640×480、MMAP、1 帧 probe 超过 120 秒未完成，
+输出为 0 字节，设备随后失联；重启后 `pstore` 为空，标记为硬件编码失败，不继续
+其他分辨率或测试，也不创建 PR。
+
 设备安装必须使用 `install-artifact.sh`：模块包先解到目标根分区 staging，再复制
 目标版本目录；固件从 artifact 的 `firmware/meson8b_h264.bin` 直接安装。
 不得把归档直接解到 `/`。640×480 实机通过前不创建 PR。

@@ -126,6 +126,12 @@ dmesg | grep -Ei 'cma|dma|allocation|contiguous|out of memory'
 `Host is down`。没有有效码流时必须停止测试，不创建 PR，不继续更高分辨率或
 One-KVM 集成。
 
+`run-15-1` 在补齐 Meson8b Assist `INT1=0x19` 后重复了同一最小边界：安装、重启、
+固件、CMA 和 `/dev/video0` 均正常，唯一一次 640×480、MMAP、1 帧 probe 超过
+120 秒未完成，输出为 0 字节，设备随后失联；重启后的 `pstore` 为空。该修复
+未解决 IDR 阶段的硬件挂起，必须停止测试并继续完整协议对照，不得重复 probe、
+延长 timeout 或创建 PR。
+
 ### 6. 码流
 
 先用 640×480 单会话和 MMAP，随后再测试 DMABUF、720p 和 1080p。每次保存

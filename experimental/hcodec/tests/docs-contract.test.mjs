@@ -24,6 +24,15 @@ test('documents the failed run-12-1 evidence and the new Meson8b firmware source
   assert.match(text, /不创建 PR|不得创建 PR|不创建或合并 PR/);
 });
 
+test('documents the failed run-15-1 Assist interrupt candidate', () => {
+  const text = files.map(read).join('\n');
+  assert.match(text, /run-15-1/);
+  assert.match(text, /33874935950/);
+  assert.match(text, /INT1.*0x19/);
+  assert.match(text, /0 字节/);
+  assert.match(text, /设备.*失联|No route to host/);
+});
+
 test('does not describe the disproved offset ring workaround as the active next step', () => {
   const text = files.map(read).join('\n');
   assert.doesNotMatch(text, /run-10 只调整 Meson8b offset/);

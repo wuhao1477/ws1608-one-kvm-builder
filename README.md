@@ -22,6 +22,10 @@ Linux 6.12 HCODEC 研究路线。
 - GitHub Actions run `33854312358` 已生成并复验 `run-13-1` artifact；设备安装、
   重启和 `/dev/video0` 启动均成功，但唯一一次 640×480、MMAP、1 帧 probe
   超时并导致设备失联，未产生有效 H.264，仍未创建 PR。
+- GitHub Actions run `33874935950` 生成并复验 `run-15-1` artifact；该候选补齐
+  Meson8b Assist `INT1=0x19`。设备重启和启动检查均成功，但唯一一次 640×480、
+  MMAP、1 帧 probe 超过 120 秒未完成，输出为 0 字节，设备随后失联；`pstore`
+  为空，仍未创建 PR。
 
 ## 自动更新规则
 
