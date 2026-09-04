@@ -10,7 +10,7 @@ const referenceDir = 'experimental/hcodec/reference/linux-6.12';
 const digestScript = 'experimental/hcodec/scripts/patch-digest.sh';
 const applyScript = 'experimental/hcodec/scripts/apply-patches.sh';
 
-test('ships the ordered 18 reference patches plus Meson8b correction, diagnostics and IDR fix', () => {
+test('ships the ordered 18 reference patches plus Meson8b correction and diagnostics', () => {
   const reference = fs.readdirSync(referenceDir).filter((file) => file.endsWith('.patch')).sort();
   const files = fs.readdirSync(patchDir).filter((file) => file.endsWith('.patch')).sort();
 
@@ -22,7 +22,7 @@ test('ships the ordered 18 reference patches plus Meson8b correction, diagnostic
   assert.equal(files[18], '0019-meson8b-hhi-and-dt-fix.patch');
   assert.equal(files[19], '0020-media-meson-add-HCODEC-runtime-diagnostics.patch');
   assert.equal(files[20], '0021-media-meson-add-V4L2-queue-diagnostics.patch');
-  assert.equal(files[21], '0022-media-meson-use-offset-VLC-ring-base-on-Meson8b.patch');
+  assert.equal(files[21], '0023-media-meson-match-Meson8b-microcode-protocol.patch');
 });
 
 test('runtime diagnostics patch traces the first encode command path', () => {
@@ -66,22 +66,21 @@ test('V4L2 queue diagnostics patch traces the ioctl path before first hardware c
   }
 });
 
-test('Meson8b IDR fix moves the VLC ring base for offset frame writes', () => {
+test('Meson8b protocol patch restores the base VLC ring and vendor DMA setup', () => {
   const patch = fs.readFileSync(
-    `${patchDir}/0022-media-meson-use-offset-VLC-ring-base-on-Meson8b.patch`,
+    `${patchDir}/0023-media-meson-match-Meson8b-microcode-protocol.patch`,
     'utf8',
   );
 
   for (const value of [
-    'dst_base_dma',
-    'dst_offset && !venc->variant->has_gx_protocol',
-    'dst_base_dma = dst_write_dma',
-    'HCODEC_VLC_VB_START_PTR',
-    'lower_32_bits(dst_base_dma)',
-    'HCODEC_VLC_VB_SW_RD_PTR',
+    'HCODEC_ASSIST_DMA_INT_MSK',
+    'HCODEC_ASSIST_DMA_INT_MSK2',
+    'HCODEC_ASSIST_AMR1_INT4',
+    '0xfd', '0xff', '0x18',
   ]) {
     assert.match(patch, new RegExp(value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')));
   }
+  assert.doesNotMatch(patch, /dst_base_dma|dst_ring_size|dst_offset && !venc->variant->has_gx_protocol/);
 });
 
 test('computes a path-independent patch digest', (t) => {

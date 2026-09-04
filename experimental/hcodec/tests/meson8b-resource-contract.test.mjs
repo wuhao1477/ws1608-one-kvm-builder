@@ -17,6 +17,13 @@ test('patch series supplies the complete standalone Meson8b HCODEC resources', (
     assert.match(patch, new RegExp(value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')));
   }
   assert.doesNotMatch(patch, /amvenc_avc|libvpcodec|ONE_KVM|modprobe/);
+  assert.match(patch, /HCODEC_ASSIST_DMA_INT_MSK.*0x4194/);
+  assert.match(patch, /HCODEC_ASSIST_DMA_INT_MSK2.*0x419c/);
+  assert.match(patch, /HCODEC_ASSIST_AMR1_INT4.*0x40a4/);
+  assert.match(patch, /HCODEC_ASSIST_DMA_INT_MSK, 0xfd/);
+  assert.match(patch, /HCODEC_ASSIST_DMA_INT_MSK2, 0xff/);
+  assert.match(patch, /HCODEC_ASSIST_AMR1_INT4, 0x18/);
+  assert.doesNotMatch(patch, /dst_base_dma|dst_ring_size/);
 });
 
 test('correction only enables the existing HCODEC node on OneCloud', () => {
