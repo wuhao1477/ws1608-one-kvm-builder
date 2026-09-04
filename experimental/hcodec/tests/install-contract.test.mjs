@@ -20,6 +20,7 @@ test('installs modules without replacing a target /lib symlink', (t) => {
   const target = path.join(root, 'target');
   const moduleStage = path.join(root, 'module-stage', 'lib', 'modules', '6.12.28-current-meson');
   fs.mkdirSync(path.join(artifact, 'kernel'), { recursive: true });
+  fs.mkdirSync(path.join(artifact, 'firmware'), { recursive: true });
   fs.mkdirSync(moduleStage, { recursive: true });
   fs.mkdirSync(path.join(target, 'usr', 'lib'), { recursive: true });
   fs.mkdirSync(path.join(target, 'boot', 'dtb'), { recursive: true });
@@ -32,12 +33,14 @@ test('installs modules without replacing a target /lib symlink', (t) => {
   fs.writeFileSync(path.join(artifact, 'kernel', 'kernel.config'), 'config');
   fs.writeFileSync(path.join(artifact, 'kernel', 'meson8b-onecloud.dtb'), 'dtb');
   fs.writeFileSync(path.join(artifact, 'manifest.json'), JSON.stringify({ kernel_release: '6.12.28-current-meson' }));
+  fs.writeFileSync(path.join(artifact, 'firmware', 'meson8b_h264.bin'), 'firmware');
   fs.writeFileSync(path.join(target, 'lib', 'firmware-placeholder'), 'placeholder');
 
   const result = spawnSync('bash', [installer, artifact, target], { encoding: 'utf8' });
   assert.equal(result.status, 0, result.stderr || result.stdout);
   assert.equal(fs.lstatSync(path.join(target, 'lib')).isSymbolicLink(), true);
   assert.equal(fs.readFileSync(path.join(target, 'lib', 'modules', '6.12.28-current-meson', 'meson-venc.ko'), 'utf8'), 'module');
+  assert.equal(fs.readFileSync(path.join(target, 'lib', 'firmware', 'meson', 'venc', 'meson8b_h264.bin'), 'utf8'), 'firmware');
 });
 
 test('installer source uses a staging tree and never extracts modules at filesystem root', () => {
@@ -50,7 +53,8 @@ test('installer source uses a staging tree and never extracts modules at filesys
   assert.match(source, /4000000/);
   assert.match(source, /depmod/);
   assert.match(source, /cma=128M/);
-  assert.match(source, /h264_enc\.bin/);
   assert.match(source, /meson8b_h264\.bin/);
   assert.match(source, /backups\/install-/);
+  assert.match(source, /FIRMWARE_DIR.*meson8b_h264\.bin/);
+  assert.doesNotMatch(source, /\/video\/h264_enc\.bin|gxl_h264_enc|zlib/);
 });

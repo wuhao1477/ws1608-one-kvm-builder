@@ -3,32 +3,35 @@ set -Eeuo pipefail
 
 ROOT_DIR=$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)
 CONFIG_FILE="$ROOT_DIR/experimental/hcodec/config/sources.env"
-KERNEL_DIR=${1:?usage: package-artifact.sh KERNEL_DIR TOOLS_DIR OUTPUT_DIR RUN_NUMBER RUN_ATTEMPT}
-TOOLS_DIR=${2:?usage: package-artifact.sh KERNEL_DIR TOOLS_DIR OUTPUT_DIR RUN_NUMBER RUN_ATTEMPT}
-OUTPUT_DIR=${3:?usage: package-artifact.sh KERNEL_DIR TOOLS_DIR OUTPUT_DIR RUN_NUMBER RUN_ATTEMPT}
-RUN_NUMBER=${4:?usage: package-artifact.sh KERNEL_DIR TOOLS_DIR OUTPUT_DIR RUN_NUMBER RUN_ATTEMPT}
-RUN_ATTEMPT=${5:?usage: package-artifact.sh KERNEL_DIR TOOLS_DIR OUTPUT_DIR RUN_NUMBER RUN_ATTEMPT}
+KERNEL_DIR=${1:?usage: package-artifact.sh KERNEL_DIR TOOLS_DIR FIRMWARE_DIR OUTPUT_DIR RUN_NUMBER RUN_ATTEMPT}
+TOOLS_DIR=${2:?usage: package-artifact.sh KERNEL_DIR TOOLS_DIR FIRMWARE_DIR OUTPUT_DIR RUN_NUMBER RUN_ATTEMPT}
+FIRMWARE_DIR=${3:?usage: package-artifact.sh KERNEL_DIR TOOLS_DIR FIRMWARE_DIR OUTPUT_DIR RUN_NUMBER RUN_ATTEMPT}
+OUTPUT_DIR=${4:?usage: package-artifact.sh KERNEL_DIR TOOLS_DIR FIRMWARE_DIR OUTPUT_DIR RUN_NUMBER RUN_ATTEMPT}
+RUN_NUMBER=${5:?usage: package-artifact.sh KERNEL_DIR TOOLS_DIR FIRMWARE_DIR OUTPUT_DIR RUN_NUMBER RUN_ATTEMPT}
+RUN_ATTEMPT=${6:?usage: package-artifact.sh KERNEL_DIR TOOLS_DIR FIRMWARE_DIR OUTPUT_DIR RUN_NUMBER RUN_ATTEMPT}
 [[ "$RUN_NUMBER" =~ ^[0-9]+$ && "$RUN_ATTEMPT" =~ ^[0-9]+$ ]] || { echo 'invalid run identity' >&2; exit 1; }
 set -a
 # shellcheck disable=SC1090
 source "$CONFIG_FILE"
 set +a
-for directory in "$KERNEL_DIR" "$TOOLS_DIR"; do [[ -d "$directory" && ! -L "$directory" ]] || { echo "invalid input: $directory" >&2; exit 1; }; done
+for directory in "$KERNEL_DIR" "$TOOLS_DIR" "$FIRMWARE_DIR"; do [[ -d "$directory" && ! -L "$directory" ]] || { echo "invalid input: $directory" >&2; exit 1; }; done
 rm -rf -- "$OUTPUT_DIR"
-mkdir -p "$OUTPUT_DIR/stage/kernel" "$OUTPUT_DIR/stage/tools"
+mkdir -p "$OUTPUT_DIR/stage/kernel" "$OUTPUT_DIR/stage/tools" "$OUTPUT_DIR/stage/firmware"
 
 kernel_files=(zImage uImage meson8b-onecloud.dtb modules.tar.xz kernel.config System.map Module.symvers module-signing.json source-manifest.json SHA256SUMS)
-tool_files=(meson-venc-smoke meson-venc-capture tools-manifest.json firmware-manifest.json SHA256SUMS)
+tool_files=(meson-venc-smoke meson-venc-capture tools-manifest.json SHA256SUMS)
+firmware_files=(meson8b_h264.bin firmware-manifest.json)
 for file in "${kernel_files[@]}"; do cp -p "$KERNEL_DIR/$file" "$OUTPUT_DIR/stage/kernel/$file"; done
 for file in "${tool_files[@]}"; do cp -p "$TOOLS_DIR/$file" "$OUTPUT_DIR/stage/tools/$file"; done
+for file in "${firmware_files[@]}"; do cp -p "$FIRMWARE_DIR/$file" "$OUTPUT_DIR/stage/firmware/$file"; done
 cp -p "$ROOT_DIR/experimental/hcodec/scripts/install-artifact.sh" \
   "$OUTPUT_DIR/stage/install-artifact.sh"
-find "$OUTPUT_DIR/stage" -type f \( -name '*.bin' -o -name '*.fw' \) -delete
-node - "$OUTPUT_DIR/stage/manifest.json" "$RUN_NUMBER" "$RUN_ATTEMPT" "$OUTPUT_DIR/stage/kernel/source-manifest.json" "$OUTPUT_DIR/stage/tools/tools-manifest.json" <<'NODE'
+node - "$OUTPUT_DIR/stage/manifest.json" "$RUN_NUMBER" "$RUN_ATTEMPT" "$OUTPUT_DIR/stage/kernel/source-manifest.json" "$OUTPUT_DIR/stage/tools/tools-manifest.json" "$OUTPUT_DIR/stage/firmware/firmware-manifest.json" <<'NODE'
 const fs = require('fs');
-const [file, run, attempt, sourceFile, toolsFile] = process.argv.slice(2);
+const [file, run, attempt, sourceFile, toolsFile, firmwareFile] = process.argv.slice(2);
 const source = JSON.parse(fs.readFileSync(sourceFile, 'utf8'));
 const tools = JSON.parse(fs.readFileSync(toolsFile, 'utf8'));
+const firmware = JSON.parse(fs.readFileSync(firmwareFile, 'utf8'));
 const kernelSums = fs.readFileSync(`${sourceFile.slice(0, sourceFile.lastIndexOf('/'))}/SHA256SUMS`, 'utf8');
 const digestFor = (name) => {
   const line = kernelSums.split(/\r?\n/).find((entry) => entry.endsWith(`  ${name}`));
@@ -42,12 +45,13 @@ const manifest = {
   base_image_sha256: process.env.BASE_IMAGE_SHA256,
   linux_commit: source.linux_commit, armbian_build_commit: source.armbian_build_commit,
   driver_source_sha256: source.patches_sha256, patch_series_sha256: source.patches_sha256,
-  firmware_sha256: process.env.FIRMWARE_ARCHIVE_SHA256,
+  firmware_source_commit: firmware.commit, firmware_input_path: firmware.input_path,
+  firmware_variant: firmware.variant, firmware_sha256: firmware.output_sha256,
   dtb_sha256: digestFor('meson8b-onecloud.dtb'),
   module_vermagic: source.kernel_release || '6.12.28-current-meson', cma_mib: 128,
   toolchain_container: source.toolchain_container, tools_abi: tools.abi,
   candidate_extraargs: 'cma=128M', automatic_module_loading: false,
-  firmware_binary_included: false, hardware_boot_tested: false, hardware_encoder_tested: false
+  firmware_binary_included: true, hardware_boot_tested: false, hardware_encoder_tested: false
 };
 fs.writeFileSync(file, `${JSON.stringify(manifest, null, 2)}\n`);
 NODE
