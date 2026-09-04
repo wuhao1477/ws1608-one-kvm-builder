@@ -55,3 +55,8 @@ test('workflow only runs on pull requests or manual dispatch and keeps artifact 
   assert.match(text, /verify-artifact\.sh/);
   assert.match(text, /download-artifact/);
 });
+
+test('workflow keeps generated Meson8b firmware as a separate package input', () => {
+  assert.match(fs.readFileSync(workflow, 'utf8'), /build-firmware\.sh/);
+  assert.match(fs.readFileSync(workflow, 'utf8'), /out\/hcodec\/firmware/);
+});

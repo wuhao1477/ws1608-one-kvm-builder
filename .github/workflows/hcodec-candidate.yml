@@ -56,7 +56,7 @@ jobs:
           KERNEL_CONFIGURE: no
           SHARE_LOG: no
         run: |
-          mkdir -p out/hcodec/kernel out/hcodec/tools out/hcodec/artifact
+          mkdir -p out/hcodec/kernel out/hcodec/tools out/hcodec/firmware out/hcodec/artifact
           experimental/hcodec/scripts/collect-base-evidence.sh collect "$HCODEC_BASE_EVIDENCE"
           docker run --rm --platform linux/amd64 --privileged \
             -e ALLOW_ROOT=yes -e PRE_PREPARED_HOST=yes -e ARMBIAN_INSIDE_DOCKERFILE_BUILD=yes \
@@ -70,7 +70,8 @@ jobs:
               /repo/experimental/hcodec/scripts/build-kernel.sh
             '
           experimental/hcodec/scripts/build-tools.sh out/hcodec/tools
-          experimental/hcodec/scripts/package-artifact.sh out/hcodec/kernel out/hcodec/tools out/hcodec/artifact "${GITHUB_RUN_NUMBER}" "${GITHUB_RUN_ATTEMPT}"
+          experimental/hcodec/scripts/build-firmware.sh out/hcodec/firmware
+          experimental/hcodec/scripts/package-artifact.sh out/hcodec/kernel out/hcodec/tools out/hcodec/firmware out/hcodec/artifact "${GITHUB_RUN_NUMBER}" "${GITHUB_RUN_ATTEMPT}"
           experimental/hcodec/scripts/verify-artifact.sh out/hcodec/artifact
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with:
