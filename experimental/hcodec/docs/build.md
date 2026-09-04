@@ -29,6 +29,13 @@ CMA 充足，设备在失败后继续运行。offset VLC ring-base 修正已否�
 9536 字节 Meson8b dblk 微码，SHA-256 为
 `2a5b578c4cbfe2f9b80c110825d61bc94eba97667639fc5bf5639f1b7eec4368`。
 
+GitHub Actions run `33854312358`（分支 `codex/hcodec-meson8b-ucode`）已完成
+contract、ARMv7 构建、artifact 上传/下载和独立复验。生成的
+`ws1608-hcodec-armv7-run-13-1.tar.xz` 已在 WS1608 安装并重启成功；启动后
+内核、`/dev/video0`、`cma=128M`、`/lib -> /usr/lib` 和微码摘要均正确。
+唯一一次 640×480、MMAP、1 帧 probe 在 120 秒内超时，随后设备 SSH 失联，未得到
+有效 Annex-B H.264。该候选标记为硬件编码失败，不继续其他分辨率或测试。
+
 设备安装必须使用 `install-artifact.sh`：模块包先解到目标根分区 staging，再复制
 目标版本目录；固件从 artifact 的 `firmware/meson8b_h264.bin` 直接安装。
 不得把归档直接解到 `/`。640×480 实机通过前不创建 PR。

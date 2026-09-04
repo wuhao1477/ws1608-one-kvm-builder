@@ -14,6 +14,12 @@
 - H.264 硬件编码改走 Linux 6.12 `meson-venc` HCODEC V4L2 M2M。
 - Linux 3.10、私有 AMLENC ABI、双内核和 kexec 已废弃，不再构建或刷写。
 - HCODEC 尚未通过 WS1608 实机编码验证，当前不能发布硬件成功结论。
+- `codex/hcodec-meson8b-ucode` 的 GitHub Actions run `33854312358` 已完成
+  contract、ARMv7 构建、artifact 上传/下载和复验；`run-13-1` 已安装并成功启动。
+  启动证据包含 `6.12.28-current-meson`、`cma=128M`、`/dev/video0`、正确的
+  9536 字节 Meson8b 微码和 `modinfo` 固件依赖。
+- 唯一一次 640×480、MMAP、1 帧 probe 在 120 秒内超时，随后设备 SSH 返回
+  `Host is down`；没有有效 Annex-B H.264，未创建 PR，也未继续其他测试。
 - `codex/hcodec-armv7-cloud-verify` 的 `run-12-1` 候选已实机启动，`cma=128M`
   生效且 `/dev/video0` 注册成功；640×480 单帧 probe 记录到
   `SEQUENCE`、`PICTURE` 成功，`IDR` 输出 7 字节后超时并返回 `-110`。
@@ -67,11 +73,10 @@ One-KVM `0.2.6` 已有 `h264_v4l2m2m` 后端，Amlogic 实验探测需要
 
 ## 接手后的顺序
 
-1. 推送 `codex/hcodec-meson8b-ucode`，等待 GitHub Actions 生成并复验 artifact。
-2. 刷入新候选，只运行 640×480 单帧探针；通过前不继续 720p/1080p。
-3. 只有 640×480 生成有效 Annex-B H.264 后才创建 PR。
-4. 独立码流通过后临时接入 One-KVM，不修改稳定服务配置。
-5. 完成启动、视频、HID、虚拟介质、重启和长时间运行后再讨论候选发布。
+1. 保留 `33854312358` artifact 与 `run-13-1` 的失败证据，不再重复本次 probe。
+2. 在取得新的可验证硬件原因和修复前，不继续 720p/1080p、DMABUF 或 One-KVM。
+3. 只有新的 640×480 单帧生成有效 Annex-B H.264 后才创建 PR。
+4. 独立码流通过后再临时接入 One-KVM，不修改稳定服务配置。
 
 ## 维护边界
 
@@ -80,6 +85,7 @@ One-KVM `0.2.6` 已有 `h264_v4l2m2m` 后端，Amlogic 实验探测需要
 - 不在稳定服务中默认启用 V4L2 M2M 实验开关。
 - 不改变稳定基础，除非新候选完成单独实机验收与决策。
 - 不创建或合并 PR，除非新候选完成 640×480 单帧实机编码验收。
+- 当前 `run-13-1` probe 超时并导致设备失联，不能视为硬件编码验收通过。
 - 设备连接信息和原始日志保持在维护者的私有测试记录中。
 
 实机步骤见 [hardware-validation.md](hardware-validation.md)，故障定位见

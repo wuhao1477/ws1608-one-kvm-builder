@@ -14,6 +14,7 @@
 | 固件加载失败 | 文件缺失、路径或摘要错误 | 核对 `meson8b_h264.bin` 来源与 manifest |
 | CMA 分配失败 | CMA 太小或碎片化 | 检查 cmdline、CmaTotal/CmaFree 和缓冲数量 |
 | 编码 timeout | 微码、HCODEC 时钟、电源、复位或 mailbox IRQ | 先核对 Hardkernel Meson8b dblk 微码来源/摘要，再检查命令和中断 |
+| probe 超时后 SSH 失联 | HCODEC 访问可能触发系统级挂起或复位 | 停止所有后续编码测试；等待一次网络恢复窗口，保存结果后再分析，不重复刷写或延长 timeout |
 | H.264 损坏 | Canvas/MFDIN、DMA、capture ring 或 header 状态错误 | 用独立工具缩小到首个失败帧 |
 | One-KVM 不发现硬件后端 | 环境开关、设备权限或 V4L2 格式不匹配 | 独立探针通过后再显式启用 |
 | `/dev/video*` 缺失 | 驱动未 probe 或采集卡未接 | 先用 `v4l2-ctl --list-devices` 区分设备 |
@@ -118,6 +119,12 @@ dmesg | grep -Ei 'cma|dma|allocation|contiguous|out of memory'
 返回 `-110`；按顺序确认 dblk 微码、AO power、隔离、DOS bus clock、HCODEC
 内部 clock、reset、固件 DMA、mailbox mask/clear、命令完成 IRQ。
 不能通过无限延长 timeout 隐藏硬件没有运行。
+
+`run-13-1` 已确认安装和启动路径正确：内核为 `6.12.28-current-meson`，
+`/dev/video0` 已注册，Meson8b 微码为 9536 字节且摘要正确，`cma=128M` 生效。
+唯一一次 640×480、MMAP、1 帧 probe 在 120 秒内超时，之后设备 SSH 返回
+`Host is down`。没有有效码流时必须停止测试，不创建 PR，不继续更高分辨率或
+One-KVM 集成。
 
 ### 6. 码流
 

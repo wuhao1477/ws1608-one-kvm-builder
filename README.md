@@ -19,6 +19,9 @@ Linux 6.12 HCODEC 研究路线。
 - 下一候选改用 Hardkernel Linux `5aed95d35d252cafc75ce613a3a0052285662de2`
   的 `h264_enc_mix_dump_dblk.h`，生成 9536 字节 Meson8b dblk 微码，摘要为
   `2a5b578c4cbfe2f9b80c110825d61bc94eba97667639fc5bf5639f1b7eec4368`。
+- GitHub Actions run `33854312358` 已生成并复验 `run-13-1` artifact；设备安装、
+  重启和 `/dev/video0` 启动均成功，但唯一一次 640×480、MMAP、1 帧 probe
+  超时并导致设备失联，未产生有效 H.264，仍未创建 PR。
 
 ## 自动更新规则
 

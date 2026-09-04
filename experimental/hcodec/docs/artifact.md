@@ -16,6 +16,11 @@ Release。
 SHA-256 为 `2a5b578c4cbfe2f9b80c110825d61bc94eba97667639fc5bf5639f1b7eec4368`。
 该 artifact 仍是静态构建候选，不代表实体 WS1608 已完成编码。
 
+run `33854312358` 的 artifact `ws1608-hcodec-armv7-run-13-1.tar.xz` 已通过本地
+和 GitHub Actions 的完整摘要复验，并在 WS1608 完成安装与启动验证。唯一一次
+640×480、MMAP、1 帧 probe 超时，随后设备网络失联；输出未形成有效 Annex-B
+码流，因此 `hardware_encoder_tested` 仍为 `false`，不得创建 PR。
+
 `run-12-1` 已证明候选内核可启动并注册 HCODEC V4L2 设备，并把最小 probe 失败点
 定位到 `IDR` 命令：`queue_setup`、`buf_prepare`、`buf_queue`、
 `start_streaming`、workspace、硬件准备、`SEQUENCE` 和 `PICTURE` 均已通过；
