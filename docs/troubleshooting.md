@@ -13,7 +13,7 @@
 | HCODEC probe 失败 | DT 时钟、HHI、DOS、IRQ 或 Canvas 不完整 | 核对 Meson8b 资源和冲突 owner |
 | 固件加载失败 | 文件缺失、路径或摘要错误 | 核对 `meson8b_h264.bin` 来源与 manifest |
 | CMA 分配失败 | CMA 太小或碎片化 | 检查 cmdline、CmaTotal/CmaFree 和缓冲数量 |
-| 编码 timeout | HCODEC 时钟、电源、复位或 mailbox IRQ | 分层检查 power-on、firmware、命令和中断 |
+| 编码 timeout | 微码、HCODEC 时钟、电源、复位或 mailbox IRQ | 先核对 Hardkernel Meson8b dblk 微码来源/摘要，再检查命令和中断 |
 | H.264 损坏 | Canvas/MFDIN、DMA、capture ring 或 header 状态错误 | 用独立工具缩小到首个失败帧 |
 | One-KVM 不发现硬件后端 | 环境开关、设备权限或 V4L2 格式不匹配 | 独立探针通过后再显式启用 |
 | `/dev/video*` 缺失 | 驱动未 probe 或采集卡未接 | 先用 `v4l2-ctl --list-devices` 区分设备 |
@@ -95,7 +95,10 @@ sha256sum /lib/firmware/meson/venc/meson8b_h264.bin
 dmesg | grep -Ei 'firmware|imem|dma|hcodec'
 ```
 
-没有固定来源、提取输入、SHA-256 和许可证记录的固件不能进入候选。
+候选固件必须来自固定 Hardkernel commit `5aed95d35d252cafc75ce613a3a0052285662de2`，
+输入为 `drivers/amlogic/amports/m8/ucode/encoder/h264_enc_mix_dump_dblk.h`，
+输出 9536 字节，SHA-256 为
+`2a5b578c4cbfe2f9b80c110825d61bc94eba97667639fc5bf5639f1b7eec4368`。
 
 ### 4. CMA 与 DMA
 
@@ -111,8 +114,9 @@ dmesg | grep -Ei 'cma|dma|allocation|contiguous|out of memory'
 
 ### 5. 电源、时钟与 IRQ
 
-probe 成功但首帧 timeout 时，按顺序确认：AO power、隔离、DOS bus clock、
-HCODEC 内部 clock、reset、固件 DMA、mailbox mask/clear、命令完成 IRQ。
+`run-12-1` 的首帧记录为：`SEQUENCE`、`PICTURE` 成功，IDR 输出 7 字节后
+返回 `-110`；按顺序确认 dblk 微码、AO power、隔离、DOS bus clock、HCODEC
+内部 clock、reset、固件 DMA、mailbox mask/clear、命令完成 IRQ。
 不能通过无限延长 timeout 隐藏硬件没有运行。
 
 ### 6. 码流

@@ -13,10 +13,12 @@ Linux 6.12 HCODEC 研究路线。
 - 稳定底座已经具备实体启动、HDMI、网络、SSH、eMMC 和 One-KVM 运行证据。
 - H.264 HCODEC 候选尚未通过 WS1608 实机编码测试；不得把资料或 CI 结果
   写成硬件已经可用。
-- `codex/hcodec-armv7-cloud-verify` 的 run-9 候选已能启动并注册
-  `/dev/video0`，640×480 单帧 probe 已定位到 `IDR` 命令超时：
-  `SEQUENCE` 与 `PICTURE` 成功，IDR 在 Meson8b VLC offset 续写阶段返回
-  firmware error。当前 run-10 只验证 Meson8b offset ring-base 修正。
+- `run-12-1` 候选已能启动并注册 `/dev/video0`，`cma=128M` 生效。
+  640×480 单帧 probe 中 `SEQUENCE` 与 `PICTURE` 成功，但 IDR 输出 7 字节后
+  超时并返回 `-110`；CMA 充足，设备未发生 kernel panic。
+- 下一候选改用 Hardkernel Linux `5aed95d35d252cafc75ce613a3a0052285662de2`
+  的 `h264_enc_mix_dump_dblk.h`，生成 9536 字节 Meson8b dblk 微码，摘要为
+  `2a5b578c4cbfe2f9b80c110825d61bc94eba97667639fc5bf5639f1b7eec4368`。
 
 ## 自动更新规则
 
@@ -44,13 +46,13 @@ One-KVM 使用 `h264_v4l2m2m` 后端。
 - 附带模块是 AArch64 `6.12.98-ipkvm-release`，不能加载到 ARMv7
   `6.12.28-current-meson`；
 - 补丁与最终驱动不是同一修订，Meson8b 时钟和 HHI 资源仍需修正；
-- 缺少可追溯的 `meson8b_h264.bin` 固件；
+- 固件来源已固定为 Hardkernel M8 dblk 微码；新候选仍需实机验证；
 - `cma=128M` 是基于 1080p 缓冲预算的候选值，不是实机结论；
 - One-KVM 实验探测需要 `ONE_KVM_V4L2M2M_ALLOW=1`，通过独立编码测试前
   不写入稳定服务配置。
 - ARMv7 实机验证已确认 HCODEC probe 可到达 `/dev/video0`，V4L2 队列、
   `start_streaming`、workspace 分配和 `SEQUENCE/PICTURE` 命令可通过；
-  当前最小编码仍卡在 `IDR` 帧命令。
+  当前最小编码仍卡在 `IDR` 帧命令。新候选通过 640×480 前不创建 PR。
 
 Linux 3.10、Bullseye、`/dev/amvenc_avc`、`libvpcodec`、双内核和 kexec
 路线已经废弃，仅作为历史研究记录保留。正式决策见

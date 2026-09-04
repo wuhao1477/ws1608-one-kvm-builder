@@ -18,12 +18,17 @@ GitHub Actions 工作流为 `.github/workflows/hcodec-candidate.yml`，响应
 不修改稳定镜像。所有候选的 `hardware_boot_tested` 和
 `hardware_encoder_tested` 均为 `false`。
 
-run-9 候选已在 WS1608 上完成启动验证并注册 `/dev/video0`。640×480 单帧
-H.264 probe 已确认 V4L2 队列、`start_streaming`、workspace 分配、硬件准备、
-`SEQUENCE` 和 `PICTURE` 命令通过；失败点是 `IDR` 命令在 SPS/PPS 后的
-VLC offset 续写阶段超时。run-10 只调整 Meson8b offset 帧写入时的 VLC
-ring base，继续由 GitHub Actions 构建 artifact 后再刷机验证。
+`run-12-1` 候选已在 WS1608 上完成启动验证并注册 `/dev/video0`。640×480 单帧
+H.264 probe 确认 V4L2 队列、`start_streaming`、workspace 分配、硬件准备、
+`SEQUENCE` 和 `PICTURE` 命令通过；IDR 输出 7 字节后超时并返回 `-110`。
+CMA 充足，设备在失败后继续运行。offset VLC ring-base 修正已否定。
 
-设备安装必须使用 `install-artifact.sh`：模块包先解到临时 staging，再复制
-目标版本目录；不得把归档直接解到 `/`。直接解包会覆盖 `/lib -> /usr/lib`，
-使系统在重启后无法执行 `init` 和 SSH。
+下一候选由 GitHub Actions 从 Hardkernel Linux
+`5aed95d35d252cafc75ce613a3a0052285662de2` 的
+`drivers/amlogic/amports/m8/ucode/encoder/h264_enc_mix_dump_dblk.h` 生成
+9536 字节 Meson8b dblk 微码，SHA-256 为
+`2a5b578c4cbfe2f9b80c110825d61bc94eba97667639fc5bf5639f1b7eec4368`。
+
+设备安装必须使用 `install-artifact.sh`：模块包先解到目标根分区 staging，再复制
+目标版本目录；固件从 artifact 的 `firmware/meson8b_h264.bin` 直接安装。
+不得把归档直接解到 `/`。640×480 实机通过前不创建 PR。
