@@ -32,6 +32,13 @@ function requireCommit(values, key) {
   if (!commit.test(requireValue(values, key))) throw new Error(`${key} must be a full commit`);
 }
 
+function requireInteger(values, key, expected) {
+  const value = requireValue(values, key);
+  if (!/^\d+$/.test(value) || Number(value) !== expected) {
+    throw new Error(`${key} must equal ${expected}`);
+  }
+}
+
 function verify(values) {
   for (const key of ['BASE_IMAGE_SHA256', 'ARMBIAN_BUILD_ARCHIVE_SHA256', 'LINUX_ARCHIVE_SHA256',
     'KERNEL_CONFIG_SHA256', 'BASE_DTB_SHA256', 'BASE_UIMAGE_SHA256', 'BASE_BOOT_CMD_SHA256',
@@ -59,6 +66,16 @@ function verify(values) {
   }
   if (!requireValue(values, 'FIRMWARE_ARCHIVE_URL').endsWith(`/${requireValue(values, 'FIRMWARE_COMMIT')}`)) {
     throw new Error('FIRMWARE_ARCHIVE_URL must end with the commit');
+  }
+  if (requireValue(values, 'FIRMWARE_INPUT_PATH') !==
+      'drivers/amlogic/amports/m8/ucode/encoder/h264_enc_mix_dump_dblk.h') {
+    throw new Error('FIRMWARE_INPUT_PATH mismatch');
+  }
+  requireInteger(values, 'FIRMWARE_WORD_COUNT', 2384);
+  requireInteger(values, 'FIRMWARE_OUTPUT_SIZE', 9536);
+  if (requireValue(values, 'FIRMWARE_OUTPUT_SHA256') !==
+      '2a5b578c4cbfe2f9b80c110825d61bc94eba97667639fc5bf5639f1b7eec4368') {
+    throw new Error('FIRMWARE_OUTPUT_SHA256 mismatch');
   }
   for (const key of ['UIMAGE_LOAD_ADDRESS', 'UIMAGE_ENTRY_POINT']) {
     if (requireValue(values, key) !== '0x00208000') throw new Error(`${key} mismatch`);
