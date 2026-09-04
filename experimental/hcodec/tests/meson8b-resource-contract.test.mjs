@@ -23,6 +23,7 @@ test('patch series supplies the complete standalone Meson8b HCODEC resources', (
   assert.match(patch, /HCODEC_ASSIST_DMA_INT_MSK, 0xfd/);
   assert.match(patch, /HCODEC_ASSIST_DMA_INT_MSK2, 0xff/);
   assert.match(patch, /HCODEC_ASSIST_AMR1_INT4, 0x18/);
+  assert.match(patch, /has_gx_protocol\) \{[\s\S]*HCODEC_ASSIST_AMR1_INT1, 0x19/);
   assert.doesNotMatch(patch, /dst_base_dma|dst_ring_size/);
 });
 

@@ -3,20 +3,20 @@ From: Codex <codex@openai.com>
 Date: Fri, 4 Sep 2026 15:30:00 +0800
 Subject: [PATCH 23/23] media: meson: match Meson8b microcode protocol
 
-Use the Meson8b Assist DMA interrupt defaults from the Hardkernel M8 encoder
-path. The VLC output ring remains anchored at the capture buffer base, as it
-was before the disproved offset-ring workaround.
+Use the Meson8b Assist interrupt and DMA defaults from the Hardkernel M8
+encoder path. The VLC output ring remains anchored at the capture buffer base,
+as it was before the disproved offset-ring workaround.
 
 Signed-off-by: Codex <codex@openai.com>
 ---
  drivers/media/platform/amlogic/meson-venc/meson-venc.c | 9 +++++++++
- 1 file changed, 9 insertions(+)
+ 1 file changed, 11 insertions(+), 1 deletion(-)
 
 diff --git a/drivers/media/platform/amlogic/meson-venc/meson-venc.c b/drivers/media/platform/amlogic/meson-venc/meson-venc.c
 index e923f7a..f3b1c2d 100644
 --- a/drivers/media/platform/amlogic/meson-venc/meson-venc.c
 +++ b/drivers/media/platform/amlogic/meson-venc/meson-venc.c
-@@ -205,6 +205,9 @@
+@@ -205,5 +205,8 @@
  #define HCODEC_ASSIST_AMR1_INT1		0x4098
  #define HCODEC_ASSIST_AMR1_INT2		0x409c
  #define HCODEC_ASSIST_AMR1_INT3		0x40a0
@@ -25,9 +25,12 @@ index e923f7a..f3b1c2d 100644
 +#define HCODEC_ASSIST_AMR1_INT4		0x40a4
  
  enum meson_venc_command {
-@@ -572,6 +575,15 @@ static void meson_venc_protocol_init(struct meson_venc_ctx *ctx, bool idr)
- 	else
+@@ -572,6 +575,13 @@ static void meson_venc_protocol_init(struct meson_venc_ctx *ctx, bool idr)
+-	else
++	else {
++		meson_venc_write(venc, HCODEC_ASSIST_AMR1_INT1, 0x19);
  		meson_venc_write(venc, HCODEC_ASSIST_AMR1_INT2, 0x08);
++	}
  	meson_venc_write(venc, HCODEC_ASSIST_AMR1_INT3, 0x14);
 +	if (!venc->variant->has_gx_protocol) {
 +		meson_venc_write(venc, HCODEC_ASSIST_DMA_INT_MSK, 0xfd);
