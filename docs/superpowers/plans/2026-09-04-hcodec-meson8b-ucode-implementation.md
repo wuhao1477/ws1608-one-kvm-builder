@@ -171,7 +171,7 @@ git commit -m "fix(hcodec): 直接安装Meson8b生成微码"
 - Meson8b initialization writes `0xfd`, `0xff`, and `0x18` respectively before command submission.
 - `HCODEC_VLC_VB_START_PTR` and `HCODEC_VLC_VB_SW_RD_PTR` use the capture buffer base again; no `dst_base_dma` or `dst_ring_size` workaround remains.
 
-- [ ] **Step 1: Write failing patch contracts.** Change the patch-series expectation from file `0022-...` to `0023-...`, require the three register definitions and writes above, and require the absence of `dst_base_dma`, `dst_ring_size`, and `dst_offset && !venc->variant->has_gx_protocol` in the active patch set.
+- [ ] **Step 1: Write failing patch contracts.** Change the patch-series expectation from file `0022-media-meson-use-offset-VLC-ring-base-on-Meson8b.patch` to `0023-media-meson-match-Meson8b-microcode-protocol.patch`, require the three register definitions and writes above, and require the absence of `dst_base_dma`, `dst_ring_size`, and `dst_offset && !venc->variant->has_gx_protocol` in the active patch set.
 
 - [ ] **Step 2: Run patch contracts and verify RED.**
 
@@ -181,7 +181,7 @@ node --test experimental/hcodec/tests/patch-series.test.mjs experimental/hcodec/
 
 Expected: failure because `0022` is still present and the DMA initialization patch is missing.
 
-- [ ] **Step 3: Add the single focused driver patch.** Base its context on the post-`0017` driver and add the exact offsets/values above in the Meson8b branch of `meson_venc_protocol_init` or its equivalent per-command initialization. Do not change the GXL/GXM branch.
+- [ ] **Step 3: Add the single focused driver patch.** Base its context on the post-`0017` driver and add the exact offsets/values above in the Meson8b branch of `meson_venc_protocol_init`. Do not change the GXL/GXM branch.
 
 - [ ] **Step 4: Apply the patch series in an isolated temporary kernel tree.**
 
@@ -223,7 +223,7 @@ git commit -m "fix(hcodec): 匹配Meson8b微码协议"
 - Documentation records `run-12-1` as the failed GXL-firmware/IDR-offset candidate and identifies the new Meson8b microcode candidate as unverified until hardware testing.
 - GitHub Actions produces and re-verifies one artifact from branch `codex/hcodec-meson8b-ucode`.
 
-- [ ] **Step 1: Write documentation contracts.** Add assertions that the docs mention the `2a5b...` Meson8b dblk digest, the Hardkernel commit, the failed `run-12-1` IDR result, and the rule that no PR is created before 640x480 success. Remove stale text claiming the offset workaround is the current next step.
+- [ ] **Step 1: Write documentation contracts.** Add assertions that the docs mention the `2a5b578c4cbfe2f9b80c110825d61bc94eba97667639fc5bf5639f1b7eec4368` Meson8b dblk digest, the Hardkernel commit, the failed `run-12-1` IDR result, and the rule that no PR is created before 640x480 success. Remove stale text claiming the offset workaround is the current next step.
 
 - [ ] **Step 2: Run docs contracts and the complete local suite.**
 
@@ -236,21 +236,21 @@ bash -n experimental/hcodec/scripts/*.sh
 
 ```bash
 git push -u origin codex/hcodec-meson8b-ucode
-gh run list --workflow hcodec-candidate.yml --branch codex/hcodec-meson8b-ucode --limit 3
-gh run watch <new-run-id> --exit-status
+run_id=$(gh run list --workflow hcodec-candidate.yml --branch codex/hcodec-meson8b-ucode --limit 1 --json databaseId --jq '.[0].databaseId')
+gh run watch "$run_id" --exit-status
 ```
 
 Expected: contract, build, upload, download, and re-verification jobs all succeed. Download the artifact and run `experimental/hcodec/scripts/verify-artifact.sh` independently before device transfer.
 
-- [ ] **Step 4: Transfer and verify on WS1608.** Use `/root/hcodec/run-<run>-<attempt>` on `192.168.100.73`, verify the top-level SHA-256 and artifact manifest on the device, and run `install-artifact.sh . /`. Confirm the firmware file size is `9536`, its SHA-256 is `2a5b...`, `/lib -> usr/lib`, and the module staging directory is removed.
+- [ ] **Step 4: Transfer and verify on WS1608.** Set `run_dir` from the artifact manifest name, for example `run_dir=/root/hcodec/run-13-1` when the manifest artifact is `ws1608-hcodec-armv7-run-13-1.tar.xz`. On `192.168.100.73`, verify the top-level SHA-256 and artifact manifest, then run `"$run_dir/artifact/install-artifact.sh" "$run_dir/artifact" /`. Confirm the firmware file size is `9536`, its SHA-256 is `2a5b578c4cbfe2f9b80c110825d61bc94eba97667639fc5bf5639f1b7eec4368`, `/lib -> usr/lib`, and the module staging directory is removed.
 
 - [ ] **Step 5: Reboot and record boot evidence.** Confirm `uname -r` is `6.12.28-current-meson`, `/dev/video0` exists, `cma=128M` is active, `modinfo meson-venc` reports `meson8b_h264.bin`, and no boot panic/oops exists.
 
-- [ ] **Step 6: Run exactly one hardware probe.** Save before/after CMA and `dmesg`, then run only:
+- [ ] **Step 6: Run exactly one hardware probe.** Save before/after CMA and `dmesg`, then run only the artifact tool under the same `run_dir`:
 
 ```sh
-/root/hcodec/run-<run>-<attempt>/artifact/tools/meson-venc-smoke \
-  /dev/video0 /root/hcodec/run-<run>-<attempt>/results/640x480-1f.h264 \
+"$run_dir/artifact/tools/meson-venc-smoke" \
+  /dev/video0 "$run_dir/results/640x480-1f.h264" \
   640 480 1
 ```
 
