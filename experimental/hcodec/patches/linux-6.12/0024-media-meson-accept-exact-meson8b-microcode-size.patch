@@ -1,0 +1,28 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Codex <codex@openai.com>
+Date: Sat, 5 Sep 2026 00:30:00 +0800
+Subject: [PATCH 24/24] media: meson: accept exact Meson8b microcode size
+
+The pinned Hardkernel Meson8b dblk microcode contains 2384 words, or 9536
+bytes. Match the driver minimum-size check to that exact firmware payload.
+
+Signed-off-by: Codex <codex@openai.com>
+---
+ drivers/media/platform/amlogic/meson-venc/meson-venc.c | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/drivers/media/platform/amlogic/meson-venc/meson-venc.c b/drivers/media/platform/amlogic/meson-venc/meson-venc.c
+index 11fce7e..f54399e 100644
+--- a/drivers/media/platform/amlogic/meson-venc/meson-venc.c
++++ b/drivers/media/platform/amlogic/meson-venc/meson-venc.c
+@@ -322,7 +322,7 @@ static void meson_venc_trace_stage(struct meson_venc_dev *venc,
+ static const struct meson_venc_variant meson_venc_meson8b_variant = {
+ 	.name = "meson8b",
+ 	.firmware = "meson/venc/meson8b_h264.bin",
+-	.firmware_min_size = 2400 * sizeof(u32),
++	.firmware_min_size = 2384 * sizeof(u32),
+ 	.clock_rate = 319000000UL,
+ 	.ao_sleep_reg = 0x08,
+ 	.ao_iso_reg = 0x0c,
+-- 
+2.51.0

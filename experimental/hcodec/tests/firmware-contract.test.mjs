@@ -22,6 +22,15 @@ test('does not select the old GXL container record for Meson8b firmware', () => 
   assert.doesNotMatch(builder, /gxl_h264_enc|h264_enc\.bin/);
 });
 
+test('accepts the exact 2384-word Meson8b firmware length in the driver', () => {
+  const patches = fs.readdirSync('experimental/hcodec/patches/linux-6.12')
+    .filter((file) => file.endsWith('.patch'))
+    .sort()
+    .map((file) => fs.readFileSync(`experimental/hcodec/patches/linux-6.12/${file}`, 'utf8'))
+    .join('\n');
+  assert.match(patches, /firmware_min_size\s*=\s*2384\s*\*\s*sizeof\(u32\)/);
+});
+
 test('builds the pinned Meson8b firmware from the exact Hardkernel header', () => {
   assert.equal(fs.existsSync(firmwareBuilder), true, `${firmwareBuilder} must exist`);
   const source = fs.readFileSync(firmwareBuilder, 'utf8');

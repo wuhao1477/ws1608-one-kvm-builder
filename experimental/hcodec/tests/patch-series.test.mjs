@@ -15,7 +15,7 @@ test('ships the ordered 18 reference patches plus Meson8b correction and diagnos
   const files = fs.readdirSync(patchDir).filter((file) => file.endsWith('.patch')).sort();
 
   assert.equal(reference.length, 18);
-  assert.equal(files.length, 22);
+  assert.equal(files.length, 23);
   assert.deepEqual(files.slice(0, 18), reference);
   assert.match(files[0], /^0001-/);
   assert.match(files[17], /^0018-/);
@@ -23,6 +23,7 @@ test('ships the ordered 18 reference patches plus Meson8b correction and diagnos
   assert.equal(files[19], '0020-media-meson-add-HCODEC-runtime-diagnostics.patch');
   assert.equal(files[20], '0021-media-meson-add-V4L2-queue-diagnostics.patch');
   assert.equal(files[21], '0023-media-meson-match-Meson8b-microcode-protocol.patch');
+  assert.equal(files[22], '0024-media-meson-accept-exact-meson8b-microcode-size.patch');
 });
 
 test('runtime diagnostics patch traces the first encode command path', () => {
