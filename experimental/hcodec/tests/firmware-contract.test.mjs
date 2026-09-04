@@ -32,6 +32,8 @@ test('builds the pinned Meson8b firmware from the exact Hardkernel header', () =
   ]) {
     assert.match(source, new RegExp(value.replace(/[.*+?^${}()|[\\]\\]/g, '\\\\$&')));
   }
+  assert.match(source, /wc -c/);
+  assert.doesNotMatch(source, /stat -c/);
 });
 
 test('workflow generates firmware before packaging it into the artifact', () => {

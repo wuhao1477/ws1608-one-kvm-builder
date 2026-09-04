@@ -37,7 +37,8 @@ header="$SOURCE_DIR/$FIRMWARE_INPUT_PATH"
 python3 "$ROOT_DIR/experimental/hcodec/tools/extract-meson8b-ucode.py" \
   "$header" "$OUTPUT_DIR/meson8b_h264.bin"
 
-output_size=$(stat -c '%s' "$OUTPUT_DIR/meson8b_h264.bin")
+output_size=$(wc -c <"$OUTPUT_DIR/meson8b_h264.bin")
+output_size=${output_size//[[:space:]]/}
 output_sha256=$(sha256sum "$OUTPUT_DIR/meson8b_h264.bin" | awk '{print $1}')
 [[ "$output_size" == "$FIRMWARE_OUTPUT_SIZE" ]] || {
   echo "firmware output size mismatch: $output_size" >&2
