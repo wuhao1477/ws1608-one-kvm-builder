@@ -71,12 +71,22 @@ git -C "$SOURCE_DIR" merge-base --is-ancestor "$LINUX_COMMIT" HEAD || {
   exit 1
 }
 git -C "$SOURCE_DIR" clean -f -- '*.orig'
-[[ -z "$(git -C "$SOURCE_DIR" status --porcelain=v1 --untracked-files=all)" ]] || {
-  echo 'Armbian kernel worktree is not clean' >&2
-  echo 'Armbian kernel worktree status:' >&2
-  git -C "$SOURCE_DIR" status --porcelain=v1 --untracked-files=all >&2
-  exit 1
-}
+source_status=$(git -C "$SOURCE_DIR" status --porcelain=v1 --untracked-files=all)
+if [[ -n "$source_status" ]]; then
+  expected_status=' M drivers/media/platform/amlogic/meson-venc/meson-venc.c'
+  [[ "$source_status" == "$expected_status" ]] || {
+    echo 'Armbian kernel worktree contains unexpected changes' >&2
+    echo 'Armbian kernel worktree status:' >&2
+    git -C "$SOURCE_DIR" status --porcelain=v1 --untracked-files=all >&2
+    exit 1
+  }
+  grep -q 'power_off: begin' \
+    "$SOURCE_DIR/drivers/media/platform/amlogic/meson-venc/meson-venc.c" || {
+    echo 'expected streamoff diagnostics are missing from the HCODEC source' >&2
+    exit 1
+  }
+  echo 'Armbian retained the expected HCODEC streamoff diagnostic change'
+fi
 shopt -s nullglob
 driver_patches=("$ARMBIAN_DIR"/cache/patch/kernel-drivers/*.patch)
 shopt -u nullglob

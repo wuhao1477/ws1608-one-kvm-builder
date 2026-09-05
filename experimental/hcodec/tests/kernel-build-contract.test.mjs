@@ -30,6 +30,9 @@ test('builds the fixed ARMv7 kernel artifact set without automatic module loadin
   assert.match(build, /Armbian kernel worktree status:/);
   assert.match(build, /git -C "\$SOURCE_DIR" clean -f -- '\*\.orig'/);
   assert.match(build, /git -C "\$SOURCE_DIR" status --porcelain=v1 --untracked-files=all >&2/);
+  assert.match(build, /expected_status=' M drivers\/media\/platform\/amlogic\/meson-venc\/meson-venc\.c'/);
+  assert.match(build, /power_off: begin/);
+  assert.match(build, /unexpected changes/);
   assert.doesNotMatch(build, /find "\$SOURCE_DIR" -type f -name '\*\.orig' -delete/);
   assert.doesNotMatch(build, /modules-load|modprobe|ONE_KVM/);
 });
