@@ -1,8 +1,11 @@
-From 10f47edeb1398f886ae3c41c9bd64fd5f3e0689c Mon Sep 17 00:00:00 2001
+From fbf3b5a23cc4f60d03bb9df03fb4c02d9dcb15a5 Mon Sep 17 00:00:00 2001
 From: Codex <codex@openai.com>
-Date: Sat, 5 Sep 2026 11:37:05 +0800
+Date: Sat, 5 Sep 2026 11:52:57 +0800
 Subject: [PATCH] media: meson: trace HCODEC streamoff cleanup
 
+---
+ .../media/platform/amlogic/meson-venc/meson-venc.c   | 12 ++++++++++++
+ 1 file changed, 12 insertions(+)
 
 diff --git a/drivers/media/platform/amlogic/meson-venc/meson-venc.c b/drivers/media/platform/amlogic/meson-venc/meson-venc.c
 index 6869bd5..4c622da 100644
@@ -53,3 +56,4 @@ index 6869bd5..4c622da 100644
  		mutex_unlock(ctx->venc->core->hw_lock);
 -- 
 2.50.0
+
