@@ -54,3 +54,17 @@ IDR 输出 7 字节后超时并返回 `-110`。新候选改用 Hardkernel Meson8
 `zsmalloc.ko`/842 模块的依赖记录，再原样复制索引；不要在设备上再次运行无参数
 `depmod`，因为该设备环境会把这组 ARM 模块的依赖重算为空，导致
 `armbian-zram-config.service` 报 `Unknown symbol`。
+
+run `33967514846` 的 `run-24-1` 已在 WS1608 修复上述 zram 启动故障。相同最小
+probe 返回 `0`，写出 6547 字节、SHA-256 为
+`af392c6132fb1b349c62a0609164a5d92fb5dbda0805709614e00dfa636f407a` 的有效 H.264，
+但设备在工具退出后失联，仍不得创建 PR。
+
+artifact 根目录的 `capture-probe.sh` 会把 probe 命令、标准输出/错误、退出码和
+`kernel.before.log`、`kernel.live.log`、`kernel.after.log` 保存到指定的根文件系统
+目录。它只用于每个候选的一次最小 probe：
+
+```sh
+./capture-probe.sh results ./tools/meson-venc-smoke \
+  /dev/video0 results/stream.h264 640 480 1
+```

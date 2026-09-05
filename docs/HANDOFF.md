@@ -31,6 +31,11 @@
   `af392c6132fb1b349c62a0609164a5d92fb5dbda0805709614e00dfa636f407a` 经 `ffprobe`
   和 `ffmpeg` 校验通过。但工具在 `STREAMOFF` 清理阶段未返回并导致 SSH 超时，
   重启后 `pstore` 为空；编码数据路径已通过，清理路径仍阻塞，未创建 PR。
+- run `33967514846` 的 `run-24-1` artifact 已完成云端构建、独立复验和实机安装。
+  保留构建时模块索引后，`armbian-zram-config.service` 正常启动；唯一一次
+  640×480、MMAP、1 帧 probe 退出码为 `0`，生成同一 6547 字节有效码流。但设备
+  随后失联，重启后 `pstore` 为空，不能视为稳定性验收通过。下一候选仅增加
+  `capture-probe.sh`，将内核 trace 写入根文件系统供单次 probe 后取证。
 - `codex/hcodec-armv7-cloud-verify` 的 `run-12-1` 候选已实机启动，`cma=128M`
   生效且 `/dev/video0` 注册成功；640×480 单帧 probe 记录到
   `SEQUENCE`、`PICTURE` 成功，`IDR` 输出 7 字节后超时并返回 `-110`。
@@ -84,8 +89,8 @@ One-KVM `0.2.6` 已有 `h264_v4l2m2m` 后端，Amlogic 实验探测需要
 
 ## 接手后的顺序
 
-1. 保留 `33854312358`、`33874935950`、`33893613040` artifact 与对应实机证据，不重复 `run-16-1` probe。
-2. 修复 V4L2 `STREAMOFF` 清理阻塞并取得新的云构建、刷写和单帧验证前，不继续 720p/1080p、DMABUF 或 One-KVM。
+1. 保留 `33854312358`、`33874935950`、`33893613040`、`33967514846` artifact 与对应实机证据，不重复已有 probe。
+2. 使用 `capture-probe.sh` 保存单次 probe 的根文件系统内核 trace；在取得新的云构建、刷写和单帧证据前，不继续 720p/1080p、DMABUF 或 One-KVM。
 3. 只有新的 640×480 单帧探针完整返回、生成有效 Annex-B H.264 且清理无阻塞后才创建 PR。
 4. 独立码流和清理路径均通过后再临时接入 One-KVM，不修改稳定服务配置。
 

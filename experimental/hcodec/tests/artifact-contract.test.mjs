@@ -44,6 +44,10 @@ test('packages a single deterministic tar.xz with manifests and kernel/tools pay
   const result = spawnSync('bash', [packageScript, kernel, tools, firmware, output, '12', '2'], { encoding: 'utf8' });
   assert.equal(result.status, 0, result.stderr || result.stdout);
   assert.equal(fs.readdirSync(output).length, 3);
+  const artifact = path.join(output, 'ws1608-hcodec-armv7-run-12-2.tar.xz');
+  const contents = spawnSync('tar', ['-tJf', artifact], { encoding: 'utf8' });
+  assert.equal(contents.status, 0, contents.stderr);
+  assert.match(contents.stdout, /\.\/capture-probe\.sh/);
   assert.match(fs.readFileSync(path.join(output, 'manifest.json'), 'utf8'), /hardware_boot_tested.*false/);
   assert.equal(spawnSync('bash', [verifyScript, output], { encoding: 'utf8' }).status, 0);
   assert.match(fs.readFileSync(path.join(output, 'manifest.json'), 'utf8'), /firmware_sha256/);
@@ -54,6 +58,14 @@ test('ships a staged module installer that preserves target system links', () =>
   assert.match(text, /modules-stage/);
   assert.match(text, /lib\/modules\/\$KERNEL_RELEASE/);
   assert.doesNotMatch(text, /tar -xJf [^\n]+ -C \/(?:\s|$)/);
+});
+
+test('ships a rootfs-persistent kernel trace probe wrapper', () => {
+  const source = fs.readFileSync(packageScript, 'utf8');
+  const verifier = fs.readFileSync(verifyScript, 'utf8');
+
+  assert.match(source, /capture-probe\.sh/);
+  assert.match(verifier, /\.\/capture-probe\.sh/);
 });
 
 test('workflow only runs on pull requests or manual dispatch and keeps artifact isolated', () => {

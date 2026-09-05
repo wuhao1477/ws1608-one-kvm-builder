@@ -34,6 +34,10 @@ Linux 6.12 HCODEC 研究路线。
   编码，输出 SHA-256 为 `af392c6132fb1b349c62a0609164a5d92fb5dbda0805709614e00dfa636f407a`；
   但工具在 `STREAMOFF` 清理阶段阻塞，SSH 超时，重启后 `pstore` 为空。该结果
   证明编码数据路径可用，但清理路径未通过，仍不创建 PR。
+- GitHub Actions run `33967514846` 生成并复验 `run-24-1` artifact；安装保留构建
+  模块索引后，`armbian-zram-config.service` 已正常启动。唯一一次相同的 probe
+  返回 `0` 并生成同一有效码流，但设备随后失联；该候选只证明数据路径和用户态
+  清理返回，仍不创建 PR。下个候选会用 `capture-probe.sh` 保存持久化内核 trace。
 
 ## 自动更新规则
 

@@ -53,8 +53,15 @@ H.264；`ffprobe` 识别 1 帧 640×480 Baseline，`ffmpeg` 解码成功，输�
 在 `STREAMOFF` 清理阶段未返回并导致 SSH 超时，重启后 `pstore` 为空；编码数据
 路径已通过，清理路径仍失败，不创建 PR，也不继续更高分辨率或其他内存模式。
 
+GitHub Actions run `33967514846` 的 `run-24-1` 已修复设备端 `depmod` 覆盖模块索引
+的问题：zram 服务恢复正常。相同单帧 probe 返回 `0` 并写出已解码的 6547 字节码流，
+但设备在工具退出后失联，持久化日志不足以定位关电路径。下一候选将 artifact 根目录
+的 `capture-probe.sh` 与相同参数一起使用，保存 `kernel.before.log`、
+`kernel.live.log`、`kernel.after.log`、probe 输出和退出码到根文件系统。
+
 设备安装必须使用 `install-artifact.sh`：模块包先解到目标根分区 staging，再复制
 目标版本目录；固件从 artifact 的 `firmware/meson8b_h264.bin` 直接安装。
 构建阶段会拒绝缺少模块索引或 `zram.ko` 依赖链不完整的输出；安装时保留这些
 构建时索引，不再在设备上调用 `depmod`。不得把归档直接解到 `/`。
-640×480 实机通过前不创建 PR。
+执行单帧 probe 时使用 `./capture-probe.sh results ./tools/meson-venc-smoke \
+/dev/video0 results/stream.h264 640 480 1`。640×480 稳定性实机通过前不创建 PR。

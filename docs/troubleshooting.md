@@ -18,6 +18,7 @@
 | probe 超时后 SSH 失联 | HCODEC 访问可能触发系统级挂起或复位 | 停止所有后续编码测试；等待一次网络恢复窗口，保存结果后再分析，不重复刷写或延长 timeout |
 | H.264 损坏 | Canvas/MFDIN、DMA、capture ring 或 header 状态错误 | 用独立工具缩小到首个失败帧 |
 | 编码完成但 STREAMOFF 阻塞 | V4L2 队列清理、硬件电源关闭或停止 CPU 路径未完成 | 保留已生成码流和上一启动日志；不重试 probe，先修复清理路径 |
+| probe 返回 `0` 后设备失联 | HCODEC 关电后的异步系统影响，且 zram 上的 journal 不持久 | 用 artifact 的 `capture-probe.sh` 保存根文件系统 dmesg，再进行唯一一次候选 probe |
 | One-KVM 不发现硬件后端 | 环境开关、设备权限或 V4L2 格式不匹配 | 独立探针通过后再显式启用 |
 | `/dev/video*` 缺失 | 驱动未 probe 或采集卡未接 | 先用 `v4l2-ctl --list-devices` 区分设备 |
 
@@ -141,6 +142,12 @@ Annex-B、SPS/PPS/IDR、640×480、1 帧和完整 FFmpeg 解码均通过，输�
 完成数据读取后的 `STREAMOFF` 清理阶段未返回，SSH 随后超时，重启后的 `pstore`
 为空。该候选证明编码数据路径可用，但清理路径仍失败；不得把它标为完整验收通过，
 不得重试 probe、延长 timeout、测试更高分辨率或创建 PR。
+
+`run-24-1` 修复了候选模块安装重跑 `depmod` 导致 zram 依赖为空的问题，
+`armbian-zram-config.service` 已正常启动。相同最小 probe 返回 `0` 并写出经
+FFmpeg 解码的 6547 字节码流，但设备仍在工具退出后失联；zram 上的 journal 随重启
+丢失，`pstore` 为空。下个候选必须通过 `capture-probe.sh` 把实时和结束后的 dmesg
+写入 `/root/hcodec/.../results`，且仍只执行一次最小 probe。
 
 ### 6. 码流
 

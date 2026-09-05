@@ -43,6 +43,15 @@ test('documents run-16-1 valid payload and streamoff cleanup blockage', () => {
   assert.match(text, /hardware_encoder_tested.*false/);
 });
 
+test('documents run-24-1 module-index recovery and persistent probe evidence', () => {
+  const text = files.map(read).join('\n');
+
+  assert.match(text, /33967514846/);
+  assert.match(text, /run-24-1/);
+  assert.match(text, /armbian-zram-config/);
+  assert.match(text, /capture-probe\.sh/);
+});
+
 test('does not describe the disproved offset ring workaround as the active next step', () => {
   const text = files.map(read).join('\n');
   assert.doesNotMatch(text, /run-10 只调整 Meson8b offset/);
