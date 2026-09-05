@@ -10,6 +10,7 @@
 | e2fsck journal/orphan | rootfs 未严格卸载 | 停止构建，检查所有嵌套挂载 |
 | Amlogic CRC/VERIFY 失败 | 容器、sparse 或摘要计算错误 | 使用固定 AmlImg 和独立 verifier |
 | HCODEC 模块无法加载 | 架构、vermagic、配置或符号不匹配 | 重新为目标 ARMv7 内核构建 |
+| `armbian-zram-config.service` 报 `Unknown symbol` | 设备上的 `depmod` 覆盖了制品依赖索引 | 重新安装包含完整 `modules.*` 索引的候选 artifact；不要在设备上重跑无参数 `depmod` |
 | HCODEC probe 失败 | DT 时钟、HHI、DOS、IRQ 或 Canvas 不完整 | 核对 Meson8b 资源和冲突 owner |
 | 固件加载失败 | 文件缺失、路径或摘要错误 | 核对 `meson8b_h264.bin` 来源与 manifest |
 | CMA 分配失败 | CMA 太小或碎片化 | 检查 cmdline、CmaTotal/CmaFree 和缓冲数量 |

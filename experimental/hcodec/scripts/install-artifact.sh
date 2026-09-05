@@ -39,6 +39,14 @@ trap cleanup EXIT
 tar -xJf "$KERNEL_DIR/modules.tar.xz" -C "$modules_stage" --no-same-owner
 module_tree="$modules_stage/lib/modules/$KERNEL_RELEASE"
 [[ -d "$module_tree" && ! -L "$module_tree" ]] || { echo 'module tree is missing' >&2; exit 1; }
+for index in modules.order modules.dep modules.dep.bin modules.alias modules.alias.bin; do
+  [[ -s "$module_tree/$index" ]] || { echo "module index missing: $index" >&2; exit 1; }
+done
+grep -Eq '^kernel/drivers/block/zram/zram\.ko: .*kernel/mm/zsmalloc\.ko' \
+  "$module_tree/modules.dep" || {
+  echo 'zram module dependency index is incomplete' >&2
+  exit 1
+}
 
 backup_dir="$TARGET_ROOT/root/hcodec/backups/install-$(date -u +%Y%m%dT%H%M%SZ)"
 install -d "$backup_dir"
@@ -60,8 +68,6 @@ rm -rf -- "$TARGET_ROOT/lib/modules/$KERNEL_RELEASE"
 cp -a "$module_tree" "$TARGET_ROOT/lib/modules/"
 
 if [[ "$TARGET_ROOT" == / ]]; then
-  command -v depmod >/dev/null 2>&1 || { echo 'depmod is required for a live-root install' >&2; exit 1; }
-  depmod "$KERNEL_RELEASE"
   armbian_env=/boot/armbianEnv.txt
   if [[ -f "$armbian_env" ]]; then
     if grep -q '^extraargs=' "$armbian_env"; then

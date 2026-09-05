@@ -114,6 +114,18 @@ reset_dir "$modules_root"
 make -C "$SOURCE_DIR" "${make_args[@]}" \
   INSTALL_MOD_PATH="$modules_root" modules_install
 find "$modules_root" -type l -delete
+module_tree="$modules_root/lib/modules/$KERNEL_RELEASE"
+for index in modules.order modules.dep modules.dep.bin modules.alias modules.alias.bin; do
+  [[ -s "$module_tree/$index" ]] || {
+    echo "missing generated module index: $index" >&2
+    exit 1
+  }
+done
+grep -Eq '^kernel/drivers/block/zram/zram\.ko: .*kernel/mm/zsmalloc\.ko' \
+  "$module_tree/modules.dep" || {
+  echo 'zram module dependency index is incomplete' >&2
+  exit 1
+}
 
 cp "$BUILD_DIR/arch/arm/boot/zImage" "$OUTPUT_DIR/zImage"
 cp "$BUILD_DIR/arch/arm/boot/dts/amlogic/meson8b-onecloud.dtb" \

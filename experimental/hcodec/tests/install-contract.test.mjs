@@ -27,6 +27,14 @@ test('installs modules without replacing a target /lib symlink', (t) => {
   fs.mkdirSync(path.join(target, 'root'), { recursive: true });
   fs.symlinkSync('usr/lib', path.join(target, 'lib'));
   fs.writeFileSync(path.join(moduleStage, 'meson-venc.ko'), 'module');
+  fs.writeFileSync(path.join(moduleStage, 'modules.order'), 'kernel/drivers/media/platform/amlogic/meson-venc/meson-venc.ko\n');
+  fs.writeFileSync(
+    path.join(moduleStage, 'modules.dep'),
+    'kernel/drivers/block/zram/zram.ko: kernel/mm/zsmalloc.ko kernel/lib/842/842_decompress.ko kernel/lib/842/842_compress.ko\n',
+  );
+  for (const file of ['modules.dep.bin', 'modules.alias', 'modules.alias.bin']) {
+    fs.writeFileSync(path.join(moduleStage, file), 'index');
+  }
   run('tar', ['-cJf', path.join(artifact, 'kernel', 'modules.tar.xz'), '-C', path.join(root, 'module-stage'), '.']);
   fs.writeFileSync(path.join(artifact, 'kernel', 'uImage'), 'uImage');
   fs.writeFileSync(path.join(artifact, 'kernel', 'System.map'), 'System.map');
@@ -51,10 +59,17 @@ test('installer source uses a staging tree and never extracts modules at filesys
   assert.match(source, /modules\/\$KERNEL_RELEASE/);
   assert.doesNotMatch(source, /tar -xJf [^\n]+ -C \/(?:\s|$)/);
   assert.match(source, /4000000/);
-  assert.match(source, /depmod/);
   assert.match(source, /cma=128M/);
   assert.match(source, /meson8b_h264\.bin/);
   assert.match(source, /backups\/install-/);
   assert.match(source, /FIRMWARE_DIR.*meson8b_h264\.bin/);
   assert.doesNotMatch(source, /\/video\/h264_enc\.bin|gxl_h264_enc|zlib/);
+});
+
+test('preserves the build-time module dependency indexes on live-root installs', () => {
+  const source = fs.readFileSync(installer, 'utf8');
+
+  assert.doesNotMatch(source, /\bdepmod\b/);
+  assert.match(source, /for index in modules\.order modules\.dep modules\.dep\.bin/);
+  assert.match(source, /zram\\\.ko: .*kernel\/mm\/zsmalloc\\\.ko/);
 });

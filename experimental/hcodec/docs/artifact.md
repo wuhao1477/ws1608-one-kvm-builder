@@ -48,3 +48,9 @@ IDR 输出 7 字节后超时并返回 `-110`。新候选改用 Hardkernel Meson8
 `lib/modules/<kernel_release>`；禁止直接用 `tar -xJf ... -C /`，因为归档
 顶层包含 `lib/`，会覆盖 Armbian 的 `/lib -> /usr/lib` 符号链接并导致
 动态程序无法启动。安装前要求根分区至少保留 4 GiB 可用空间。
+
+模块包同时包含构建时生成的 `modules.order`、`modules.dep`、`modules.dep.bin`、
+`modules.alias` 和 `modules.alias.bin`。安装脚本会先验证 `zram.ko` 到
+`zsmalloc.ko`/842 模块的依赖记录，再原样复制索引；不要在设备上再次运行无参数
+`depmod`，因为该设备环境会把这组 ARM 模块的依赖重算为空，导致
+`armbian-zram-config.service` 报 `Unknown symbol`。

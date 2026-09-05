@@ -30,6 +30,19 @@ trap 'rm -rf "$work"' EXIT
 tar -xJf "$OUTPUT_DIR/modules.tar.xz" -C "$work"
 module=$(find "$work" -type f -name 'meson-venc.ko' -print -quit)
 [[ -n "$module" ]] || { echo 'meson-venc.ko missing from modules archive' >&2; exit 1; }
+module_tree="$work/lib/modules/$KERNEL_RELEASE"
+[[ -d "$module_tree" && ! -L "$module_tree" ]] || {
+  echo 'module release tree is missing' >&2
+  exit 1
+}
+for index in modules.order modules.dep modules.dep.bin modules.alias modules.alias.bin; do
+  [[ -s "$module_tree/$index" ]] || { echo "module index missing: $index" >&2; exit 1; }
+done
+grep -Eq '^kernel/drivers/block/zram/zram\.ko: .*kernel/mm/zsmalloc\.ko' \
+  "$module_tree/modules.dep" || {
+  echo 'zram module dependency index is incomplete' >&2
+  exit 1
+}
 modinfo -F vermagic "$module" | grep -Eq '^6\.12\.28-current-meson([[:space:]]|$)'
 "${CROSS_COMPILE:-arm-linux-gnueabihf-}readelf" -h "$module" | grep -Eq 'Machine:[[:space:]]+ARM'
 "$ROOT_DIR/experimental/hcodec/scripts/verify-module-signing.sh" \

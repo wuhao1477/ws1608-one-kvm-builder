@@ -32,6 +32,8 @@ test('builds the fixed ARMv7 kernel artifact set without automatic module loadin
   assert.match(build, /git -C "\$SOURCE_DIR" status --porcelain=v1 --untracked-files=all >&2/);
   assert.match(build, /expected_status=' M drivers\/media\/platform\/amlogic\/meson-venc\/meson-venc\.c'/);
   assert.match(build, /trace: stop_streaming:/);
+  assert.match(build, /generated module index/);
+  assert.match(build, /zram module dependency index is incomplete/);
   assert.match(build, /unexpected changes/);
   assert.doesNotMatch(build, /find "\$SOURCE_DIR" -type f -name '\*\.orig' -delete/);
   assert.doesNotMatch(build, /modules-load|modprobe|ONE_KVM/);
@@ -48,4 +50,5 @@ test('verifies architecture, release, boot addresses, DT and module signing', ()
     assert.match(`${verify}\n${signing}`, new RegExp(value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')));
   }
   assert.match(signing, /CONFIG_MODULE_SIG/);
+  assert.match(verify, /module_tree=\"\$work\/lib\/modules\/\$KERNEL_RELEASE\"/);
 });
