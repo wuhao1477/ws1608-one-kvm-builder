@@ -28,12 +28,11 @@ index 6869bd5..93e540e 100644
  
  	if (ctx->owns_hw && !ctx->streaming_output &&
  	    !ctx->streaming_capture) {
-+		meson_venc_trace_stage(ctx->venc, "stop_streaming: power_off begin");
++		meson_venc_trace_runtime(ctx->venc, "stop_streaming: power_off begin");
  		meson_venc_power_off(ctx->venc);
-+		meson_venc_trace_stage(ctx->venc, "stop_streaming: power_off end");
++		meson_venc_trace_runtime(ctx->venc, "stop_streaming: power_off end");
  		meson_venc_workspace_free(ctx);
  		ctx->owns_hw = false;
  		mutex_unlock(ctx->venc->core->hw_lock);
 -- 
 2.50.0
-
