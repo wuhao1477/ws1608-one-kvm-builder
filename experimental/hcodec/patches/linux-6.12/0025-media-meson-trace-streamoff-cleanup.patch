@@ -5,7 +5,7 @@ Subject: [PATCH] media: meson: trace HCODEC streamoff cleanup
 
 
 diff --git a/drivers/media/platform/amlogic/meson-venc/meson-venc.c b/drivers/media/platform/amlogic/meson-venc/meson-venc.c
-index 6869bd5..4c622da 100755
+index 6869bd5..4c622da 100644
 --- a/drivers/media/platform/amlogic/meson-venc/meson-venc.c
 +++ b/drivers/media/platform/amlogic/meson-venc/meson-venc.c
 @@ -1182,8 +1182,11 @@ static void meson_venc_power_off(struct meson_venc_dev *venc)
@@ -53,4 +53,3 @@ index 6869bd5..4c622da 100755
  		mutex_unlock(ctx->venc->core->hw_lock);
 -- 
 2.50.0
-
