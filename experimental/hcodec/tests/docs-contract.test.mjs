@@ -33,6 +33,16 @@ test('documents the failed run-15-1 Assist interrupt candidate', () => {
   assert.match(text, /设备.*失联|No route to host/);
 });
 
+test('documents run-16-1 valid payload and streamoff cleanup blockage', () => {
+  const text = files.map(read).join('\n');
+  assert.match(text, /run-16-1/);
+  assert.match(text, /33893613040/);
+  assert.match(text, /6547/);
+  assert.match(text, /STREAMOFF/);
+  assert.match(text, /af392c6132fb1b349c62a0609164a5d92fb5dbda0805709614e00dfa636f407a/);
+  assert.match(text, /hardware_encoder_tested.*false/);
+});
+
 test('does not describe the disproved offset ring workaround as the active next step', () => {
   const text = files.map(read).join('\n');
   assert.doesNotMatch(text, /run-10 只调整 Meson8b offset/);

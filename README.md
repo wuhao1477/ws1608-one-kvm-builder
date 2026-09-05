@@ -11,8 +11,10 @@ Linux 6.12 HCODEC 研究路线。
 - 当前稳定 Release：
   [`ws1608-one-kvm-0.2.6-v260802-b028001`](https://github.com/wuhao1477/ws1608-one-kvm-builder/releases/tag/ws1608-one-kvm-0.2.6-v260802-b028001)。
 - 稳定底座已经具备实体启动、HDMI、网络、SSH、eMMC 和 One-KVM 运行证据。
-- H.264 HCODEC 候选尚未通过 WS1608 实机编码测试；不得把资料或 CI 结果
-  写成硬件已经可用。
+- H.264 HCODEC `run-16-1` 已在 WS1608 完成一次 640×480、MMAP、单帧硬件编码：
+  内核日志确认 `SEQUENCE`、`PICTURE`、`IDR` 完成，生成 6547 字节有效 Annex-B
+  H.264，`ffprobe` 读到 1 帧且 `ffmpeg` 解码成功；但探针在 `STREAMOFF` 清理阶段
+  未返回并导致 SSH 超时，完整实机验收仍阻塞，不创建 PR。
 - `run-12-1` 候选已能启动并注册 `/dev/video0`，`cma=128M` 生效。
   640×480 单帧 probe 中 `SEQUENCE` 与 `PICTURE` 成功，但 IDR 输出 7 字节后
   超时并返回 `-110`；CMA 充足，设备未发生 kernel panic。
@@ -26,6 +28,12 @@ Linux 6.12 HCODEC 研究路线。
   Meson8b Assist `INT1=0x19`。设备重启和启动检查均成功，但唯一一次 640×480、
   MMAP、1 帧 probe 超过 120 秒未完成，输出为 0 字节，设备随后失联；`pstore`
   为空，仍未创建 PR。
+- GitHub Actions run `33893613040` 生成并复验 `run-16-1` artifact；修复 Meson8b
+  微码长度门槛后，设备安装、重启、`/dev/video0`、`cma=128M`、模块 vermagic
+  和 9536 字节固件摘要均正确。唯一一次 640×480、MMAP、1 帧 probe 已完成硬件
+  编码，输出 SHA-256 为 `af392c6132fb1b349c62a0609164a5d92fb5dbda0805709614e00dfa636f407a`；
+  但工具在 `STREAMOFF` 清理阶段阻塞，SSH 超时，重启后 `pstore` 为空。该结果
+  证明编码数据路径可用，但清理路径未通过，仍不创建 PR。
 
 ## 自动更新规则
 
@@ -58,8 +66,9 @@ One-KVM 使用 `h264_v4l2m2m` 后端。
 - One-KVM 实验探测需要 `ONE_KVM_V4L2M2M_ALLOW=1`，通过独立编码测试前
   不写入稳定服务配置。
 - ARMv7 实机验证已确认 HCODEC probe 可到达 `/dev/video0`，V4L2 队列、
-  `start_streaming`、workspace 分配和 `SEQUENCE/PICTURE` 命令可通过；
-  当前最小编码仍卡在 `IDR` 帧命令。新候选通过 640×480 前不创建 PR。
+  `start_streaming`、workspace 分配、`SEQUENCE/PICTURE/IDR` 命令和单帧 Annex-B
+  输出可通过；当前阻塞点是成功编码后的 `STREAMOFF` 清理路径。清理路径修复并
+  完成新的云构建、刷写和单帧验证前不创建 PR。
 
 Linux 3.10、Bullseye、`/dev/amvenc_avc`、`libvpcodec`、双内核和 kexec
 路线已经废弃，仅作为历史研究记录保留。正式决策见

@@ -15,8 +15,9 @@ GitHub Actions 工作流为 `.github/workflows/hcodec-candidate.yml`，响应
 5. 生成并独立复验单一 `.tar.xz` artifact。
 
 `meson-venc` 保持模块形式，不自动加载。`cma=128M` 只写入候选 manifest，
-不修改稳定镜像。所有候选的 `hardware_boot_tested` 和
-`hardware_encoder_tested` 均为 `false`。
+不修改稳定镜像。构建 manifest 的 `hardware_boot_tested` 和
+`hardware_encoder_tested` 仍为 `false`；硬件结果另行记录，不能由静态 artifact
+字段代替。
 
 `run-12-1` 候选已在 WS1608 上完成启动验证并注册 `/dev/video0`。640×480 单帧
 H.264 probe 确认 V4L2 队列、`start_streaming`、workspace 分配、硬件准备、
@@ -42,6 +43,15 @@ artifact 上传/下载和独立复验。`run-15-1` 已安装并重启成功，�
 Meson8b Assist `INT1=0x19`。唯一一次 640×480、MMAP、1 帧 probe 超过 120 秒未完成，
 输出为 0 字节，设备随后失联；重启后 `pstore` 为空，标记为硬件编码失败，不继续
 其他分辨率或测试，也不创建 PR。
+
+GitHub Actions run `33893613040` 已完成 contract、ARMv7 构建、artifact 上传/下载
+和独立复验。`run-16-1` 修复 Meson8b 微码长度门槛后已安装并重启成功；内核、
+`/dev/video0`、`cma=128M`、模块 vermagic 和固件摘要均正确。唯一一次 640×480、
+MMAP、1 帧 probe 已完成 `SEQUENCE`、`PICTURE`、`IDR`，生成 6547 字节 Annex-B
+H.264；`ffprobe` 识别 1 帧 640×480 Baseline，`ffmpeg` 解码成功，输出 SHA-256
+为 `af392c6132fb1b349c62a0609164a5d92fb5dbda0805709614e00dfa636f407a`。但工具
+在 `STREAMOFF` 清理阶段未返回并导致 SSH 超时，重启后 `pstore` 为空；编码数据
+路径已通过，清理路径仍失败，不创建 PR，也不继续更高分辨率或其他内存模式。
 
 设备安装必须使用 `install-artifact.sh`：模块包先解到目标根分区 staging，再复制
 目标版本目录；固件从 artifact 的 `firmware/meson8b_h264.bin` 直接安装。

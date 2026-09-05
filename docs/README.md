@@ -33,7 +33,7 @@ V4L2 M2M 路线。
 | 稳定 One-KVM | `0.2.6` / `v260802` |
 | 稳定 Release | `ws1608-one-kvm-0.2.6-v260802-b028001` |
 | 自动检查 | 每周日 02:17 UTC |
-| HCODEC 候选 | 尚未实机验证 |
+| HCODEC 候选 | `run-16-1` 已生成有效单帧码流，但 `STREAMOFF` 清理阻塞，完整验收未通过 |
 | 候选后端 | `h264_v4l2m2m` |
 
 ## 最短维护路径
@@ -41,8 +41,8 @@ V4L2 M2M 路线。
 1. 先读 [HANDOFF.md](HANDOFF.md) 和 [ADR-0003](adr/0003-armbian-6.12-hcodec-route.md)。
 2. 稳定 One-KVM 更新继续使用 `.github/workflows/build.yml`。
 3. 没有新上游 tag 与 Deb 摘要时，build/release 必须跳过。
-4. HCODEC 工作先验证 ARMv7 内核、DTB、固件和独立 V4L2 码流，不修改稳定资产。
-5. 独立探针通过后，才以 `ONE_KVM_V4L2M2M_ALLOW=1` 临时验证 One-KVM。
+4. HCODEC 工作先验证 ARMv7 内核、DTB、固件和独立 V4L2 码流，不修改稳定资产；当前仅编码数据路径通过。
+5. 修复 `STREAMOFF` 清理阻塞并完成新的单帧验收后，才以 `ONE_KVM_V4L2M2M_ALLOW=1` 临时验证 One-KVM。
 6. 实机结果按 [hardware-validation.md](hardware-validation.md) 记录。
 
 ## 已废弃历史

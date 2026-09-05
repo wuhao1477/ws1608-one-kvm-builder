@@ -15,7 +15,7 @@ test('ships the ordered 18 reference patches plus Meson8b correction and diagnos
   const files = fs.readdirSync(patchDir).filter((file) => file.endsWith('.patch')).sort();
 
   assert.equal(reference.length, 18);
-  assert.equal(files.length, 23);
+  assert.equal(files.length, 24);
   assert.deepEqual(files.slice(0, 18), reference);
   assert.match(files[0], /^0001-/);
   assert.match(files[17], /^0018-/);
@@ -24,6 +24,7 @@ test('ships the ordered 18 reference patches plus Meson8b correction and diagnos
   assert.equal(files[20], '0021-media-meson-add-V4L2-queue-diagnostics.patch');
   assert.equal(files[21], '0023-media-meson-match-Meson8b-microcode-protocol.patch');
   assert.equal(files[22], '0024-media-meson-accept-exact-meson8b-microcode-size.patch');
+  assert.equal(files[23], '0025-media-meson-trace-streamoff-cleanup.patch');
 });
 
 test('runtime diagnostics patch traces the first encode command path', () => {
@@ -82,6 +83,22 @@ test('Meson8b protocol patch restores the base VLC ring and vendor DMA setup', (
     assert.match(patch, new RegExp(value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')));
   }
   assert.doesNotMatch(patch, /dst_base_dma|dst_ring_size|dst_offset && !venc->variant->has_gx_protocol/);
+});
+
+test('streamoff diagnostics cover vb2 cleanup and power-off boundaries', () => {
+  const patch = fs.readFileSync(
+    `${patchDir}/0025-media-meson-trace-streamoff-cleanup.patch`,
+    'utf8',
+  );
+
+  for (const value of [
+    'stop_streaming:',
+    'power_off: begin',
+    'power_off: stop_cpu ret=',
+    'power_off: complete',
+  ]) {
+    assert.match(patch, new RegExp(value.replace(/[.*+?^${}()|[\\]\\]/g, '\\$&')));
+  }
 });
 
 test('computes a path-independent patch digest', (t) => {

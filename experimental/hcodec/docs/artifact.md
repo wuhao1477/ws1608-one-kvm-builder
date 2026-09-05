@@ -27,6 +27,16 @@ Meson8b Assist `INT1=0x19`，但唯一一次 640×480、MMAP、1 帧 probe 超�
 未完成，输出为 0 字节，随后设备网络失联；重启后 `pstore` 为空，
 `hardware_encoder_tested` 仍为 `false`，不得创建 PR。
 
+run `33893613040` 的 artifact `ws1608-hcodec-armv7-run-16-1.tar.xz` 已通过本地
+和 GitHub Actions 的完整摘要复验，并在 WS1608 完成安装、重启和启动检查。唯一
+一次 640×480、MMAP、1 帧 probe 的内核日志确认 `SEQUENCE`、`PICTURE`、`IDR`
+完成，生成 6547 字节 Annex-B H.264；`ffprobe` 读到 1 帧 640×480，`ffmpeg`
+解码成功，输出 SHA-256 为
+`af392c6132fb1b349c62a0609164a5d92fb5dbda0805709614e00dfa636f407a`。工具随后
+在 `STREAMOFF` 清理阶段阻塞并使 SSH 超时，重启后 `pstore` 为空。因此编码数据
+路径已获得实机证据，但探针未完整退出，`hardware_encoder_tested` 仍为 `false`，
+不得创建 PR。
+
 `run-12-1` 已证明候选内核可启动并注册 HCODEC V4L2 设备，并把最小 probe 失败点
 定位到 `IDR` 命令：`queue_setup`、`buf_prepare`、`buf_queue`、
 `start_streaming`、workspace、硬件准备、`SEQUENCE` 和 `PICTURE` 均已通过；

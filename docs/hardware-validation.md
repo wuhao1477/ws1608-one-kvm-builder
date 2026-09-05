@@ -7,13 +7,14 @@
 | `base-20260804-consolefix` 启动、HDMI、网络、SSH、eMMC | 已验证 |
 | Armbian `6.12.28-current-meson` 与 One-KVM 运行 | 已验证 |
 | H.264/H.265/VP8/VP9 软件编码路径 | 已验证 |
-| ARMv7 `meson-venc` 模块、DTB 与工具 artifact | 已完成静态构建，尚未实机验证 |
-| HCODEC V4L2 M2M H.264 | 尚未实机验证 |
+| ARMv7 `meson-venc` 模块、DTB 与工具 artifact | 已刷写并完成启动检查 |
+| HCODEC V4L2 M2M H.264 | 单帧编码数据路径已验证；`STREAMOFF` 清理阻塞，完整验收未通过 |
 | One-KVM `h264_v4l2m2m` | 尚未实机验证 |
 | 1080p30、128 MiB CMA、长时间稳定性 | 尚未实机验证 |
 
 稳定基础的已有证据不能自动继承给改变内核或 DTB 的 HCODEC 候选。每个新
 候选从 `hardware_boot_tested=false` 和 `hardware_encoder_tested=false` 开始。
+`run-16-1` 的硬件编码结果虽已生成有效码流，仍因探针未完整退出而保持未验收状态。
 
 ## 测试准备
 
@@ -116,6 +117,13 @@ ffmpeg -v error -i candidate.h264 -f null -
 
 驱动不支持 B 帧，当前 CBR/VBR 是软件 QP 反馈；验收记录不得描述为硬件
 VBV 码率控制。
+
+`run-16-1` 的唯一一次 640×480、MMAP、1 帧实机结果：内核日志记录
+`SEQUENCE`、`PICTURE`、`IDR` 完成，输出 6547 字节；码流含 SPS/PPS/IDR，
+`ffprobe` 识别为 640×480 Baseline 并读到 1 帧，`ffmpeg` 解码退出码为 0，输出
+SHA-256 为 `af392c6132fb1b349c62a0609164a5d92fb5dbda0805709614e00dfa636f407a`。
+但工具在随后 `STREAMOFF` 清理阶段未返回并导致 SSH 超时；因此该候选只证明
+编码数据路径，不能标为完整验收通过，也不得进入 DMABUF、720p、1080p 或 One-KVM。
 
 ## 6. One-KVM 显式探针
 

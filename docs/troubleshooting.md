@@ -16,6 +16,7 @@
 | 编码 timeout | 微码、HCODEC 时钟、电源、复位或 mailbox IRQ | 先核对 Hardkernel Meson8b dblk 微码来源/摘要，再检查命令和中断 |
 | probe 超时后 SSH 失联 | HCODEC 访问可能触发系统级挂起或复位 | 停止所有后续编码测试；等待一次网络恢复窗口，保存结果后再分析，不重复刷写或延长 timeout |
 | H.264 损坏 | Canvas/MFDIN、DMA、capture ring 或 header 状态错误 | 用独立工具缩小到首个失败帧 |
+| 编码完成但 STREAMOFF 阻塞 | V4L2 队列清理、硬件电源关闭或停止 CPU 路径未完成 | 保留已生成码流和上一启动日志；不重试 probe，先修复清理路径 |
 | One-KVM 不发现硬件后端 | 环境开关、设备权限或 V4L2 格式不匹配 | 独立探针通过后再显式启用 |
 | `/dev/video*` 缺失 | 驱动未 probe 或采集卡未接 | 先用 `v4l2-ctl --list-devices` 区分设备 |
 
@@ -131,6 +132,14 @@ One-KVM 集成。
 120 秒未完成，输出为 0 字节，设备随后失联；重启后的 `pstore` 为空。该修复
 未解决 IDR 阶段的硬件挂起，必须停止测试并继续完整协议对照，不得重复 probe、
 延长 timeout 或创建 PR。
+
+`run-16-1` 在修复 Meson8b 微码长度门槛后完成了同一最小边界的硬件工作：内核日志
+记录 `SEQUENCE`、`PICTURE`、`IDR` 完成，生成 6547 字节码流；离线校验确认
+Annex-B、SPS/PPS/IDR、640×480、1 帧和完整 FFmpeg 解码均通过，输出 SHA-256
+为 `af392c6132fb1b349c62a0609164a5d92fb5dbda0805709614e00dfa636f407a`。但工具在
+完成数据读取后的 `STREAMOFF` 清理阶段未返回，SSH 随后超时，重启后的 `pstore`
+为空。该候选证明编码数据路径可用，但清理路径仍失败；不得把它标为完整验收通过，
+不得重试 probe、延长 timeout、测试更高分辨率或创建 PR。
 
 ### 6. 码流
 
