@@ -149,6 +149,11 @@ FFmpeg 解码的 6547 字节码流，但设备仍在工具退出后失联；zram
 丢失，`pstore` 为空。下个候选必须通过 `capture-probe.sh` 把实时和结束后的 dmesg
 写入 `/root/hcodec/.../results`，且仍只执行一次最小 probe。
 
+`run-25-1` 的持久化 trace 已确认两个 `STREAMOFF` 以及 `power_off end` 在工具
+退出前完成，且无 DMA idle timeout；失联发生在其后。Hardkernel Meson8b 参考驱动
+在相同阶段保留 HCODEC `DOS_GCLK_EN0` 内部门控，下一候选只对 Meson8b 保留这些
+gate，保留原有 CPU 停止、隔离、内存断电与时钟释放。
+
 ### 6. 码流
 
 先用 640×480 单会话和 MMAP，随后再测试 DMABUF、720p 和 1080p。每次保存

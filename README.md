@@ -38,6 +38,9 @@ Linux 6.12 HCODEC 研究路线。
   模块索引后，`armbian-zram-config.service` 已正常启动。唯一一次相同的 probe
   返回 `0` 并生成同一有效码流，但设备随后失联；该候选只证明数据路径和用户态
   清理返回，仍不创建 PR。下个候选会用 `capture-probe.sh` 保存持久化内核 trace。
+- GitHub Actions run `33973657980` 生成并复验 `run-25-1` artifact；持久化 trace
+  证明 probe、两个 `STREAMOFF` 和 `power_off end` 均在约一秒内返回 `0`，但设备
+  随后失联。下一候选仅让 Meson8b 保留 HCODEC 内部门控，仍不创建 PR。
 
 ## 自动更新规则
 

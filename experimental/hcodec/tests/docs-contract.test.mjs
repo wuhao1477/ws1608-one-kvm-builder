@@ -52,6 +52,15 @@ test('documents run-24-1 module-index recovery and persistent probe evidence', (
   assert.match(text, /capture-probe\.sh/);
 });
 
+test('documents run-25-1 power-off completion and Meson8b gate experiment', () => {
+  const text = files.map(read).join('\n');
+
+  assert.match(text, /33973657980/);
+  assert.match(text, /run-25-1/);
+  assert.match(text, /power_off end/);
+  assert.match(text, /retain_internal_gates/);
+});
+
 test('does not describe the disproved offset ring workaround as the active next step', () => {
   const text = files.map(read).join('\n');
   assert.doesNotMatch(text, /run-10 只调整 Meson8b offset/);

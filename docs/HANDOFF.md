@@ -36,6 +36,10 @@
   640×480、MMAP、1 帧 probe 退出码为 `0`，生成同一 6547 字节有效码流。但设备
   随后失联，重启后 `pstore` 为空，不能视为稳定性验收通过。下一候选仅增加
   `capture-probe.sh`，将内核 trace 写入根文件系统供单次 probe 后取证。
+- run `33973657980` 的 `run-25-1` 已完成云端构建、独立复验、安装与冷启动验证。
+  `capture-probe.sh` 持久化记录了有效码流、退出码 `0`、两个 `STREAMOFF` 和
+  `power_off end`；无 DMA timeout 或内核警告，设备随后失联。下一候选只对 Meson8b
+  保留 `DOS_GCLK_EN0` HCODEC 内部门控，其余断电顺序保持不变。
 - `codex/hcodec-armv7-cloud-verify` 的 `run-12-1` 候选已实机启动，`cma=128M`
   生效且 `/dev/video0` 注册成功；640×480 单帧 probe 记录到
   `SEQUENCE`、`PICTURE` 成功，`IDR` 输出 7 字节后超时并返回 `-110`。
@@ -90,7 +94,7 @@ One-KVM `0.2.6` 已有 `h264_v4l2m2m` 后端，Amlogic 实验探测需要
 ## 接手后的顺序
 
 1. 保留 `33854312358`、`33874935950`、`33893613040`、`33967514846` artifact 与对应实机证据，不重复已有 probe。
-2. 使用 `capture-probe.sh` 保存单次 probe 的根文件系统内核 trace；在取得新的云构建、刷写和单帧证据前，不继续 720p/1080p、DMABUF 或 One-KVM。
+2. 验证 Meson8b 保留 HCODEC 内部门控能否消除退出后的失联；先取得新的云构建、刷写和单帧证据，不继续 720p/1080p、DMABUF 或 One-KVM。
 3. 只有新的 640×480 单帧探针完整返回、生成有效 Annex-B H.264 且清理无阻塞后才创建 PR。
 4. 独立码流和清理路径均通过后再临时接入 One-KVM，不修改稳定服务配置。
 

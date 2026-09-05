@@ -59,6 +59,11 @@ GitHub Actions run `33967514846` 的 `run-24-1` 已修复设备端 `depmod` 覆�
 的 `capture-probe.sh` 与相同参数一起使用，保存 `kernel.before.log`、
 `kernel.live.log`、`kernel.after.log`、probe 输出和退出码到根文件系统。
 
+GitHub Actions run `33973657980` 的 `run-25-1` 使用该包装器完成一次最小 probe。
+码流、工具退出码、两个 `STREAMOFF` 和 `power_off end` 均正常，但设备随后失联。
+下一候选仅设置 Meson8b `retain_internal_gates`，跳过 `DOS_GCLK_EN0` 的 HCODEC
+gate 清位；HCODEC 功能时钟、DOS 时钟、隔离和内存断电仍按原路径执行。
+
 设备安装必须使用 `install-artifact.sh`：模块包先解到目标根分区 staging，再复制
 目标版本目录；固件从 artifact 的 `firmware/meson8b_h264.bin` 直接安装。
 构建阶段会拒绝缺少模块索引或 `zram.ko` 依赖链不完整的输出；安装时保留这些

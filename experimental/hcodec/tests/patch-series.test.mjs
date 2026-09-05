@@ -15,7 +15,7 @@ test('ships the ordered 18 reference patches plus Meson8b correction and diagnos
   const files = fs.readdirSync(patchDir).filter((file) => file.endsWith('.patch')).sort();
 
   assert.equal(reference.length, 18);
-  assert.equal(files.length, 24);
+  assert.equal(files.length, 25);
   assert.deepEqual(files.slice(0, 18), reference);
   assert.match(files[0], /^0001-/);
   assert.match(files[17], /^0018-/);
@@ -25,6 +25,7 @@ test('ships the ordered 18 reference patches plus Meson8b correction and diagnos
   assert.equal(files[21], '0023-media-meson-match-Meson8b-microcode-protocol.patch');
   assert.equal(files[22], '0024-media-meson-accept-exact-meson8b-microcode-size.patch');
   assert.equal(files[23], '0025-media-meson-trace-streamoff-cleanup.patch');
+  assert.equal(files[24], '0026-media-meson-retain-Meson8b-internal-gates.patch');
 });
 
 test('runtime diagnostics patch traces the first encode command path', () => {
@@ -97,6 +98,24 @@ test('streamoff diagnostics cover vb2 cleanup and power-off boundaries', () => {
     'stop_streaming: power_off end',
   ]) {
     assert.match(patch, new RegExp(value.replace(/[.*+?^${}()|[\\]\\]/g, '\\$&')));
+  }
+});
+
+test('Meson8b retains HCODEC internal gates during power-off', () => {
+  const patch = fs.readFileSync(
+    `${patchDir}/0026-media-meson-retain-Meson8b-internal-gates.patch`,
+    'utf8',
+  );
+
+  for (const value of [
+    'retain_internal_gates',
+    '.retain_internal_gates = true',
+    'if (!venc->variant->retain_internal_gates)',
+    'val & ~DOS_GCLK_EN0_HCODEC',
+    'clk_disable_unprepare(venc->core->hcodec_clk)',
+    'clk_disable_unprepare(venc->core->dos_clk)',
+  ]) {
+    assert.match(patch, new RegExp(value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')));
   }
 });
 
