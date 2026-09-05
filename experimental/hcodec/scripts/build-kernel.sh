@@ -83,6 +83,7 @@ if [[ -n "$source_status" ]]; then
   grep -q 'power_off: begin' \
     "$SOURCE_DIR/drivers/media/platform/amlogic/meson-venc/meson-venc.c" || {
     echo 'expected streamoff diagnostics are missing from the HCODEC source' >&2
+    git -C "$SOURCE_DIR" diff -- drivers/media/platform/amlogic/meson-venc/meson-venc.c >&2
     exit 1
   }
   echo 'Armbian retained the expected HCODEC streamoff diagnostic change'
