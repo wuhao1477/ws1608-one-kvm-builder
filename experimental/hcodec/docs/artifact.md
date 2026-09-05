@@ -71,4 +71,4 @@ artifact 根目录的 `capture-probe.sh` 会把 probe 命令、标准输出/错�
 
 run `33973657980` 的 `run-25-1` 证明该包装器能在设备失联前保存完整结束边界：
 码流 6547 字节、退出码 `0`、两个 `STREAMOFF` 和 `power_off end` 均已完成。
-该证据将下一候选限定为 Meson8b `retain_internal_gates` 试验，仍不得创建 PR。
+该证据将下一候选限定为 Meson8b `direct_hhi_clock` 试验，仍不得创建 PR。

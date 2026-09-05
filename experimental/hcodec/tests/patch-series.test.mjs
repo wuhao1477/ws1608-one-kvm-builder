@@ -108,9 +108,8 @@ test('Meson8b retains HCODEC internal gates during power-off', () => {
   );
 
   for (const value of [
-    'retain_internal_gates',
-    '.retain_internal_gates = true',
-    'if (!venc->variant->retain_internal_gates)',
+    'direct_hhi_clock',
+    'if (!venc->variant->direct_hhi_clock)',
     'val & ~DOS_GCLK_EN0_HCODEC',
     'clk_disable_unprepare(venc->core->hcodec_clk)',
     'clk_disable_unprepare(venc->core->dos_clk)',

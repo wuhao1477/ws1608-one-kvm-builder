@@ -61,7 +61,7 @@ GitHub Actions run `33967514846` 的 `run-24-1` 已修复设备端 `depmod` 覆�
 
 GitHub Actions run `33973657980` 的 `run-25-1` 使用该包装器完成一次最小 probe。
 码流、工具退出码、两个 `STREAMOFF` 和 `power_off end` 均正常，但设备随后失联。
-下一候选仅设置 Meson8b `retain_internal_gates`，跳过 `DOS_GCLK_EN0` 的 HCODEC
+下一候选仅利用 Meson8b `direct_hhi_clock` 判据，跳过 `DOS_GCLK_EN0` 的 HCODEC
 gate 清位；HCODEC 功能时钟、DOS 时钟、隔离和内存断电仍按原路径执行。
 
 设备安装必须使用 `install-artifact.sh`：模块包先解到目标根分区 staging，再复制

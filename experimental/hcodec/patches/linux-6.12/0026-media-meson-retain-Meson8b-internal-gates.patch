@@ -6,39 +6,27 @@ Subject: [PATCH] media: meson: retain Meson8b HCODEC internal gates
 The WS1608 completes H.264 encoding and both STREAMOFF calls, then loses
 network reachability after userspace exits. The legacy Meson8b encoder leaves
 the DOS HCODEC internal gates enabled while disabling the functional clock.
-Retain those gates for Meson8b and keep the remaining power-off sequence.
+Retain those gates for the Meson8b direct-HHI variant and keep the remaining
+power-off sequence unchanged.
 
 Signed-off-by: Codex <codex@openai.com>
 ---
- drivers/media/platform/amlogic/meson-venc/meson-venc.c | 12 ++++++++----
- 1 file changed, 8 insertions(+), 4 deletions(-)
+ drivers/media/platform/amlogic/meson-venc/meson-venc.c | 8 +++++---
+ 1 file changed, 5 insertions(+), 3 deletions(-)
 
 diff --git a/drivers/media/platform/amlogic/meson-venc/meson-venc.c b/drivers/media/platform/amlogic/meson-venc/meson-venc.c
-index 6503194..fe3e064 100644
+index 6503194..5e4a1b9 100644
 --- a/drivers/media/platform/amlogic/meson-venc/meson-venc.c
 +++ b/drivers/media/platform/amlogic/meson-venc/meson-venc.c
-@@ -281,5 +281,6 @@ struct meson_venc_variant {
- 	bool full_power_reset;
- 	bool direct_hhi_clock;
-+	bool retain_internal_gates;
- };
- 
- struct meson_venc_dev {
-@@ -324,3 +325,4 @@ static const struct meson_venc_variant meson_venc_meson8b_variant = {
- 	.full_power_reset = true,
- 	.direct_hhi_clock = true,
-+	.retain_internal_gates = true,
- 	.mfdin = {
-@@ -1115,10 +1117,13 @@ static void meson_venc_power_off(struct meson_venc_dev *venc)
+@@ -1115,9 +1117,11 @@ static void meson_venc_power_off(struct meson_venc_dev *venc)
  	regmap_update_bits(venc->core->regmap_ao, venc->variant->ao_iso_reg,
  			   HCODEC_PWR_ISO_MASK, HCODEC_PWR_ISO_MASK);
  	meson_venc_write(venc, DOS_MEM_PD_HCODEC, U32_MAX);
 -	val = meson_venc_read(venc, DOS_GCLK_EN0);
 -	meson_venc_write(venc, DOS_GCLK_EN0,
 -			 val & ~DOS_GCLK_EN0_HCODEC);
-+	if (!venc->variant->retain_internal_gates) {
-+		u32 val = meson_venc_read(venc, DOS_GCLK_EN0);
-+
++	if (!venc->variant->direct_hhi_clock) {
++		val = meson_venc_read(venc, DOS_GCLK_EN0);
 +		meson_venc_write(venc, DOS_GCLK_EN0,
 +				 val & ~DOS_GCLK_EN0_HCODEC);
 +	}
