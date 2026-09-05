@@ -6,7 +6,7 @@ Subject: [PATCH] media: meson: retain Meson8b HCODEC internal gates
 The WS1608 completes H.264 encoding and both STREAMOFF calls, then loses
 network reachability after userspace exits. The legacy Meson8b encoder leaves
 the DOS HCODEC internal gates enabled while disabling the functional clock.
-Retain those gates for the Meson8b direct-HHI variant and keep the remaining
+Retain those gates for the Meson8b full-reset variant and keep the remaining
 power-off sequence unchanged.
 
 Signed-off-by: Codex <codex@openai.com>
@@ -18,14 +18,14 @@ diff --git a/drivers/media/platform/amlogic/meson-venc/meson-venc.c b/drivers/me
 index 6503194..5e4a1b9 100644
 --- a/drivers/media/platform/amlogic/meson-venc/meson-venc.c
 +++ b/drivers/media/platform/amlogic/meson-venc/meson-venc.c
-@@ -1115,9 +1117,11 @@ static void meson_venc_power_off(struct meson_venc_dev *venc)
+@@ -1115,9 +1115,11 @@ static void meson_venc_power_off(struct meson_venc_dev *venc)
  	regmap_update_bits(venc->core->regmap_ao, venc->variant->ao_iso_reg,
  			   HCODEC_PWR_ISO_MASK, HCODEC_PWR_ISO_MASK);
  	meson_venc_write(venc, DOS_MEM_PD_HCODEC, U32_MAX);
 -	val = meson_venc_read(venc, DOS_GCLK_EN0);
 -	meson_venc_write(venc, DOS_GCLK_EN0,
 -			 val & ~DOS_GCLK_EN0_HCODEC);
-+	if (!venc->variant->direct_hhi_clock) {
++	if (!venc->variant->full_power_reset) {
 +		val = meson_venc_read(venc, DOS_GCLK_EN0);
 +		meson_venc_write(venc, DOS_GCLK_EN0,
 +				 val & ~DOS_GCLK_EN0_HCODEC);

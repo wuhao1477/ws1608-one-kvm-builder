@@ -58,7 +58,7 @@ test('documents run-25-1 power-off completion and Meson8b gate experiment', () =
   assert.match(text, /33973657980/);
   assert.match(text, /run-25-1/);
   assert.match(text, /power_off end/);
-  assert.match(text, /direct_hhi_clock/);
+  assert.match(text, /full_power_reset/);
 });
 
 test('does not describe the disproved offset ring workaround as the active next step', () => {
