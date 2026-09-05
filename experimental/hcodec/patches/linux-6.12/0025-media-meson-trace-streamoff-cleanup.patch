@@ -1,37 +1,17 @@
-From fbf3b5a23cc4f60d03bb9df03fb4c02d9dcb15a5 Mon Sep 17 00:00:00 2001
+From 8234ac862b0ef4e1d1a18c190d5c39db8f6cb59d Mon Sep 17 00:00:00 2001
 From: Codex <codex@openai.com>
-Date: Sat, 5 Sep 2026 11:52:57 +0800
+Date: Sat, 5 Sep 2026 12:21:07 +0800
 Subject: [PATCH] media: meson: trace HCODEC streamoff cleanup
 
 ---
- .../media/platform/amlogic/meson-venc/meson-venc.c   | 12 ++++++++++++
- 1 file changed, 12 insertions(+)
+ drivers/media/platform/amlogic/meson-venc/meson-venc.c | 8 ++++++++
+ 1 file changed, 8 insertions(+)
 
 diff --git a/drivers/media/platform/amlogic/meson-venc/meson-venc.c b/drivers/media/platform/amlogic/meson-venc/meson-venc.c
-index 6869bd5..4c622da 100644
+index 6869bd5..93e540e 100644
 --- a/drivers/media/platform/amlogic/meson-venc/meson-venc.c
 +++ b/drivers/media/platform/amlogic/meson-venc/meson-venc.c
-@@ -1182,8 +1182,11 @@ static void meson_venc_power_off(struct meson_venc_dev *venc)
- 	if (!READ_ONCE(venc->powered))
- 		return;
- 	meson_venc_trace_stage(venc, "powering HCODEC off");
-+	meson_venc_trace_stage(venc, "power_off: begin");
- 
- 	ret = meson_venc_stop_cpu(venc);
-+	if (meson_venc_trace_runtime_enabled)
-+		dev_info(venc->dev, "trace: power_off: stop_cpu ret=%d\n", ret);
- 	if (ret)
- 		dev_warn(venc->dev, "HCODEC DMA did not become idle\n");
- 
-@@ -1199,6 +1202,7 @@ static void meson_venc_power_off(struct meson_venc_dev *venc)
- 			   HCODEC_PWR_SLEEP_MASK, HCODEC_PWR_SLEEP_MASK);
- 	clk_disable_unprepare(venc->core->dos_clk);
- 	meson_venc_trace_stage(venc, "HCODEC powered off");
-+	meson_venc_trace_stage(venc, "power_off: complete");
- }
- 
- static int meson_venc_load_firmware(struct meson_venc_dev *venc)
-@@ -2258,6 +2262,12 @@ static void meson_venc_stop_streaming(struct vb2_queue *vq)
+@@ -2258,6 +2258,12 @@ static void meson_venc_stop_streaming(struct vb2_queue *vq)
  	struct meson_venc_ctx *ctx = vb2_get_drv_priv(vq);
  	struct vb2_v4l2_buffer *vbuf;
  
@@ -44,7 +24,7 @@ index 6869bd5..4c622da 100644
  	for (;;) {
  		if (V4L2_TYPE_IS_OUTPUT(vq->type))
  			vbuf = v4l2_m2m_src_buf_remove(ctx->fh.m2m_ctx);
-@@ -2275,7 +2285,9 @@ static void meson_venc_stop_streaming(struct vb2_queue *vq)
+@@ -2275,7 +2281,9 @@ static void meson_venc_stop_streaming(struct vb2_queue *vq)
  
  	if (ctx->owns_hw && !ctx->streaming_output &&
  	    !ctx->streaming_capture) {

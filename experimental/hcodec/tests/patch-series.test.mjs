@@ -93,9 +93,8 @@ test('streamoff diagnostics cover vb2 cleanup and power-off boundaries', () => {
 
   for (const value of [
     'stop_streaming:',
-    'power_off: begin',
-    'power_off: stop_cpu ret=',
-    'power_off: complete',
+    'stop_streaming: power_off begin',
+    'stop_streaming: power_off end',
   ]) {
     assert.match(patch, new RegExp(value.replace(/[.*+?^${}()|[\\]\\]/g, '\\$&')));
   }

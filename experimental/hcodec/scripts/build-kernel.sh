@@ -80,9 +80,9 @@ if [[ -n "$source_status" ]]; then
     git -C "$SOURCE_DIR" status --porcelain=v1 --untracked-files=all >&2
     exit 1
   }
-  grep -q 'power_off: begin' \
+  grep -q 'trace: stop_streaming:' \
     "$SOURCE_DIR/drivers/media/platform/amlogic/meson-venc/meson-venc.c" || {
-    echo 'expected streamoff diagnostics are missing from the HCODEC source' >&2
+    echo 'expected streamoff entry diagnostics are missing from the HCODEC source' >&2
     git -C "$SOURCE_DIR" diff -- drivers/media/platform/amlogic/meson-venc/meson-venc.c >&2
     exit 1
   }
