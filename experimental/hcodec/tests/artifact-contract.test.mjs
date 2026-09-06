@@ -9,6 +9,7 @@ import test from 'node:test';
 const packageScript = 'experimental/hcodec/scripts/package-artifact.sh';
 const verifyScript = 'experimental/hcodec/scripts/verify-artifact.sh';
 const installScript = 'experimental/hcodec/scripts/install-artifact.sh';
+const stabilityProbeScript = 'experimental/hcodec/scripts/capture-stability-probe.sh';
 const workflow = '.github/workflows/hcodec-candidate.yml';
 
 test('packages a single deterministic tar.xz with manifests and kernel/tools payloads', (t) => {
@@ -48,6 +49,7 @@ test('packages a single deterministic tar.xz with manifests and kernel/tools pay
   const contents = spawnSync('tar', ['-tJf', artifact], { encoding: 'utf8' });
   assert.equal(contents.status, 0, contents.stderr);
   assert.match(contents.stdout, /\.\/capture-probe\.sh/);
+  assert.match(contents.stdout, /\.\/capture-stability-probe\.sh/);
   assert.match(fs.readFileSync(path.join(output, 'manifest.json'), 'utf8'), /hardware_boot_tested.*false/);
   assert.equal(spawnSync('bash', [verifyScript, output], { encoding: 'utf8' }).status, 0);
   assert.match(fs.readFileSync(path.join(output, 'manifest.json'), 'utf8'), /firmware_sha256/);
@@ -66,6 +68,33 @@ test('ships a rootfs-persistent kernel trace probe wrapper', () => {
 
   assert.match(source, /capture-probe\.sh/);
   assert.match(verifier, /\.\/capture-probe\.sh/);
+});
+
+test('stability probe persists sixty post-probe health records', (t) => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'hcodec-stability-probe-'));
+  t.after(() => fs.rmSync(root, { recursive: true, force: true }));
+  const bin = path.join(root, 'bin');
+  const results = path.join(root, 'results');
+  const smoke = path.join(root, 'smoke');
+  const output = path.join(results, 'stream.h264');
+  fs.mkdirSync(bin);
+  for (const command of ['dmesg', 'sleep', 'sync']) {
+    const file = path.join(bin, command);
+    fs.writeFileSync(file, '#!/bin/sh\nexit 0\n');
+    fs.chmodSync(file, 0o755);
+  }
+  fs.writeFileSync(smoke, '#!/bin/sh\nprintf annexb > "$2"\n');
+  fs.chmodSync(smoke, 0o755);
+
+  const result = spawnSync('bash', [stabilityProbeScript, results, smoke, '/dev/video0', output], {
+    encoding: 'utf8',
+    env: { ...process.env, PATH: `${bin}:${process.env.PATH}` },
+  });
+  assert.equal(result.status, 0, result.stderr || result.stdout);
+  assert.equal(fs.existsSync(path.join(results, 'kernel.after.log')), true);
+  const records = fs.readFileSync(path.join(results, 'health.log'), 'utf8').trim().split('\n');
+  assert.equal(records.length, 60);
+  assert.match(records[0], /uptime=.* eth0=.* carrier=/);
 });
 
 test('workflow only runs on pull requests or manual dispatch and keeps artifact isolated', () => {

@@ -61,6 +61,17 @@ test('documents run-25-1 power-off completion and Meson8b gate experiment', () =
   assert.match(text, /full_power_reset/);
 });
 
+test('documents run-29-1 multi-frame decode evidence and stability wrapper', () => {
+  const text = files.map(read).join('\n');
+
+  assert.match(text, /33987050987/);
+  assert.match(text, /run-29-1/);
+  assert.match(text, /6866/);
+  assert.match(text, /7d50f102b6405fcc637467a61a8c5ef62ef0c90f2af88136a2f9f9ae97f6413f/);
+  assert.match(text, /1 IDR.*29 P|29 P.*1 IDR/);
+  assert.match(text, /capture-stability-probe\.sh/);
+});
+
 test('does not describe the disproved offset ring workaround as the active next step', () => {
   const text = files.map(read).join('\n');
   assert.doesNotMatch(text, /run-10 只调整 Meson8b offset/);

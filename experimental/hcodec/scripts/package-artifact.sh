@@ -28,6 +28,8 @@ cp -p "$ROOT_DIR/experimental/hcodec/scripts/install-artifact.sh" \
   "$OUTPUT_DIR/stage/install-artifact.sh"
 cp -p "$ROOT_DIR/experimental/hcodec/scripts/capture-probe.sh" \
   "$OUTPUT_DIR/stage/capture-probe.sh"
+cp -p "$ROOT_DIR/experimental/hcodec/scripts/capture-stability-probe.sh" \
+  "$OUTPUT_DIR/stage/capture-stability-probe.sh"
 node - "$OUTPUT_DIR/stage/manifest.json" "$RUN_NUMBER" "$RUN_ATTEMPT" "$OUTPUT_DIR/stage/kernel/source-manifest.json" "$OUTPUT_DIR/stage/tools/tools-manifest.json" "$OUTPUT_DIR/stage/firmware/firmware-manifest.json" <<'NODE'
 const fs = require('fs');
 const [file, run, attempt, sourceFile, toolsFile, firmwareFile] = process.argv.slice(2);

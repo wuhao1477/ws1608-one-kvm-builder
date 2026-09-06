@@ -1,6 +1,6 @@
 # WS1608 One-KVM 构建器交接
 
-更新时间：2026-09-05
+更新时间：2026-09-06
 
 ## 当前结论
 
@@ -13,8 +13,8 @@
 - 稳定底座已有实体启动、HDMI、网络、SSH、eMMC 和 One-KVM 运行证据。
 - H.264 硬件编码改走 Linux 6.12 `meson-venc` HCODEC V4L2 M2M。
 - Linux 3.10、私有 AMLENC ABI、双内核和 kexec 已废弃，不再构建或刷写。
-- HCODEC `run-16-1` 已生成并离线验证有效的单帧硬件码流，但探针在
-  `STREAMOFF` 清理阶段阻塞，当前仍不能发布完整硬件验收结论。
+- HCODEC `run-29-1` 已生成并离线验证有效的 30 帧硬件码流，但测试后设备失联，
+  当前仍不能发布完整硬件验收结论。
 - `codex/hcodec-meson8b-ucode` 的 GitHub Actions run `33854312358` 已完成
   contract、ARMv7 构建、artifact 上传/下载和复验；`run-13-1` 已安装并成功启动。
   启动证据包含 `6.12.28-current-meson`、`cma=128M`、`/dev/video0`、正确的
@@ -40,6 +40,12 @@
   `capture-probe.sh` 持久化记录了有效码流、退出码 `0`、两个 `STREAMOFF` 和
   `power_off end`；无 DMA timeout 或内核警告，设备随后失联。下一候选只对 Meson8b
   保留 `DOS_GCLK_EN0` HCODEC 内部门控，其余断电顺序保持不变。
+- run `33987050987` 的 `run-29-1` 已完成云端构建、独立复验、安装和重启。
+  640×480 MMAP 30 帧编码返回 `0`，生成 1 个 IDR、29 个 P 帧和 6866 字节码流；
+  `ffprobe` 与 `ffmpeg` 均验证通过，SHA-256 为
+  `7d50f102b6405fcc637467a61a8c5ef62ef0c90f2af88136a2f9f9ae97f6413f`。编码结束
+  和 `power_off end` 正常，但设备随后失联。下一候选加入
+  `capture-stability-probe.sh`，复用内核 trace 并保存 60 秒健康记录，仍不创建 PR。
 - `codex/hcodec-armv7-cloud-verify` 的 `run-12-1` 候选已实机启动，`cma=128M`
   生效且 `/dev/video0` 注册成功；640×480 单帧 probe 记录到
   `SEQUENCE`、`PICTURE` 成功，`IDR` 输出 7 字节后超时并返回 `-110`。
@@ -93,9 +99,9 @@ One-KVM `0.2.6` 已有 `h264_v4l2m2m` 后端，Amlogic 实验探测需要
 
 ## 接手后的顺序
 
-1. 保留 `33854312358`、`33874935950`、`33893613040`、`33967514846` artifact 与对应实机证据，不重复已有 probe。
-2. 验证 Meson8b 保留 HCODEC 内部门控能否消除退出后的失联；先取得新的云构建、刷写和单帧证据，不继续 720p/1080p、DMABUF 或 One-KVM。
-3. 只有新的 640×480 单帧探针完整返回、生成有效 Annex-B H.264 且清理无阻塞后才创建 PR。
+1. 保留 `33854312358`、`33874935950`、`33893613040`、`33967514846`、`33973657980` 和 `33987050987` artifact 与对应实机证据，不重复已有 probe。
+2. 构建并刷写包含 `capture-stability-probe.sh` 的候选，在 640×480 MMAP motion 单会话下保存编码后 60 秒健康记录；不继续 720p/1080p、DMABUF 或 One-KVM。
+3. 只有新的 probe 完整返回、生成有效 Annex-B H.264、健康记录完整且设备保持可访问后才创建 PR。
 4. 独立码流和清理路径均通过后再临时接入 One-KVM，不修改稳定服务配置。
 
 ## 维护边界
@@ -107,8 +113,8 @@ One-KVM `0.2.6` 已有 `h264_v4l2m2m` 后端，Amlogic 实验探测需要
 - 不创建或合并 PR，除非新候选完成 640×480 单帧实机编码验收。
 - 当前 `run-13-1` probe 超时并导致设备失联，不能视为硬件编码验收通过。
 - `run-15-1` 的 Assist `INT1=0x19` 修复仍以 0 字节和设备失联告终，不能视为硬件编码验收通过。
-- `run-16-1` 已完成有效 IDR 码流，但 `STREAMOFF` 清理阻塞；不能视为完整硬件编码验收通过，
-  下一步只修复清理路径并重新云构建验证，不重复已经完成的编码工作。
+- `run-29-1` 已完成 30 帧有效码流，但测试后的设备稳定性未通过；下一步只增加
+  持久化健康记录并重新云构建验证，不重复已经完成的编码工作。
 - 设备连接信息和原始日志保持在维护者的私有测试记录中。
 
 实机步骤见 [hardware-validation.md](hardware-validation.md)，故障定位见

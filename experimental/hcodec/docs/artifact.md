@@ -8,7 +8,7 @@ Release。
 
 - `kernel/`：zImage、uImage、OneCloud DTB、模块包、配置、符号表、源码摘要、签名报告；
 - `tools/`：两个 ARMv7 V4L2 工具、工具摘要和固件来源摘要；
-- 根目录 manifest 与归档内部 `SHA256SUMS`。
+- 根目录 probe 脚本、manifest 与归档内部 `SHA256SUMS`。
 
 `verify-artifact.sh` 会检查摘要、tar.xz 解包、文件白名单、符号链接、固件二进制、
 内核版本和硬件状态字段。artifact 明确包含由固定源码生成的
@@ -72,3 +72,12 @@ artifact 根目录的 `capture-probe.sh` 会把 probe 命令、标准输出/错�
 run `33973657980` 的 `run-25-1` 证明该包装器能在设备失联前保存完整结束边界：
 码流 6547 字节、退出码 `0`、两个 `STREAMOFF` 和 `power_off end` 均已完成。
 该证据将下一候选限定为 Meson8b `full_power_reset` 试验，仍不得创建 PR。
+
+run `33987050987` 的 `run-29-1` 已完成 640×480 MMAP 30 帧实机编码，生成 1 个 IDR、
+29 个 P 帧和 6866 字节码流；独立 `ffprobe`/`ffmpeg` 验证通过，摘要为
+`7d50f102b6405fcc637467a61a8c5ef62ef0c90f2af88136a2f9f9ae97f6413f`。编码结束和
+`power_off end` 正常，但设备随后失联，`hardware_encoder_tested` 仍为 `false`。
+
+下一候选新增 `capture-stability-probe.sh`。该脚本先调用 `capture-probe.sh` 保存
+内核日志、命令和退出码，再持久化 60 条每秒健康记录：uptime、eth0 状态、carrier
+和 IP。它只用于一次候选测试，不能替代硬件稳定性验收。

@@ -18,6 +18,7 @@ find "$work" -type l -print -quit | grep -q . && { echo 'symbolic links are forb
 allowed=$(cat <<'EOF'
 ./SHA256SUMS
 ./capture-probe.sh
+./capture-stability-probe.sh
 ./firmware/firmware-manifest.json
 ./firmware/meson8b_h264.bin
 ./install-artifact.sh
@@ -40,11 +41,11 @@ EOF
 )
 actual=$(cd "$work" && find . -type f | sort)
 [[ "$actual" == "$allowed" ]] || { printf 'artifact files:\n%s\nallowed files:\n%s\n' "$actual" "$allowed" >&2; exit 1; }
-for file in capture-probe.sh install-artifact.sh firmware/meson8b_h264.bin firmware/firmware-manifest.json kernel/zImage kernel/uImage kernel/meson8b-onecloud.dtb kernel/modules.tar.xz \
+for file in capture-probe.sh capture-stability-probe.sh install-artifact.sh firmware/meson8b_h264.bin firmware/firmware-manifest.json kernel/zImage kernel/uImage kernel/meson8b-onecloud.dtb kernel/modules.tar.xz \
   kernel/kernel.config kernel/System.map kernel/Module.symvers kernel/module-signing.json kernel/source-manifest.json \
   tools/meson-venc-smoke tools/meson-venc-capture tools/tools-manifest.json \
   manifest.json SHA256SUMS; do [[ -s "$work/$file" && ! -L "$work/$file" ]] || { echo "missing payload: $file" >&2; exit 1; }; done
-for file in capture-probe.sh install-artifact.sh; do
+for file in capture-probe.sh capture-stability-probe.sh install-artifact.sh; do
   [[ -x "$work/$file" ]] || { echo "artifact script is not executable: $file" >&2; exit 1; }
 done
 (cd "$work" && sha256sum --check SHA256SUMS)

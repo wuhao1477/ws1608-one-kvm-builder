@@ -64,9 +64,19 @@ GitHub Actions run `33973657980` 的 `run-25-1` 使用该包装器完成一次�
 下一候选仅利用 Meson8b `full_power_reset` 判据，跳过 `DOS_GCLK_EN0` 的 HCODEC
 gate 清位；HCODEC 功能时钟、DOS 时钟、隔离和内存断电仍按原路径执行。
 
+GitHub Actions run `33987050987` 的 `run-29-1` 已完成云端构建、独立复验、安装和重启。
+640×480 MMAP 30 帧编码返回 `0`，生成 1 个 IDR、29 个 P 帧和 6866 字节 Annex-B
+H.264；`ffprobe` 与 `ffmpeg` 均通过，SHA-256 为
+`7d50f102b6405fcc637467a61a8c5ef62ef0c90f2af88136a2f9f9ae97f6413f`。编码与
+`power_off end` 已完成，但设备随后失联，稳定性验收仍未通过。
+
+下一候选 artifact 新增 `capture-stability-probe.sh`。它先复用 `capture-probe.sh`
+保存内核日志，再写入 60 秒的 uptime、eth0 状态、carrier 和 IP 记录；该工具只用于
+一次候选验证，不改变内核或固件。
+
 设备安装必须使用 `install-artifact.sh`：模块包先解到目标根分区 staging，再复制
 目标版本目录；固件从 artifact 的 `firmware/meson8b_h264.bin` 直接安装。
 构建阶段会拒绝缺少模块索引或 `zram.ko` 依赖链不完整的输出；安装时保留这些
 构建时索引，不再在设备上调用 `depmod`。不得把归档直接解到 `/`。
-执行单帧 probe 时使用 `./capture-probe.sh results ./tools/meson-venc-smoke \
-/dev/video0 results/stream.h264 640 480 1`。640×480 稳定性实机通过前不创建 PR。
+执行稳定性 probe 时使用 `./capture-stability-probe.sh results ./tools/meson-venc-smoke \
+/dev/video0 results/stream.h264 640 480 30 30 4294967295 motion`。健康记录完整且设备保持可访问前不创建 PR。

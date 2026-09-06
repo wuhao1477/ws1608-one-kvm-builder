@@ -41,6 +41,12 @@ Linux 6.12 HCODEC 研究路线。
 - GitHub Actions run `33973657980` 生成并复验 `run-25-1` artifact；持久化 trace
   证明 probe、两个 `STREAMOFF` 和 `power_off end` 均在约一秒内返回 `0`，但设备
   随后失联。下一候选仅让 Meson8b 保留 HCODEC 内部门控，仍不创建 PR。
+- GitHub Actions run `33987050987` 生成并复验 `run-29-1` artifact；WS1608 完成
+  640×480、MMAP、30 帧编码，输出 1 IDR、29 P 帧和 6866 字节码流。独立
+  `ffprobe` 识别 30 帧 640×480 Baseline H.264，`ffmpeg` 解码成功，SHA-256 为
+  `7d50f102b6405fcc637467a61a8c5ef62ef0c90f2af88136a2f9f9ae97f6413f`。编码和
+  `power_off end` 已通过，但测试后设备失联，稳定性验收未通过；下一构建加入
+  `capture-stability-probe.sh` 持久化 60 秒健康记录，仍不创建 PR。
 
 ## 自动更新规则
 

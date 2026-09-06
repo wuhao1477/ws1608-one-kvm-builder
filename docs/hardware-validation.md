@@ -8,13 +8,14 @@
 | Armbian `6.12.28-current-meson` 与 One-KVM 运行 | 已验证 |
 | H.264/H.265/VP8/VP9 软件编码路径 | 已验证 |
 | ARMv7 `meson-venc` 模块、DTB 与工具 artifact | 已刷写并完成启动检查 |
-| HCODEC V4L2 M2M H.264 | 单帧编码数据路径已验证；`STREAMOFF` 清理阻塞，完整验收未通过 |
+| HCODEC V4L2 M2M H.264 | 640×480 30 帧编码和独立解码已验证；测试后设备失联，稳定性验收未通过 |
 | One-KVM `h264_v4l2m2m` | 尚未实机验证 |
 | 1080p30、128 MiB CMA、长时间稳定性 | 尚未实机验证 |
 
 稳定基础的已有证据不能自动继承给改变内核或 DTB 的 HCODEC 候选。每个新
 候选从 `hardware_boot_tested=false` 和 `hardware_encoder_tested=false` 开始。
-`run-16-1` 的硬件编码结果虽已生成有效码流，仍因探针未完整退出而保持未验收状态。
+`run-29-1` 的硬件编码结果已生成并独立解码，但测试后设备失联，仍因稳定性探针
+未完整退出而保持未验收状态。
 
 ## 测试准备
 
@@ -82,22 +83,23 @@ v4l2-ctl -d "$encoder" --list-formats
 
 ## 4. 独立 H.264 探针
 
-测试工具必须由候选 manifest 固定的 ARMv7 源码构建。先运行 MMAP：
+测试工具必须由候选 manifest 固定的 ARMv7 源码构建。当前候选仅运行一个
+640×480 MMAP 会话，并使用 artifact 的稳定性包装器：
 
 ```sh
-./meson-venc-smoke "$encoder" 640x480-300f.h264 640 480 300
-./meson-venc-smoke "$encoder" 1280x720-1800f.h264 1280 720 1800
+./capture-stability-probe.sh results ./tools/meson-venc-smoke \
+  "$encoder" results/stream.h264 640 480 30 30 4294967295 motion
 ```
 
-MMAP 通过后，以同样参数运行 DMABUF，并记录每次测试前后的：
+该脚本会先保存命令、探针输出和 dmesg，再写入 60 秒健康记录。当前不运行
+DMABUF、720p、1080p 或 One-KVM 集成。每次记录测试前后的：
 
 ```sh
 grep -E 'CmaTotal|CmaFree' /proc/meminfo
 dmesg >candidate-kernel.log
 ```
 
-720p 通过后才测试 1920×1080。每次只运行一个编码会话；第二并发会话应被
-驱动拒绝，而不是破坏当前码流。
+每次只运行一个编码会话；第二并发会话应被驱动拒绝，而不是破坏当前码流。
 
 ## 5. 码流验证
 
@@ -124,6 +126,13 @@ VBV 码率控制。
 SHA-256 为 `af392c6132fb1b349c62a0609164a5d92fb5dbda0805709614e00dfa636f407a`。
 但工具在随后 `STREAMOFF` 清理阶段未返回并导致 SSH 超时；因此该候选只证明
 编码数据路径，不能标为完整验收通过，也不得进入 DMABUF、720p、1080p 或 One-KVM。
+
+`run-29-1` 的 640×480、MMAP、30 帧实机结果：退出码 `0`，内核日志记录 1 个
+IDR、29 个 P 帧、两个 `STREAMOFF` 和 `power_off end`；输出 6866 字节，SHA-256
+为 `7d50f102b6405fcc637467a61a8c5ef62ef0c90f2af88136a2f9f9ae97f6413f`。
+`ffprobe` 识别 30 帧 Baseline H.264，`ffmpeg` 解码成功。测试后设备失联，下一
+候选必须通过 `capture-stability-probe.sh` 保存编码后健康记录，仍不能进入更高
+分辨率、DMABUF 或 One-KVM。
 
 ## 6. One-KVM 显式探针
 
