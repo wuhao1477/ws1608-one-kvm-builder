@@ -10,7 +10,7 @@ const packageScript = 'experimental/hcodec/scripts/package-artifact.sh';
 const verifyScript = 'experimental/hcodec/scripts/verify-artifact.sh';
 const installScript = 'experimental/hcodec/scripts/install-artifact.sh';
 const stabilityProbeScript = 'experimental/hcodec/scripts/capture-stability-probe.sh';
-const workflow = '.github/workflows/hcodec-candidate.yml';
+const workflow = '.cnb.yml';
 
 test('packages a single deterministic tar.xz with manifests and kernel/tools payloads', (t) => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'hcodec-artifact-'));
@@ -99,21 +99,22 @@ test('stability probe persists sixty post-probe health records', (t) => {
 
 test('workflow only runs on pull requests or manual dispatch and keeps artifact isolated', () => {
   const text = fs.readFileSync(workflow, 'utf8');
-  assert.match(text, /push:\s*\n\s*branches:\s*\n\s*-\s*['"]codex\/hcodec-\*['"]/);
-  assert.match(text, /pull_request:/);
-  assert.match(text, /workflow_dispatch:/);
+  assert.match(text, /"codex\/hcodec-\*":/);
+  assert.match(text, /\s+push:/);
+  assert.match(text, /\s+pull_request:/);
+  assert.match(text, /web_trigger_hcodec/);
   assert.doesNotMatch(text, /schedule:|repository_dispatch:|create-release|gh release/);
-  assert.match(text, /ubuntu:24\.04@sha256:1e0a86e57d247923571b75e0aaf48a1449cf8c543d51fb3e07a4a7d7bfa79316/);
-  assert.match(text, /retention-days:\s*14/);
-  assert.match(text, /apt-get install -y[^']*\bnodejs\b/);
-  assert.match(text, /package-artifact\.sh/);
-  assert.match(text, /verify-artifact\.sh/);
-  assert.match(text, /download-artifact/);
+  const runner = fs.readFileSync('scripts/cnb-run-hcodec.sh', 'utf8');
+  assert.match(runner, /package-artifact\.sh/);
+  assert.match(runner, /verify-artifact\.sh/);
+  assert.match(runner, /CNB_ASSET_TTL=14/);
+  assert.match(runner, /cnb-upload-commit-assets\.sh/);
 });
 
 test('workflow keeps generated Meson8b firmware as a separate package input', () => {
-  assert.match(fs.readFileSync(workflow, 'utf8'), /build-firmware\.sh/);
-  assert.match(fs.readFileSync(workflow, 'utf8'), /out\/hcodec\/firmware/);
+  const runner = fs.readFileSync('scripts/cnb-run-hcodec.sh', 'utf8');
+  assert.match(runner, /build-firmware\.sh/);
+  assert.match(runner, /out\/hcodec\/firmware/);
 });
 
 test('artifact verifier whitelists only the explicit Meson8b firmware payload', () => {

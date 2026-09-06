@@ -15,6 +15,10 @@ export OUTPUT_DIR="$ROOT_DIR/out/amlenc/burn"
 export WORK_DIR="$ROOT_DIR/.build/amlenc/burn"
 export AMLIMG_BIN="$ROOT_DIR/.tools/AmlImg"
 
+node "$ROOT_DIR/experimental/amlenc/scripts/verify-source-locks.mjs" \
+  "$ROOT_DIR/experimental/amlenc/config/sources.env"
+bash "$ROOT_DIR/experimental/amlenc/scripts/verify-stable-chain.sh"
+
 apt-get update
 apt-get install -y curl jq qemu-user-static device-tree-compiler dpkg-dev \
   gcc-arm-linux-gnueabihf binutils-arm-linux-gnueabihf build-essential \
@@ -84,6 +88,7 @@ curl --fail --silent --show-error --location --retry 5 "$BASE_IMAGE_URL" \
   -o "$ROOT_DIR/.build/amlenc/base.burn.img.xz"
 printf '%s  %s\n' "$BASE_IMAGE_SHA256" "$ROOT_DIR/.build/amlenc/base.burn.img.xz" \
   | sha256sum --check
+xz -dc "$ROOT_DIR/.build/amlenc/base.burn.img.xz" >"$ROOT_DIR/.build/amlenc/base.burn.img"
 BASE_IMAGE_XZ="$ROOT_DIR/.build/amlenc/base.burn.img.xz" \
   DIAGNOSTIC_IMAGE="$ROOT_DIR/out/amlenc/diagnostic-image/WS1608-AMLENC-Diagnostic_k3.10.107_bullseye_${BUILD_NUMBER}.usb.img" \
   DIAGNOSTIC_MANIFEST="$ROOT_DIR/out/amlenc/diagnostic-image/manifest.json" \
@@ -103,6 +108,8 @@ OUTPUT_DIR="$ROOT_DIR/out/amlenc/burn" IMAGE_NAME="$IMAGE_NAME" \
   "$ROOT_DIR/experimental/amlenc/scripts/package-burn-release.sh"
 "$ROOT_DIR/experimental/amlenc/scripts/verify-stable-chain.sh"
 "$ROOT_DIR/experimental/amlenc/scripts/verify-burn-release.sh" "$ROOT_DIR/out/amlenc/burn"
+jq -e '.hardware_encoder_tested == false and .hardware_boot_tested == false and .one_kvm_included == true and .stable_channel_modified == false' \
+  "$ROOT_DIR/out/amlenc/burn/manifest.json" >/dev/null
 
 CNB_ASSET_TTL=14 "$ROOT_DIR/scripts/cnb-upload-commit-assets.sh" "$ROOT_DIR/out/amlenc/burn"
 if [[ "${PUBLISH:-false}" == true && "${ACKNOWLEDGE_EXPERIMENTAL:-false}" == true ]]; then

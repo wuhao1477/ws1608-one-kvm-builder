@@ -9,7 +9,7 @@ const builderPath = 'experimental/amlenc/scripts/build-burn-image.sh';
 const verifierPath = 'experimental/amlenc/scripts/verify-burn-image.sh';
 const packagerPath = 'experimental/amlenc/scripts/package-burn-release.sh';
 const releaseVerifierPath = 'experimental/amlenc/scripts/verify-burn-release.sh';
-const workflowPath = '.github/workflows/amlenc-experimental.yml';
+const workflowPath = '.cnb.yml';
 
 function read(path) {
   return fs.readFileSync(path, 'utf8');
@@ -36,22 +36,20 @@ test('defines an isolated burn image build and verification chain', () => {
 });
 
 test('runs burn image gates before metadata upload and keeps hardware gate explicit', () => {
-  const workflow = read(workflowPath);
-  assert.match(workflow, /Build experimental burn image/);
-  assert.match(workflow, /Verify experimental burn image/);
-  assert.match(workflow, /Package experimental burn metadata/);
-  assert.match(workflow, /hardware_encoder_tested.*false|hardware_encoder_tested.*true/s);
-  const buildIndex = workflow.indexOf('Build experimental burn image');
-  const verifyIndex = workflow.indexOf('Verify experimental burn image');
-  const uploadIndex = workflow.indexOf('Upload experimental release artifact');
-  assert.ok(buildIndex >= 0 && verifyIndex > buildIndex && uploadIndex > verifyIndex);
+  const runner = read('scripts/cnb-run-amlenc.sh');
+  assert.match(runner, /build-burn-image\.sh/);
+  assert.match(runner, /verify-burn-image\.sh/);
+  assert.match(runner, /package-burn-release\.sh/);
+  assert.match(runner, /verify-burn-release\.sh/);
+  assert.match(runner, /cnb-upload-commit-assets\.sh/);
 });
 
 test('keeps untested hardware status explicit in the experimental prerelease', () => {
-  const workflow = read(workflowPath);
-  assert.match(workflow, /RELEASE_PRERELEASE: 'true'/);
-  assert.match(workflow, /hardware_encoder_tested.*false/s);
-  assert.match(workflow, /hardware_boot_tested.*false/s);
+  const runner = read('scripts/cnb-run-amlenc.sh');
+  assert.match(runner, /RELEASE_PRERELEASE=true/);
+  assert.match(runner, /ACKNOWLEDGE_EXPERIMENTAL/);
+  assert.match(runner, /hardware_encoder_tested/);
+  assert.match(runner, /hardware_boot_tested/);
 });
 
 test('verifies exactly five packaged burn release assets', (t) => {

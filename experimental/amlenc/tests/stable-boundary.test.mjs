@@ -5,7 +5,7 @@ import os from 'node:os';
 import path from 'node:path';
 import test from 'node:test';
 
-const workflowPath = '.github/workflows/build.yml';
+const workflowPath = '.cnb.yml';
 const baseConfigPath = 'config/base.env';
 const sourcesPath = 'experimental/amlenc/config/sources.env';
 const validatorPath = 'experimental/amlenc/scripts/verify-source-locks.mjs';
@@ -14,10 +14,10 @@ test('preserves the verified stable image channel', () => {
   const workflow = fs.readFileSync(workflowPath, 'utf8');
   const baseConfig = fs.readFileSync(baseConfigPath, 'utf8');
 
-  assert.match(workflow, /cron: "17 2 \* \* 0"/);
-  assert.match(workflow, /source config\/base\.env/);
-  assert.match(workflow, /ws1608-one-kvm-/);
-  assert.doesNotMatch(workflow, /experimental\/amlenc/);
+  assert.match(workflow, /crontab: 17 2 \* \* 0/);
+  assert.match(fs.readFileSync('scripts/cnb-run-stable.sh', 'utf8'), /source.*config\/base\.env/);
+  assert.match(workflow, /ws1608-stable-release/);
+  assert.doesNotMatch(workflow.slice(0, workflow.indexOf('\n$:')), /experimental\/amlenc/);
   assert.match(baseConfig, /^BASE_RELEASE_TAG=base-20260804-consolefix$/m);
 });
 

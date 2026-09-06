@@ -2,70 +2,54 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import test from 'node:test';
 
-const workflow = fs.readFileSync('.github/workflows/build.yml', 'utf8');
-const discoverJob = workflow.slice(workflow.indexOf('\n  discover:'), workflow.indexOf('\n  build:'));
-const buildJob = workflow.slice(workflow.indexOf('\n  build:'), workflow.indexOf('\n  release:'));
+const workflow = fs.readFileSync('.cnb.yml', 'utf8');
+const stableWorkflow = workflow.slice(0, workflow.indexOf('\n$:'));
+const contractWorkflow = workflow.slice(workflow.indexOf('\n$:'), workflow.indexOf('\n"codex/hcodec-*"'));
 
 test('checks upstream once every seven days and validates pull requests', () => {
-  assert.match(workflow, /cron: "17 2 \* \* 0"/);
-  assert.match(workflow, /^  pull_request:/m);
-  assert.match(workflow, /^      publish:/m);
-  assert.match(workflow, /^      prerelease:/m);
-  assert.match(workflow, /github\.event_name == 'pull_request'/);
+  assert.match(workflow, /"crontab: 17 2 \* \* 0":/);
+  assert.match(workflow, /\$:\n\s+pull_request:/);
+  assert.match(workflow, /api_trigger_one-kvm-release/);
+  assert.match(workflow, /web_trigger_stable/);
 });
 
 test('preserves every forced rebuild without racing its build identity', () => {
-  assert.match(
-    workflow,
-    /github\.event_name == 'workflow_dispatch' && inputs\.force && format\('force-\{0\}', github\.run_id\)/,
-  );
+  assert.match(workflow, /FORCE_BUILD: \$force/);
+  assert.match(workflow, /lock:\n\s+key: ws1608-stable-release/);
 });
 
-test('uses read-only permission until the isolated release job', () => {
-  assert.match(workflow, /^permissions:\n  contents: read$/m);
-  assert.match(workflow, /^  release:\n(?:.|\n)*?    permissions:\n      contents: write/m);
-  assert.match(workflow, /needs: \[discover, build\]/);
-  assert.match(workflow, /github\.event_name != 'pull_request'/);
-  assert.match(workflow, /github\.ref == format\('refs\/heads\/\{0\}', github\.event\.repository\.default_branch\)/);
-  assert.match(workflow, /github\.event_name == 'workflow_dispatch' && inputs\.prerelease/);
-  assert.match(workflow, /inputs\.publish/);
-  assert.match(workflow, /RELEASE_PRERELEASE: \$\{\{ github\.event_name == 'workflow_dispatch' && inputs\.prerelease \}\}/);
+test('keeps stable publication isolated from PR checks', () => {
+  assert.match(stableWorkflow, /crontab: 17 2 \* \* 0/);
+  assert.match(contractWorkflow, /PUBLISH: "false"/);
+  assert.match(workflow, /PUBLISH: \$publish/);
+  assert.match(workflow, /RELEASE_PRERELEASE: \$prerelease/);
 });
 
-test('runs every image and release-asset gate before artifact upload', () => {
-  assert.match(workflow, /\.\/scripts\/verify-image\.sh/);
-  assert.match(workflow, /\.\/scripts\/package-release\.sh/);
-  assert.match(workflow, /\.\/scripts\/verify-release-assets\.sh/);
-  assert.match(workflow, /validation-report\.json/);
-  assert.match(workflow, /if-no-files-found: error/);
-  assert.match(workflow, /actions\/download-artifact@/);
-  assert.match(workflow, /Reverify uploaded artifact/);
-  assert.match(workflow, /Re-verify uploaded burn image/);
+test('runs every image and release-asset gate before CNB publication', () => {
+  const script = fs.readFileSync('scripts/cnb-run-stable.sh', 'utf8');
+  assert.match(script, /build-image\.sh/);
+  assert.match(script, /verify-image\.sh/);
+  assert.match(script, /package-release\.sh/);
+  assert.match(script, /verify-release-assets\.sh/);
+  assert.match(script, /cnb-publish-release\.sh/);
 });
 
 test('installs the FAT image tooling required for boot-console validation', () => {
-  assert.match(workflow, /e2fsprogs file jq mtools qemu-user-static/);
+  assert.match(fs.readFileSync('scripts/cnb-run-stable.sh', 'utf8'), /build-tools\.sh/);
 });
 
-test('downloads and reverifies the artifact before immutable publishing', () => {
-  assert.match(workflow, /actions\/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131/);
-  assert.match(workflow, /^      - name: Reverify downloaded release assets$/m);
-  assert.doesNotMatch(workflow, /--latest/);
-  assert.doesNotMatch(workflow, /gh release upload|--clobber/);
-  assert.match(workflow, /\.\/scripts\/publish-release\.sh/);
-  assert.doesNotMatch(workflow, /gh release create/);
-  const releaseJob = workflow.slice(workflow.indexOf('\n  release:'), workflow.indexOf('\n  skipped:'));
-  assert.match(releaseJob, /echo "BASE_FLAVOR=\$BASE_FLAVOR"/);
+test('uploads and reverifies immutable assets through CNB', () => {
+  const script = fs.readFileSync('scripts/cnb-publish-release.sh', 'utf8');
+  assert.match(script, /post-release-asset-upload-url/);
+  assert.match(script, /post-release-asset-upload-confirmation/);
+  assert.match(script, /get-release-by-tag/);
+  assert.match(script, /hash_value/);
 });
 
-test('does not expose a write token to discovery or build jobs', () => {
-  assert.doesNotMatch(buildJob, /GH_TOKEN:|contents: write/);
-  assert.doesNotMatch(discoverJob, /contents: write/);
-});
-
-test('pins all third-party actions to reviewed commits', () => {
-  assert.match(workflow, /actions\/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0/);
-  assert.match(workflow, /actions\/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e/);
-  assert.match(workflow, /actions\/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a/);
-  assert.doesNotMatch(workflow, /uses: [^\n]+@v\d/);
+test('does not retain active GitHub Actions entrypoints', () => {
+  for (const file of [
+    '.github/workflows/build.yml',
+    '.github/workflows/hcodec-candidate.yml',
+    '.github/workflows/amlenc-experimental.yml',
+  ]) assert.equal(fs.existsSync(file), false, file);
 });

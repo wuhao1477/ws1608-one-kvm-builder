@@ -1,18 +1,4 @@
 main:
-  push:
-    - name: stable-build
-      lock:
-        key: ws1608-stable-release
-        wait: true
-        cancel-in-wait: true
-      runner:
-        cpus: 16
-      services:
-        - docker
-      stages:
-        - name: build-and-publish-stable
-          timeout: 2h
-          script: ./scripts/cnb-run-stable.sh
   "crontab: 17 2 * * 0":
     - name: stable-weekly-check
       lock:
@@ -75,6 +61,24 @@ $:
             for script in scripts/*.sh experimental/amlenc/scripts/*.sh experimental/hcodec/scripts/*.sh; do
               bash -n "$script"
             done
+  api_trigger_one-kvm-release:
+    - name: stable-api-build
+      lock:
+        key: ws1608-stable-release
+        wait: true
+        cancel-in-wait: true
+      runner:
+        cpus: 16
+      services:
+        - docker
+      env:
+        FORCE_BUILD: "false"
+        PUBLISH: "true"
+        RELEASE_PRERELEASE: "false"
+      stages:
+        - name: build-and-publish-stable
+          timeout: 2h
+          script: ./scripts/cnb-run-stable.sh
   web_trigger_stable:
     - name: stable-manual-build
       lock:
@@ -140,16 +144,6 @@ $:
           script: ./scripts/cnb-run-hcodec.sh
 
 "codex/amlenc-*":
-  push:
-    - name: amlenc-candidate
-      runner:
-        cpus: 16
-      services:
-        - docker
-      stages:
-        - name: build-and-upload-amlenc
-          timeout: 3h
-          script: ./scripts/cnb-run-amlenc.sh
   pull_request:
     - name: amlenc-candidate-pr
       runner:

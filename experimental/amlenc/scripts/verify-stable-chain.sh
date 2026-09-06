@@ -11,8 +11,10 @@ actual=$(mktemp)
 check_output=$(mktemp)
 trap 'rm -f "$expected" "$actual" "$check_output"' EXIT
 
-git -C "$ROOT_DIR" ls-files -- \
-  .github/workflows/build.yml config package.json scripts tests \
+while IFS= read -r path; do
+  [[ -f "$ROOT_DIR/$path" ]] && printf '%s\n' "$path"
+done < <(git -C "$ROOT_DIR" ls-files -- \
+  .cnb.yml .cnb/web_trigger.yml config package.json scripts tests) \
   | LC_ALL=C sort >"$expected"
 
 awk '

@@ -7,10 +7,13 @@ REPO=${CNB_REPO_SLUG:?CNB_REPO_SLUG is required}
 COMMIT=${CNB_COMMIT:?CNB_COMMIT is required}
 TTL=${CNB_ASSET_TTL:-14}
 [[ -d "$ASSET_DIR" && ! -L "$ASSET_DIR" ]] || { echo 'invalid asset directory' >&2; exit 1; }
+TMP_DIR=$(mktemp -d)
+trap 'find "$TMP_DIR" -depth -delete' EXIT
 
 for file in "$ASSET_DIR"/*; do
   [[ -f "$file" && ! -L "$file" ]] || continue
   name=${file##*/}
+  [[ "$name" != . && "$name" != .. && "$name" != */* && "$name" != *'\\'* ]] || exit 1
   size=$(wc -c <"$file" | tr -d ' ')
   response=$(cnb git post-commit-asset-upload-url --repo "$REPO" --sha1 "$COMMIT" \
     --asset-name "$name" --size "$size" --ttl "$TTL" --verbose 2>/dev/null)
@@ -24,8 +27,7 @@ for file in "$ASSET_DIR"/*; do
   cnb git post-commit-asset-upload-confirmation --repo "$REPO" --sha1 "$COMMIT" \
     --upload-token "$upload_token" --asset-path "$asset_path" --ttl "$TTL" >/dev/null
 
-  downloaded=$(mktemp)
-  trap 'find "$(dirname "$downloaded")" -maxdepth 1 -type f -name "$(basename "$downloaded")" -delete' RETURN
+  downloaded="$TMP_DIR/$name"
   curl --fail --silent --show-error --location \
     -H "Authorization: Bearer ${CNB_TOKEN:?CNB_TOKEN is required}" \
     "$CNB_API_ENDPOINT/$REPO/-/commit-assets/download/$COMMIT/$name?share=true" -o "$downloaded"

@@ -9,7 +9,7 @@
 - 稳定基础为 `base-20260804-consolefix`、Armbian `26.8.0-trunk.413`、
   Debian Trixie、Linux `6.12.28-current-meson`。
 - 当前稳定 Release 为
-  [`ws1608-one-kvm-0.2.6-v260802-b028001`](https://github.com/wuhao1477/ws1608-one-kvm-builder/releases/tag/ws1608-one-kvm-0.2.6-v260802-b028001)。
+  [`ws1608-one-kvm-0.2.6-v260802-b028001`](https://cnb.cool/wuhao1477/ws1608-one-kvm-builder/-/releases/tag/ws1608-one-kvm-0.2.6-v260802-b028001)。
 - 稳定底座已有实体启动、HDMI、网络、SSH、eMMC 和 One-KVM 运行证据。
 - H.264 硬件编码改走 Linux 6.12 `meson-venc` HCODEC V4L2 M2M。
 - Linux 3.10、私有 AMLENC ABI、双内核和 kexec 已废弃，不再构建或刷写。
@@ -59,9 +59,9 @@
 
 ## 稳定通道
 
-`.github/workflows/build.yml` 每周日 02:17 UTC 查询 One-KVM 最新稳定
-Release。只有新的上游 tag 与 armhf Deb SHA-256 组合才触发镜像构建；同一
-输入可通过 `force=true` 生成新的不可变 `bRRRAAA` Release。
+`.cnb.yml` 每周日 02:17 UTC 查询 One-KVM 最新稳定 Release。只有新的上游
+tag 与 armhf Deb SHA-256 组合才触发镜像构建；同一输入可通过 CNB Web Trigger
+的 `force=true` 生成新的不可变 `bRRRAAA` Release。
 
 稳定构建只修改 rootfs 中的 One-KVM、systemd、OTG 和来源 metadata，不
 替换 boot、内核、DTB、U-Boot 或 resource。CI 验证镜像容器、分区、ext4、

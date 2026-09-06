@@ -6,6 +6,8 @@ source "$ROOT_DIR/config/base.env"
 UPSTREAM_REPOSITORY=${UPSTREAM_REPOSITORY:-mofeng-git/One-KVM}
 FORCE_BUILD=${FORCE_BUILD:-false}
 BASE_FLAVOR=${BASE_FLAVOR:?BASE_FLAVOR is required}
+WORKFLOW_RUN_NUMBER=${CNB_BUILD_NUMBER:-${GITHUB_RUN_NUMBER:-}}
+WORKFLOW_RUN_ATTEMPT=${CNB_BUILD_ATTEMPT:-${GITHUB_RUN_ATTEMPT:-}}
 TMP_DIR=$(mktemp -d)
 trap 'find "$TMP_DIR" -depth -delete' EXIT
 
@@ -19,4 +21,4 @@ cnb git list-tags --repo "$CNB_REPO_SLUG" --page-size 100 --verbose \
 
 node "$ROOT_DIR/scripts/discover-release.mjs" \
   "$TMP_DIR/upstream.json" "$TMP_DIR/releases.json" "$TMP_DIR/tags.json" \
-  "$FORCE_BUILD" '' '' "$BASE_FLAVOR"
+  "$FORCE_BUILD" "$WORKFLOW_RUN_NUMBER" "$WORKFLOW_RUN_ATTEMPT" "$BASE_FLAVOR"

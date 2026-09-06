@@ -18,7 +18,7 @@ RELEASE_ASSET_TTL=${RELEASE_ASSET_TTL:-0}
 [[ -d "$RELEASE_ASSET_DIR" && ! -L "$RELEASE_ASSET_DIR" ]] || exit 1
 
 existing=$(cnb releases get-release-by-tag --repo "$REPO" --tag "$RELEASE_TAG" --verbose 2>/dev/null || true)
-if [[ -n "$existing" ]]; then
+if [[ "$(jq -r '.status // 0' <<<"$existing")" == 200 ]]; then
   echo "refusing to overwrite existing CNB Release: $RELEASE_TAG" >&2
   exit 1
 fi
@@ -33,11 +33,15 @@ done < <(find "$RELEASE_ASSET_DIR" -mindepth 1 -maxdepth 1 -type f -print | sort
 [[ "${#assets[@]}" -gt 0 ]] || { echo 'release has no assets' >&2; exit 1; }
 
 release_id=''
+tag_created=false
 cleanup() {
   local status=$?
   trap - EXIT
   if [[ "$status" -ne 0 && -n "$release_id" ]]; then
     cnb releases delete-release --repo "$REPO" --release-id "$release_id" >/dev/null 2>&1 || true
+  fi
+  if [[ "$status" -ne 0 && "$tag_created" == true ]]; then
+    cnb git delete-tag --repo "$REPO" --tag "$RELEASE_TAG" >/dev/null 2>&1 || true
   fi
   exit "$status"
 }
@@ -55,6 +59,7 @@ else
     --make-latest "$RELEASE_LATEST" --verbose)
 fi
 release_id=$(jq -er '.data.id' <<<"$release_json")
+tag_created=true
 
 for file in "${assets[@]}"; do
   name=${file##*/}

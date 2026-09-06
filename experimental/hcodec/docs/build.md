@@ -4,9 +4,9 @@
 Linux `f08cdc6cc92e3d23a05745f0f12f8caa348a27b4`、`6.12.28-current-meson` 和
 Ubuntu 24.04 digest `sha256:1e0a86e57d247923571b75e0aaf48a1449cf8c543d51fb3e07a4a7d7bfa79316`。
 
-GitHub Actions 工作流为 `.github/workflows/hcodec-candidate.yml`，响应
-`codex/hcodec-*` 分支的 `push`、Pull Request 和 `workflow_dispatch`。`push`
-触发只用于在创建 PR 前取得云构建证据，不创建 Release 或 tag。构建顺序为：
+CNB 流程定义在 `.cnb.yml`，响应 `codex/hcodec-*` 分支的 `push`、Pull Request
+和 Web Trigger。`push` 触发只用于在创建 PR 前取得云构建证据，不创建 Release
+或 tag。构建顺序为：
 
 1. 运行仓库与 HCODEC 契约测试；
 2. 从固定基础镜像提取配置、DTB、uImage 地址和签名策略；
@@ -24,7 +24,7 @@ H.264 probe 确认 V4L2 队列、`start_streaming`、workspace 分配、硬件�
 `SEQUENCE` 和 `PICTURE` 命令通过；IDR 输出 7 字节后超时并返回 `-110`。
 CMA 充足，设备在失败后继续运行。offset VLC ring-base 修正已否定。
 
-下一候选由 GitHub Actions 从 Hardkernel Linux
+下一候选由 CNB 从 Hardkernel Linux
 `5aed95d35d252cafc75ce613a3a0052285662de2` 的
 `drivers/amlogic/amports/m8/ucode/encoder/h264_enc_mix_dump_dblk.h` 生成
 9536 字节 Meson8b dblk 微码，SHA-256 为

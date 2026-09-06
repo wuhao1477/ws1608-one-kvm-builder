@@ -5,7 +5,6 @@ import test from 'node:test';
 const sources = fs.readFileSync('experimental/hcodec/config/sources.env', 'utf8');
 const builder = fs.readFileSync('experimental/hcodec/scripts/build-tools.sh', 'utf8');
 const firmwareBuilder = 'experimental/hcodec/scripts/build-firmware.sh';
-const workflow = fs.readFileSync('.github/workflows/hcodec-candidate.yml', 'utf8');
 
 test('locks the Hardkernel Meson8b dblk microcode input and deterministic output', () => {
   for (const value of [
@@ -46,7 +45,8 @@ test('builds the pinned Meson8b firmware from the exact Hardkernel header', () =
 });
 
 test('workflow generates firmware before packaging it into the artifact', () => {
-  assert.match(workflow, /build-firmware\.sh/);
-  assert.match(workflow, /out\/hcodec\/firmware/);
-  assert.match(workflow, /package-artifact\.sh[^\n]+out\/hcodec\/firmware/);
+  const runner = fs.readFileSync('scripts/cnb-run-hcodec.sh', 'utf8');
+  assert.match(runner, /build-firmware\.sh/);
+  assert.match(runner, /out\/hcodec\/firmware/);
+  assert.match(runner, /package-artifact\.sh/);
 });

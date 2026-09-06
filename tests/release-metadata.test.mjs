@@ -23,7 +23,7 @@ const identity = {
   package_sha256: 'a'.repeat(64),
   base_release_tag: 'base-20260804-consolefix',
   base_image_name: 'Armbian_26.8.0-trunk.413_Onecloud_trixie_6.12.28_HDMI-consolefix.burn.img.xz',
-  base_image_url: 'https://github.com/wuhao1477/ws1608-one-kvm-builder/releases/download/base-20260804-consolefix/Armbian_26.8.0-trunk.413_Onecloud_trixie_6.12.28_HDMI-consolefix.burn.img.xz',
+  base_image_url: 'https://cnb.cool/wuhao1477/ws1608-one-kvm-builder/-/releases/download/base-20260804-consolefix/Armbian_26.8.0-trunk.413_Onecloud_trixie_6.12.28_HDMI-consolefix.burn.img.xz',
   base_sha256: '0edb5f729be17bff40ee2949a715d5604f4c0a873d4a2deb9a294745af541d3a',
   build_tag: 'ws1608-one-kvm-0.2.4-v260709-b001',
   build_revision: 'b001',

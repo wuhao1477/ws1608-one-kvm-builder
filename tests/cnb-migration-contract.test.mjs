@@ -11,11 +11,14 @@ test('defines CNB pipelines for stable, candidate, PR, scheduled, and manual bui
 
   assert.match(pipeline, /main:\n/);
   assert.match(pipeline, /crontab: 17 2 \* \* 0/);
-  assert.match(pipeline, /pull_request:/);
+  assert.match(pipeline, /api_trigger_one-kvm-release/);
+  assert.match(pipeline, /\$:\n[\s\S]*pull_request:/);
   assert.match(pipeline, /codex\/hcodec-\*/);
   assert.match(pipeline, /web_trigger_stable/);
   assert.match(pipeline, /web_trigger_hcodec/);
   assert.match(pipeline, /web_trigger_amlenc/);
+  assert.doesNotMatch(pipeline, /main:\n\s+push:/);
+  assert.doesNotMatch(pipeline, /codex\/amlenc-\*":\n\s+push:/);
 });
 
 test('maps GitHub workflow inputs to CNB Web Trigger inputs', () => {
@@ -52,4 +55,7 @@ test('stable CNB publication is independent of GitHub Actions', () => {
   assert.match(read('scripts/cnb-run-stable.sh'), /scripts\/cnb-discover-release\.sh/);
   assert.match(read('scripts/cnb-run-stable.sh'), /scripts\/cnb-publish-release\.sh/);
   assert.doesNotMatch(scripts, /gh api|gh release/);
+  assert.equal(fs.existsSync('.github/workflows/build.yml'), false);
+  assert.equal(fs.existsSync('.github/workflows/hcodec-candidate.yml'), false);
+  assert.equal(fs.existsSync('.github/workflows/amlenc-experimental.yml'), false);
 });

@@ -9,7 +9,7 @@ Linux 6.12 HCODEC 研究路线。
 - 唯一稳定底座：Armbian `26.8.0-trunk.413`、Debian Trixie、
   Linux `6.12.28-current-meson`、`base-20260804-consolefix`。
 - 当前稳定 Release：
-  [`ws1608-one-kvm-0.2.6-v260802-b028001`](https://github.com/wuhao1477/ws1608-one-kvm-builder/releases/tag/ws1608-one-kvm-0.2.6-v260802-b028001)。
+  [`ws1608-one-kvm-0.2.6-v260802-b028001`](https://cnb.cool/wuhao1477/ws1608-one-kvm-builder/-/releases/tag/ws1608-one-kvm-0.2.6-v260802-b028001)。
 - 稳定底座已经具备实体启动、HDMI、网络、SSH、eMMC 和 One-KVM 运行证据。
 - H.264 HCODEC `run-16-1` 已在 WS1608 完成一次 640×480、MMAP、单帧硬件编码：
   内核日志确认 `SEQUENCE`、`PICTURE`、`IDR` 完成，生成 6547 字节有效 Annex-B
@@ -93,7 +93,7 @@ CI 会重新解包成品并验证 Amlogic v2 CRC、boot FAT、Linux console、12
 标准条目、分区 VERIFY、非 rootfs 分区一致性、One-KVM armhf 包、systemd、
 OTG、ext4、manifest、压缩往返和所有摘要。
 
-GitHub 托管 runner 没有实体 WS1608、采集卡或被控机 USB。加入新内核或
+CNB 托管 runner 没有实体 WS1608、采集卡或被控机 USB。加入新内核或
 设备树的 HCODEC 候选必须保持 `hardware_boot_tested=false` 和
 `hardware_encoder_tested=false`，直到对应实机验收完成。
 
@@ -106,7 +106,7 @@ pnpm test
 ```
 
 完整镜像构建需要 Linux、root、qemu-user-static、Go、Node.js、e2fsprogs、
-mtools 和固定 AmlImg 工具；macOS 上优先使用 GitHub Actions。
+mtools 和固定 AmlImg 工具；macOS 上优先使用 CNB 流水线。
 
 ## 文档
 

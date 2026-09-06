@@ -11,7 +11,7 @@ ROOT_DIR=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd -P)
 if [[ "${CNB_BUILD_ID}" =~ ^[0-9]+$ ]]; then
   CNB_BUILD_NUMBER=$CNB_BUILD_ID
 else
-  CNB_BUILD_NUMBER=$(printf '%s' "$CNB_BUILD_ID" | cksum | awk '{print ($1 % 900000) + 1}')
+  CNB_BUILD_NUMBER=$(printf '%s' "$CNB_BUILD_ID" | cksum | awk '{print $1 + 1}')
 fi
 
 export CNB_BUILD_NUMBER
