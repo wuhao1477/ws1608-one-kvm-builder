@@ -1,0 +1,144 @@
+main:
+  push:
+    - name: stable-build
+      lock:
+        key: ws1608-stable-release
+        wait: true
+        cancel-in-wait: true
+      runner:
+        cpus: 16
+      services:
+        - docker
+      stages:
+        - name: build-and-publish-stable
+          timeout: 2h
+          script: ./scripts/cnb-run-stable.sh
+  "crontab: 17 2 * * 0":
+    - name: stable-weekly-check
+      lock:
+        key: ws1608-stable-release
+        wait: true
+        cancel-in-wait: true
+      runner:
+        cpus: 16
+      services:
+        - docker
+      stages:
+        - name: build-and-publish-stable
+          timeout: 2h
+          script: ./scripts/cnb-run-stable.sh
+
+$:
+  pull_request:
+    - name: contract
+      stages:
+        - name: node-contracts
+          script: npm test
+        - name: shell-contracts
+          script: |
+            for script in scripts/*.sh experimental/amlenc/scripts/*.sh experimental/hcodec/scripts/*.sh; do
+              bash -n "$script"
+            done
+    - name: stable-pr-build
+      ifModify:
+        - .cnb.yml
+        - config/**
+        - scripts/**
+        - tests/**
+        - package.json
+      runner:
+        cpus: 16
+      services:
+        - docker
+      env:
+        FORCE_BUILD: "true"
+        PUBLISH: "false"
+      stages:
+        - name: build-and-upload-stable-pr
+          timeout: 2h
+          script: ./scripts/cnb-run-stable.sh
+  web_trigger_stable:
+    - name: stable-manual-build
+      lock:
+        key: ws1608-stable-release
+        wait: true
+        cancel-in-wait: true
+      runner:
+        cpus: 16
+      services:
+        - docker
+      env:
+        FORCE_BUILD: $force
+        PUBLISH: $publish
+        RELEASE_PRERELEASE: $prerelease
+      stages:
+        - name: build-and-publish-stable
+          timeout: 2h
+          script: ./scripts/cnb-run-stable.sh
+  web_trigger_hcodec:
+    - name: hcodec-manual-candidate
+      runner:
+        cpus: 16
+      services:
+        - docker
+      stages:
+        - name: build-and-upload-hcodec
+          timeout: 2h
+          script: ./scripts/cnb-run-hcodec.sh
+  web_trigger_amlenc:
+    - name: amlenc-manual-candidate
+      runner:
+        cpus: 16
+      services:
+        - docker
+      env:
+        PUBLISH: $publish
+        ACKNOWLEDGE_EXPERIMENTAL: $acknowledge_experimental
+      stages:
+        - name: build-and-upload-amlenc
+          timeout: 3h
+          script: ./scripts/cnb-run-amlenc.sh
+
+"codex/hcodec-*":
+  push:
+    - name: hcodec-candidate
+      runner:
+        cpus: 16
+      services:
+        - docker
+      stages:
+        - name: build-and-upload-hcodec
+          timeout: 2h
+          script: ./scripts/cnb-run-hcodec.sh
+  pull_request:
+    - name: hcodec-candidate-pr
+      runner:
+        cpus: 16
+      services:
+        - docker
+      stages:
+        - name: build-and-upload-hcodec
+          timeout: 2h
+          script: ./scripts/cnb-run-hcodec.sh
+
+"codex/amlenc-*":
+  push:
+    - name: amlenc-candidate
+      runner:
+        cpus: 16
+      services:
+        - docker
+      stages:
+        - name: build-and-upload-amlenc
+          timeout: 3h
+          script: ./scripts/cnb-run-amlenc.sh
+  pull_request:
+    - name: amlenc-candidate-pr
+      runner:
+        cpus: 16
+      services:
+        - docker
+      stages:
+        - name: build-and-upload-amlenc
+          timeout: 3h
+          script: ./scripts/cnb-run-amlenc.sh
