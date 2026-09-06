@@ -57,6 +57,16 @@ $:
         - name: build-and-upload-stable-pr
           timeout: 2h
           script: ./scripts/cnb-run-stable.sh
+  api_trigger_cnb_migration_contract:
+    - name: migration-contract
+      stages:
+        - name: node-contracts
+          script: npm test
+        - name: shell-contracts
+          script: |
+            for script in scripts/*.sh experimental/amlenc/scripts/*.sh experimental/hcodec/scripts/*.sh; do
+              bash -n "$script"
+            done
   web_trigger_stable:
     - name: stable-manual-build
       lock:
