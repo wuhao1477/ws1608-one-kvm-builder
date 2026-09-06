@@ -34,7 +34,10 @@ $:
       stages:
         - name: node-contracts
           image: node:22
-          script: npm test
+          script: |
+            apt-get update
+            apt-get install -y ffmpeg file jq xz-utils
+            npm test
         - name: shell-contracts
           script: |
             for script in scripts/*.sh experimental/amlenc/scripts/*.sh experimental/hcodec/scripts/*.sh; do
@@ -63,7 +66,10 @@ $:
       stages:
         - name: node-contracts
           image: node:22
-          script: npm test
+          script: |
+            apt-get update
+            apt-get install -y ffmpeg file jq xz-utils
+            npm test
         - name: shell-contracts
           script: |
             for script in scripts/*.sh experimental/amlenc/scripts/*.sh experimental/hcodec/scripts/*.sh; do
