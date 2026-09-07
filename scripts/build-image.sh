@@ -168,12 +168,14 @@ else
 fi
 root_mounted=true
 assert_rootfs_path /dev
-as_root mount -t tmpfs -o mode=0755,nosuid,noexec tmpfs "$MOUNT_DIR/dev"
-dev_mounted=true
-for device in 'null 1 3 666' 'zero 1 5 666' 'random 1 8 666' 'urandom 1 9 666' 'tty 5 0 666'; do
-  read -r name major minor mode <<<"$device"
-  as_root mknod -m "$mode" "$MOUNT_DIR/dev/$name" c "$major" "$minor"
-done
+if [[ "${CNB_FUSE_ROOTFS:-false}" != true ]]; then
+  as_root mount -t tmpfs -o mode=0755,nosuid,noexec tmpfs "$MOUNT_DIR/dev"
+  dev_mounted=true
+  for device in 'null 1 3 666' 'zero 1 5 666' 'random 1 8 666' 'urandom 1 9 666' 'tty 5 0 666'; do
+    read -r name major minor mode <<<"$device"
+    as_root mknod -m "$mode" "$MOUNT_DIR/dev/$name" c "$major" "$minor"
+  done
+fi
 assert_rootfs_path /proc
 as_root mkdir -p "$MOUNT_DIR/dev/pts" "$MOUNT_DIR/dev/shm" "$MOUNT_DIR/proc"
 as_root rm -f "$MOUNT_DIR/dev/fd"
