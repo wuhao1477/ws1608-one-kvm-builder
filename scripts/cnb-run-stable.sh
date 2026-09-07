@@ -5,6 +5,10 @@ ROOT_DIR=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd -P)
 source "$ROOT_DIR/scripts/cnb-ci-env.sh"
 source "$ROOT_DIR/config/base.env"
 source "$ROOT_DIR/config/tool-versions.env"
+ensure_go
+
+apt-get update
+apt-get install -y binutils e2fsprogs file jq mtools qemu-user-static util-linux xz-utils
 
 FORCE_BUILD=${FORCE_BUILD:-false}
 PUBLISH=${PUBLISH:-true}

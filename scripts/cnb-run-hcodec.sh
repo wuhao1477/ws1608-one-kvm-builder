@@ -4,6 +4,7 @@ set -Eeuo pipefail
 ROOT_DIR=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd -P)
 source "$ROOT_DIR/scripts/cnb-ci-env.sh"
 source "$ROOT_DIR/config/base.env"
+ensure_go
 
 ARMBIAN_IMAGE=${ARMBIAN_IMAGE:-ubuntu:24.04@sha256:1e0a86e57d247923571b75e0aaf48a1449cf8c543d51fb3e07a4a7d7bfa79316}
 export BASE_RELEASE_TAG BASE_IMAGE_SHA256

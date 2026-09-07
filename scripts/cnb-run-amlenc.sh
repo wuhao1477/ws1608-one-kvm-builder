@@ -5,6 +5,7 @@ ROOT_DIR=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd -P)
 source "$ROOT_DIR/scripts/cnb-ci-env.sh"
 source "$ROOT_DIR/config/base.env"
 source "$ROOT_DIR/experimental/amlenc/config/sources.env"
+ensure_go
 
 BUILD_NUMBER=${BUILD_NUMBER:-run-${GITHUB_RUN_NUMBER}-${GITHUB_RUN_ATTEMPT}}
 export BUILD_NUMBER

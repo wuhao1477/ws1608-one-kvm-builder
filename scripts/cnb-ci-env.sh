@@ -58,7 +58,6 @@ ensure_cnb_cli() {
 
 ensure_cnb_cli
 ensure_node
-ensure_go
 : "${CNB_COMMIT:=$(git -C "$ROOT_DIR" rev-parse HEAD)}"
 : "${CNB_REPO_SLUG:=wuhao1477/ws1608-one-kvm-builder}"
 : "${CNB_BRANCH:=main}"
