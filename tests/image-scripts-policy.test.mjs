@@ -30,7 +30,10 @@ test('the image builder requires and embeds immutable build provenance', () => {
   assert.match(buildScript, /verify-boot-console\.sh/);
   assert.match(buildScript, /cleanup_mounts\(\) \(/);
   assert.match(buildScript, /losetup --find --show/);
+  assert.match(buildScript, /CNB_FUSE_ROOTFS/);
+  assert.match(buildScript, /fuse2fs -o rw/);
   assert.match(verifyScript, /losetup --find --show --read-only/);
+  assert.match(verifyScript, /fuse2fs -o ro/);
   assert.match(manifestScript, /build_tag: env\('BUILD_TAG'\)/);
   assert.match(manifestScript, /build_number: Number\(env\('BUILD_NUMBER'\)\)/);
 });
