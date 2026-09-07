@@ -15,6 +15,17 @@ FORCE_BUILD="$FORCE_BUILD" "$ROOT_DIR/scripts/cnb-discover-release.sh" >"$discov
 source "$discovery"
 [[ "$changed" == true ]] || { echo "no new One-KVM input for $release_tag"; exit 0; }
 
+UPSTREAM_TAG=${UPSTREAM_TAG:-$release_tag}
+BUILD_TAG=${BUILD_TAG:-$build_tag}
+BUILD_NUMBER=${BUILD_NUMBER:-$build_number}
+BUILD_REVISION=${BUILD_REVISION:-$build_revision}
+IMAGE_STEM=${IMAGE_STEM:-$image_stem}
+ONE_KVM_VERSION=${ONE_KVM_VERSION:-$one_kvm_version}
+PACKAGE_NAME=${PACKAGE_NAME:-$package_name}
+PACKAGE_URL=${PACKAGE_URL:-$package_url}
+PACKAGE_DIGEST=${PACKAGE_DIGEST:-$package_digest}
+BUILDER_COMMIT=${BUILDER_COMMIT:-$CNB_COMMIT}
+
 export BASE_ID BASE_FLAVOR BASE_KERNEL BASE_BOARD BASE_RELEASE_TAG
 export BASE_IMAGE_NAME BASE_IMAGE_URL BASE_IMAGE_SHA256 AMLIMG_REPOSITORY AMLIMG_COMMIT
 export ONE_KVM_VERSION UPSTREAM_TAG PACKAGE_NAME PACKAGE_URL PACKAGE_DIGEST
