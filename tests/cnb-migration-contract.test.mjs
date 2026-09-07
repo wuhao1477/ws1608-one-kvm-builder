@@ -53,6 +53,8 @@ test('CNB runner scripts bootstrap the CLI when the runner image does not includ
   const cli = read('scripts/cnb');
 
   assert.match(environment, /export PATH=/);
+  assert.match(environment, /nodejs\.org\/dist/);
+  assert.match(environment, /CNB_NODE_VERSION/);
   assert.match(cli, /CNB_API_ENDPOINT/);
   assert.match(cli, /Authorization: Bearer/);
   assert.match(cli, /post-release-asset-upload-confirmation/);

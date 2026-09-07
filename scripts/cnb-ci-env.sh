@@ -1,6 +1,27 @@
 #!/usr/bin/env bash
 set -Eeuo pipefail
 
+ensure_node() {
+  if command -v node >/dev/null 2>&1; then
+    return
+  fi
+  command -v curl >/dev/null 2>&1 || { echo 'curl is required to install Node.js' >&2; exit 1; }
+  command -v tar >/dev/null 2>&1 || { echo 'tar is required to install Node.js' >&2; exit 1; }
+  local version=${CNB_NODE_VERSION:-22.21.0}
+  local platform=linux-x64
+  local prefix=${CNB_NODE_PREFIX:-${CNB_BUILD_WORKSPACE:-$ROOT_DIR}/.cnb-tools/node-v$version-$platform}
+  local archive="$prefix.tar.xz"
+  mkdir -p "$(dirname "$prefix")"
+  if [[ ! -x "$prefix/bin/node" ]]; then
+    curl --fail --silent --show-error --location --retry 5 --retry-all-errors \
+      "https://nodejs.org/dist/v$version/node-v$version-$platform.tar.xz" -o "$archive"
+    tar -xJf "$archive" -C "$(dirname "$prefix")"
+    rm -f "$archive"
+  fi
+  export PATH="$prefix/bin:$PATH"
+  command -v node >/dev/null 2>&1 || { echo 'Node.js installation failed' >&2; exit 1; }
+}
+
 ROOT_DIR=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd -P)
 
 ensure_cnb_cli() {
@@ -12,6 +33,7 @@ ensure_cnb_cli() {
 }
 
 ensure_cnb_cli
+ensure_node
 : "${CNB_COMMIT:=$(git -C "$ROOT_DIR" rev-parse HEAD)}"
 : "${CNB_REPO_SLUG:=wuhao1477/ws1608-one-kvm-builder}"
 : "${CNB_BRANCH:=main}"
