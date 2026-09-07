@@ -104,6 +104,7 @@ docker_env=(
   -e "VALIDATION_REPORT_NAME=$VALIDATION_REPORT_NAME"
 )
 
+set +e
 docker run --rm --privileged --cap-add=SYS_ADMIN \
   --security-opt seccomp=unconfined --security-opt apparmor=unconfined \
   --security-opt systempaths=unconfined --pid=host --volume /sys:/sys:ro \
@@ -121,6 +122,12 @@ docker run --rm --privileged --cap-add=SYS_ADMIN \
     losetup -f
     /workspace/scripts/cnb-run-stable-inner.sh
   '
+inner_status=$?
+set -e
+echo "stable inner exit status: $inner_status"
+if [[ "$inner_status" -ne 0 ]]; then
+  exit "$inner_status"
+fi
 
 cat >"$WORK_DIR/release-notes.md" <<EOF
 ## WS1608 One-KVM Rust $ONE_KVM_VERSION
