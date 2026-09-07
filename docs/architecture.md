@@ -7,8 +7,9 @@
 1. 稳定链把固定 Armbian Amlogic 直刷包转换为带最新 One-KVM Rust 的新包；
 2. 候选链在相同 Armbian/Linux 6.12 系统上研究 Meson8b HCODEC V4L2 M2M。
 
-稳定链已经实现。HCODEC 候选链目前只有设计与参考资料，尚未形成可发布的
-ARMv7 内核、模块、DTB 或固件。
+稳定链已经实现。HCODEC 候选链已形成可复验的 ARMv7 内核、模块、DTB、固件
+和独立工具 artifact，并在 WS1608 生成有效单帧码流；因 `STREAMOFF` 清理阻塞，
+目前仍不是可发布候选。
 
 ## 稳定系统
 
@@ -47,7 +48,7 @@ flowchart LR
   A[固定 Armbian 6.12 源码与配置] --> B[一致的 meson-venc 源码基线]
   B --> C[ARMv7 内核 模块 DTB 固件]
   C --> D[编译 DT schema 模块依赖验证]
-  D --> E[WS1608 独立 V4L2 探针]
+  D --> E[WS1608 独立 V4L2 探针与清理]
   E --> F[One-KVM 显式 h264_v4l2m2m 探针]
   F --> G[候选镜像]
   G --> H[实体综合验收]

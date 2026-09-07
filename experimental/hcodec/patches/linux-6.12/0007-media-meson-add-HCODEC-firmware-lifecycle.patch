@@ -1,0 +1,447 @@
+From 53760a061b7362e3ea4c1d1872b0b292246910d1 Mon Sep 17 00:00:00 2001
+From: Meson Codec <meson-codec@localhost>
+Date: Sun, 23 Aug 2026 16:06:49 +0800
+Subject: [PATCH] media: meson: add HCODEC firmware lifecycle
+
+Power and reset HCODEC while the encoder owns the shared DOS hardware.
+Load the raw 32 KiB GXL firmware through coherent DMA with bounded polling,
+and shut the block down on every error path.
+
+Use the parent device for DMA and vb2 allocations.
+The child platform device does not own a DMA configuration.
+Register mailbox2 at probe, but leave it masked until the command backend
+starts a job.
+
+Signed-off-by: Meson Codec <meson-codec@localhost>
+---
+ .../media/platform/amlogic/meson-venc/Kconfig |   5 +-
+ .../platform/amlogic/meson-venc/meson-venc.c  | 260 +++++++++++++++++-
+ drivers/staging/media/meson/vdec/vdec.c       |   3 +-
+ .../linux/platform_data/media/meson-codec.h   |   3 +
+ 4 files changed, 264 insertions(+), 7 deletions(-)
+
+diff --git a/drivers/media/platform/amlogic/meson-venc/Kconfig b/drivers/media/platform/amlogic/meson-venc/Kconfig
+index 647ce4d..9edaea0 100644
+--- a/drivers/media/platform/amlogic/meson-venc/Kconfig
++++ b/drivers/media/platform/amlogic/meson-venc/Kconfig
+@@ -12,5 +12,6 @@ config VIDEO_MESON_VENC
+ 	  block found in Amlogic Meson GXL and GXM SoCs.
+ 
+ 	  The initial implementation provides format negotiation, videobuf2 queue
+-	  plumbing and shared DOS resource arbitration with meson-vdec. Hardware
+-	  execution remains disabled until the HCODEC backend is implemented.
++	  plumbing, shared DOS arbitration, firmware loading and HCODEC lifecycle
++	  management. Encoding remains disabled until the command backend is
++	  implemented.
+diff --git a/drivers/media/platform/amlogic/meson-venc/meson-venc.c b/drivers/media/platform/amlogic/meson-venc/meson-venc.c
+index 122ec56..504c0ab 100644
+--- a/drivers/media/platform/amlogic/meson-venc/meson-venc.c
++++ b/drivers/media/platform/amlogic/meson-venc/meson-venc.c
+@@ -10,7 +10,14 @@
+  */
+ 
+ #include <linux/align.h>
++#include <linux/clk.h>
++#include <linux/completion.h>
++#include <linux/delay.h>
++#include <linux/dma-mapping.h>
+ #include <linux/errno.h>
++#include <linux/firmware.h>
++#include <linux/iopoll.h>
++#include <linux/interrupt.h>
+ #include <linux/kernel.h>
+ #include <linux/module.h>
+ #include <linux/mutex.h>
+@@ -18,6 +25,7 @@
+ #include <linux/platform_data/media/meson-codec.h>
+ #include <linux/sizes.h>
+ #include <linux/slab.h>
++#include <linux/regmap.h>
+ 
+ #include <media/v4l2-ctrls.h>
+ #include <media/v4l2-device.h>
+@@ -37,6 +45,36 @@
+ #define MESON_VENC_DEF_HEIGHT	480U
+ #define MESON_VENC_STRIDE_ALIGN	32U
+ #define MESON_VENC_MIN_CODED_SIZE SZ_512K
++#define MESON_VENC_FW_NAME	"meson/venc/gxl_h264.bin"
++#define MESON_VENC_MC_SIZE	SZ_32K
++#define MESON_VENC_MC_DMA_COUNT	0x1000
++#define MESON_VENC_CLOCK_RATE	500000000UL
++#define MESON_VENC_DMA_TIMEOUT_US 1000000
++
++#define AO_RTI_GEN_PWR_SLEEP0	0xe8
++#define AO_RTI_GEN_PWR_ISO0	0xec
++#define HCODEC_PWR_SLEEP_MASK	GENMASK(1, 0)
++#define HCODEC_PWR_ISO_MASK	GENMASK(5, 4)
++
++#define HCODEC_RESET_MASK	(BIT(2) | BIT(6) | BIT(7) | BIT(8) | \
++				 BIT(11) | BIT(12) | BIT(14) | BIT(16) | \
++				 BIT(17))
++
++/* HCODEC register window inside the parent-owned DOS mapping. */
++#define HCODEC_ASSIST_MMC_CTRL1		0x4008
++#define HCODEC_ASSIST_MBOX2_CLR_REG	0x41e4
++#define HCODEC_ASSIST_MBOX2_MASK		0x41e8
++#define HCODEC_MPSR			0x4c04
++#define HCODEC_CPSR			0x4c84
++#define HCODEC_IMEM_DMA_CTRL		0x4d00
++#define HCODEC_IMEM_DMA_ADR		0x4d04
++#define HCODEC_IMEM_DMA_COUNT		0x4d08
++#define HCODEC_HENC_SCRATCH_0		0x6b00
++
++/* DOS top-level registers. */
++#define DOS_GEN_CTRL0			0xfc08
++#define DOS_SW_RESET1			0xfc1c
++#define DOS_MEM_PD_HCODEC		0xfcc8
+ 
+ enum meson_venc_queue_id {
+ 	MESON_VENC_QUEUE_OUTPUT,
+@@ -61,6 +99,9 @@ struct meson_venc_dev {
+ 	struct v4l2_device v4l2_dev;
+ 	struct video_device vdev;
+ 	struct v4l2_m2m_dev *m2m_dev;
++	struct completion irq_done;
++	u32 irq_status;
++	bool powered;
+ };
+ 
+ struct meson_venc_ctx {
+@@ -74,6 +115,196 @@ struct meson_venc_ctx {
+ 	bool owns_hw;
+ };
+ 
++static u32 meson_venc_read(struct meson_venc_dev *venc, u32 reg)
++{
++	return readl_relaxed(venc->core->dos_base + reg);
++}
++
++static void meson_venc_write(struct meson_venc_dev *venc, u32 reg, u32 val)
++{
++	writel_relaxed(val, venc->core->dos_base + reg);
++}
++
++static void meson_venc_reset(struct meson_venc_dev *venc)
++{
++	meson_venc_read(venc, DOS_SW_RESET1);
++	meson_venc_write(venc, DOS_SW_RESET1, HCODEC_RESET_MASK);
++	meson_venc_write(venc, DOS_SW_RESET1, 0);
++	meson_venc_read(venc, DOS_SW_RESET1);
++}
++
++static int meson_venc_power_on(struct meson_venc_dev *venc)
++{
++	u32 val;
++	int ret;
++
++	ret = clk_set_rate(venc->core->hcodec_clk, MESON_VENC_CLOCK_RATE);
++	if (ret)
++		return dev_err_probe(venc->dev, ret,
++				     "failed to set HCODEC clock rate\n");
++
++	regmap_update_bits(venc->core->regmap_ao, AO_RTI_GEN_PWR_SLEEP0,
++			   HCODEC_PWR_SLEEP_MASK, 0);
++	usleep_range(10, 20);
++
++	meson_venc_reset(venc);
++
++	ret = clk_prepare_enable(venc->core->hcodec_clk);
++	if (ret) {
++		regmap_update_bits(venc->core->regmap_ao,
++				   AO_RTI_GEN_PWR_SLEEP0,
++				   HCODEC_PWR_SLEEP_MASK,
++				   HCODEC_PWR_SLEEP_MASK);
++		return dev_err_probe(venc->dev, ret,
++				     "failed to enable HCODEC clock\n");
++	}
++
++	meson_venc_write(venc, DOS_MEM_PD_HCODEC, 0);
++	regmap_update_bits(venc->core->regmap_ao, AO_RTI_GEN_PWR_ISO0,
++			   HCODEC_PWR_ISO_MASK, 0);
++	usleep_range(10, 20);
++
++	val = meson_venc_read(venc, DOS_GEN_CTRL0);
++	meson_venc_write(venc, DOS_GEN_CTRL0, val | BIT(0));
++	meson_venc_write(venc, DOS_GEN_CTRL0, val & ~BIT(0));
++
++	meson_venc_write(venc, HCODEC_ASSIST_MBOX2_MASK, 0);
++	meson_venc_write(venc, HCODEC_ASSIST_MBOX2_CLR_REG, 1);
++	WRITE_ONCE(venc->powered, true);
++
++	return 0;
++}
++
++static int meson_venc_stop_cpu(struct meson_venc_dev *venc)
++{
++	u32 val;
++	int ret;
++
++	meson_venc_write(venc, HCODEC_ASSIST_MBOX2_MASK, 0);
++	meson_venc_write(venc, HCODEC_ASSIST_MBOX2_CLR_REG, 1);
++	meson_venc_write(venc, HCODEC_MPSR, 0);
++	meson_venc_write(venc, HCODEC_CPSR, 0);
++
++	ret = readl_relaxed_poll_timeout(venc->core->dos_base +
++					 HCODEC_IMEM_DMA_CTRL, val,
++					 !(val & BIT(15)), 10,
++					 MESON_VENC_DMA_TIMEOUT_US);
++	meson_venc_reset(venc);
++
++	return ret;
++}
++
++static void meson_venc_power_off(struct meson_venc_dev *venc)
++{
++	int ret;
++
++	if (!READ_ONCE(venc->powered))
++		return;
++
++	ret = meson_venc_stop_cpu(venc);
++	if (ret)
++		dev_warn(venc->dev, "HCODEC DMA did not become idle\n");
++
++	WRITE_ONCE(venc->powered, false);
++	regmap_update_bits(venc->core->regmap_ao, AO_RTI_GEN_PWR_ISO0,
++			   HCODEC_PWR_ISO_MASK, HCODEC_PWR_ISO_MASK);
++	meson_venc_write(venc, DOS_MEM_PD_HCODEC, U32_MAX);
++	clk_disable_unprepare(venc->core->hcodec_clk);
++	regmap_update_bits(venc->core->regmap_ao, AO_RTI_GEN_PWR_SLEEP0,
++			   HCODEC_PWR_SLEEP_MASK, HCODEC_PWR_SLEEP_MASK);
++}
++
++static int meson_venc_load_firmware(struct meson_venc_dev *venc)
++{
++	const struct firmware *fw;
++	dma_addr_t mc_dma;
++	void *mc_addr;
++	u32 val;
++	int ret;
++
++	ret = request_firmware(&fw, MESON_VENC_FW_NAME, venc->dev);
++	if (ret)
++		return dev_err_probe(venc->dev, ret,
++				     "failed to request %s\n",
++				     MESON_VENC_FW_NAME);
++
++	if (fw->size < MESON_VENC_MC_SIZE) {
++		dev_err(venc->dev, "firmware is %zu bytes; expected at least %u\n",
++			fw->size, MESON_VENC_MC_SIZE);
++		ret = -EINVAL;
++		goto release_firmware;
++	}
++
++	mc_addr = dma_alloc_coherent(venc->core->dma_dev,
++				     MESON_VENC_MC_SIZE, &mc_dma,
++				     GFP_KERNEL);
++	if (!mc_addr) {
++		ret = -ENOMEM;
++		goto release_firmware;
++	}
++
++	if (upper_32_bits(mc_dma)) {
++		dev_err(venc->dev, "firmware DMA address exceeds 32 bits\n");
++		ret = -ERANGE;
++		goto free_dma;
++	}
++
++	memcpy(mc_addr, fw->data, MESON_VENC_MC_SIZE);
++	dma_wmb();
++	meson_venc_write(venc, HCODEC_MPSR, 0);
++	meson_venc_write(venc, HCODEC_CPSR, 0);
++	meson_venc_write(venc, HCODEC_ASSIST_MMC_CTRL1, 0x32);
++	meson_venc_write(venc, HCODEC_IMEM_DMA_ADR, lower_32_bits(mc_dma));
++	meson_venc_write(venc, HCODEC_IMEM_DMA_COUNT,
++			 MESON_VENC_MC_DMA_COUNT);
++	meson_venc_write(venc, HCODEC_IMEM_DMA_CTRL,
++			 BIT(15) | (7 << 16));
++
++	ret = readl_relaxed_poll_timeout(venc->core->dos_base +
++					 HCODEC_IMEM_DMA_CTRL, val,
++					 !(val & BIT(15)), 10,
++					 MESON_VENC_DMA_TIMEOUT_US);
++	if (ret)
++		dev_err(venc->dev, "firmware DMA timed out\n");
++
++free_dma:
++	dma_free_coherent(venc->core->dma_dev, MESON_VENC_MC_SIZE,
++			  mc_addr, mc_dma);
++release_firmware:
++	release_firmware(fw);
++	return ret;
++}
++
++static int meson_venc_hw_prepare(struct meson_venc_dev *venc)
++{
++	int ret;
++
++	ret = meson_venc_power_on(venc);
++	if (ret)
++		return ret;
++
++	ret = meson_venc_load_firmware(venc);
++	if (ret)
++		meson_venc_power_off(venc);
++
++	return ret;
++}
++
++static irqreturn_t meson_venc_irq(int irq, void *data)
++{
++	struct meson_venc_dev *venc = data;
++
++	if (!READ_ONCE(venc->powered))
++		return IRQ_NONE;
++
++	meson_venc_write(venc, HCODEC_ASSIST_MBOX2_CLR_REG, 1);
++	WRITE_ONCE(venc->irq_status,
++		   meson_venc_read(venc, HCODEC_HENC_SCRATCH_0));
++	complete(&venc->irq_done);
++
++	return IRQ_HANDLED;
++}
++
+ static struct meson_venc_ctx *fh_to_ctx(void *priv)
+ {
+ 	return container_of(priv, struct meson_venc_ctx, fh);
+@@ -357,6 +588,7 @@ static int meson_venc_start_streaming(struct vb2_queue *vq,
+ 	struct meson_venc_ctx *ctx = vb2_get_drv_priv(vq);
+ 	struct meson_venc_q_data *q_data;
+ 	struct vb2_v4l2_buffer *vbuf;
++	int ret;
+ 
+ 	q_data = meson_venc_get_q_data(ctx, vq->type);
+ 	if (!q_data)
+@@ -371,6 +603,17 @@ static int meson_venc_start_streaming(struct vb2_queue *vq,
+ 			return -EBUSY;
+ 		}
+ 		ctx->owns_hw = true;
++
++		ret = meson_venc_hw_prepare(ctx->venc);
++		if (ret) {
++			ctx->owns_hw = false;
++			mutex_unlock(ctx->venc->core->hw_lock);
++			while ((vbuf = V4L2_TYPE_IS_OUTPUT(vq->type) ?
++				v4l2_m2m_src_buf_remove(ctx->fh.m2m_ctx) :
++				v4l2_m2m_dst_buf_remove(ctx->fh.m2m_ctx)))
++				v4l2_m2m_buf_done(vbuf, VB2_BUF_STATE_QUEUED);
++			return ret;
++		}
+ 	}
+ 
+ 	if (V4L2_TYPE_IS_OUTPUT(vq->type))
+@@ -404,6 +647,7 @@ static void meson_venc_stop_streaming(struct vb2_queue *vq)
+ 
+ 	if (ctx->owns_hw && !ctx->streaming_output &&
+ 	    !ctx->streaming_capture) {
++		meson_venc_power_off(ctx->venc);
+ 		ctx->owns_hw = false;
+ 		mutex_unlock(ctx->venc->core->hw_lock);
+ 	}
+@@ -434,7 +678,7 @@ static int meson_venc_queue_init(void *priv, struct vb2_queue *src_vq,
+ 	src_vq->mem_ops = &vb2_dma_contig_memops;
+ 	src_vq->timestamp_flags = V4L2_BUF_FLAG_TIMESTAMP_COPY;
+ 	src_vq->lock = &ctx->q_lock;
+-	src_vq->dev = ctx->venc->dev;
++	src_vq->dev = ctx->venc->core->dma_dev;
+ 
+ 	ret = vb2_queue_init(src_vq);
+ 	if (ret)
+@@ -448,7 +692,7 @@ static int meson_venc_queue_init(void *priv, struct vb2_queue *src_vq,
+ 	dst_vq->mem_ops = &vb2_dma_contig_memops;
+ 	dst_vq->timestamp_flags = V4L2_BUF_FLAG_TIMESTAMP_COPY;
+ 	dst_vq->lock = &ctx->q_lock;
+-	dst_vq->dev = ctx->venc->dev;
++	dst_vq->dev = ctx->venc->core->dma_dev;
+ 
+ 	return vb2_queue_init(dst_vq);
+ }
+@@ -567,7 +811,8 @@ static int meson_venc_probe(struct platform_device *pdev)
+ 	int ret;
+ 
+ 	if (!core || !core->dos_base || !core->regmap_ao || !core->canvas ||
+-	    !core->hcodec_clk || !core->hw_lock || core->irq < 0)
++	    !core->hcodec_clk || !core->hw_lock || !core->dma_dev ||
++	    core->irq < 0)
+ 		return dev_err_probe(&pdev->dev, -EINVAL,
+ 				     "incomplete DOS parent resources\n");
+ 
+@@ -578,6 +823,12 @@ static int meson_venc_probe(struct platform_device *pdev)
+ 	venc->dev = &pdev->dev;
+ 	venc->core = core;
+ 	mutex_init(&venc->dev_lock);
++	init_completion(&venc->irq_done);
++
++	ret = devm_request_irq(&pdev->dev, core->irq, meson_venc_irq, 0,
++			       dev_name(&pdev->dev), venc);
++	if (ret)
++		goto err_mutex;
+ 
+ 	ret = v4l2_device_register(&pdev->dev, &venc->v4l2_dev);
+ 	if (ret)
+@@ -601,7 +852,7 @@ static int meson_venc_probe(struct platform_device *pdev)
+ 
+ 	platform_set_drvdata(pdev, venc);
+ 	dev_info(&pdev->dev,
+-		 "registered V4L2 scaffold as %s, HCODEC IRQ %d; hardware backend disabled\n",
++		 "registered %s with HCODEC lifecycle and IRQ %d; command backend disabled\n",
+ 		 video_device_node_name(&venc->vdev), core->irq);
+ 
+ 	return 0;
+@@ -637,3 +888,4 @@ module_platform_driver(meson_venc_driver);
+ MODULE_DESCRIPTION("Amlogic Meson V4L2 M2M H.264 encoder scaffold");
+ MODULE_AUTHOR("Meson Codec contributors");
+ MODULE_LICENSE("GPL");
++MODULE_FIRMWARE(MESON_VENC_FW_NAME);
+diff --git a/drivers/staging/media/meson/vdec/vdec.c b/drivers/staging/media/meson/vdec/vdec.c
+index eebbe27..270390e 100644
+--- a/drivers/staging/media/meson/vdec/vdec.c
++++ b/drivers/staging/media/meson/vdec/vdec.c
+@@ -1000,7 +1000,7 @@ static const struct of_device_id vdec_dt_match[] = {
+ };
+ MODULE_DEVICE_TABLE(of, vdec_dt_match);
+ 
+-#if IS_REACHABLE(CONFIG_VIDEO_MESON_VENC)
++#if IS_ENABLED(CONFIG_VIDEO_MESON_VENC)
+ static enum meson_codec_revision vdec_codec_revision(struct amvdec_core *core)
+ {
+ 	switch (core->platform->revision) {
+@@ -1042,6 +1042,7 @@ static int vdec_register_venc(struct platform_device *pdev,
+ 	data.canvas = core->canvas;
+ 	data.hcodec_clk = hcodec_clk;
+ 	data.hw_lock = &core->hw_lock;
++	data.dma_dev = core->dev;
+ 	data.revision = vdec_codec_revision(core);
+ 	data.irq = irq;
+ 
+diff --git a/include/linux/platform_data/media/meson-codec.h b/include/linux/platform_data/media/meson-codec.h
+index 366e672..bfc02cb 100644
+--- a/include/linux/platform_data/media/meson-codec.h
++++ b/include/linux/platform_data/media/meson-codec.h
+@@ -13,6 +13,7 @@
+ #include <linux/compiler_types.h>
+ 
+ struct clk;
++struct device;
+ struct meson_canvas;
+ struct mutex;
+ struct regmap;
+@@ -31,6 +32,7 @@ enum meson_codec_revision {
+  * @canvas: parent-owned Canvas provider reference
+  * @hcodec_clk: parent-owned HCODEC clock
+  * @hw_lock: serializes users of shared DOS power and reset registers
++ * @dma_dev: parent device used for DMA allocations and vb2 buffers
+  * @revision: SoC generation used to select the HCODEC backend
+  * @irq: HCODEC mailbox interrupt
+  */
+@@ -41,6 +43,7 @@ struct meson_codec_child_data {
+ 	struct clk *hcodec_clk;
+ 	/* Serializes child access to shared DOS power and reset controls. */
+ 	struct mutex *hw_lock;
++	struct device *dma_dev;
+ 	enum meson_codec_revision revision;
+ 	int irq;
+ };
+-- 
+2.47.3
+

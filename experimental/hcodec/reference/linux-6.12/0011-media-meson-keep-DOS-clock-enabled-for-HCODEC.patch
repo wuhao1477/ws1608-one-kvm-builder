@@ -1,0 +1,186 @@
+From b2eb09492944cf93aa9f169774ae61fbc48506fe Mon Sep 17 00:00:00 2001
+From: Meson Codec <meson-codec@localhost>
+Date: Sun, 23 Aug 2026 19:13:03 +0800
+Subject: [PATCH] media: meson: keep DOS clock enabled for HCODEC
+
+The first real GXM STREAMON test reset the board as soon as the encoder
+touched DOS_SW_RESET1. The parent DOS bus clock was disabled: unlike the
+decoder path, the encoder child only received its HCODEC functional clock.
+
+Borrow the parent-owned DOS clock and hold it across the complete HCODEC
+power lifecycle. Separate the core and AMRISC CPU reset pulses to match
+the vendor sequence, and add the missing platform module alias.
+
+Signed-off-by: Meson Codec <meson-codec@localhost>
+---
+ .../platform/amlogic/meson-venc/meson-venc.c  | 49 ++++++++++++++-----
+ drivers/staging/media/meson/vdec/vdec.c       |  1 +
+ .../linux/platform_data/media/meson-codec.h   |  2 +
+ 3 files changed, 39 insertions(+), 13 deletions(-)
+
+diff --git a/drivers/media/platform/amlogic/meson-venc/meson-venc.c b/drivers/media/platform/amlogic/meson-venc/meson-venc.c
+index 37d6552..c575a18 100644
+--- a/drivers/media/platform/amlogic/meson-venc/meson-venc.c
++++ b/drivers/media/platform/amlogic/meson-venc/meson-venc.c
+@@ -67,9 +67,11 @@
+ #define HCODEC_PWR_SLEEP_MASK	GENMASK(1, 0)
+ #define HCODEC_PWR_ISO_MASK	GENMASK(5, 4)
+ 
+-#define HCODEC_RESET_MASK	(BIT(2) | BIT(6) | BIT(7) | BIT(8) | \
+-				 BIT(11) | BIT(12) | BIT(14) | BIT(16) | \
+-				 BIT(17))
++#define HCODEC_CORE_RESET_MASK	(BIT(2) | BIT(6) | BIT(7) | BIT(8) | \
++				 BIT(14) | BIT(16) | BIT(17))
++#define HCODEC_CPU_RESET_MASK	(BIT(11) | BIT(12))
++#define HCODEC_STOP_RESET_MASK	(HCODEC_CORE_RESET_MASK | \
++				 HCODEC_CPU_RESET_MASK)
+ 
+ /* HCODEC register window inside the parent-owned DOS mapping. */
+ #define HCODEC_ASSIST_MMC_CTRL1		0x4008
+@@ -680,29 +682,44 @@ static int meson_venc_job_program_buffers(struct meson_venc_ctx *ctx,
+ 	return 0;
+ }
+ 
+-static void meson_venc_reset(struct meson_venc_dev *venc)
++static void meson_venc_pulse_reset(struct meson_venc_dev *venc, u32 mask)
+ {
+ 	meson_venc_read(venc, DOS_SW_RESET1);
+-	meson_venc_write(venc, DOS_SW_RESET1, HCODEC_RESET_MASK);
++	meson_venc_write(venc, DOS_SW_RESET1, mask);
+ 	meson_venc_write(venc, DOS_SW_RESET1, 0);
+ 	meson_venc_read(venc, DOS_SW_RESET1);
+ }
+ 
++static void meson_venc_reset(struct meson_venc_dev *venc)
++{
++	meson_venc_pulse_reset(venc, HCODEC_CORE_RESET_MASK);
++}
++
++static void meson_venc_start_cpu(struct meson_venc_dev *venc)
++{
++	meson_venc_pulse_reset(venc, HCODEC_CPU_RESET_MASK);
++	meson_venc_write(venc, HCODEC_MPSR, 1);
++}
++
+ static int meson_venc_power_on(struct meson_venc_dev *venc)
+ {
+ 	u32 val;
+ 	int ret;
+ 
+-	ret = clk_set_rate(venc->core->hcodec_clk, MESON_VENC_CLOCK_RATE);
++	ret = clk_prepare_enable(venc->core->dos_clk);
+ 	if (ret)
+ 		return dev_err_probe(venc->dev, ret,
+-				     "failed to set HCODEC clock rate\n");
++				     "failed to enable DOS clock\n");
++
++	ret = clk_set_rate(venc->core->hcodec_clk, MESON_VENC_CLOCK_RATE);
++	if (ret)
++		goto disable_dos;
+ 
+ 	regmap_update_bits(venc->core->regmap_ao, AO_RTI_GEN_PWR_SLEEP0,
+ 			   HCODEC_PWR_SLEEP_MASK, 0);
+ 	usleep_range(10, 20);
+ 
+-	meson_venc_reset(venc);
++	meson_venc_pulse_reset(venc, HCODEC_STOP_RESET_MASK);
+ 
+ 	ret = clk_prepare_enable(venc->core->hcodec_clk);
+ 	if (ret) {
+@@ -710,8 +727,7 @@ static int meson_venc_power_on(struct meson_venc_dev *venc)
+ 				   AO_RTI_GEN_PWR_SLEEP0,
+ 				   HCODEC_PWR_SLEEP_MASK,
+ 				   HCODEC_PWR_SLEEP_MASK);
+-		return dev_err_probe(venc->dev, ret,
+-				     "failed to enable HCODEC clock\n");
++		goto disable_dos;
+ 	}
+ 
+ 	meson_venc_write(venc, DOS_MEM_PD_HCODEC, 0);
+@@ -728,6 +744,11 @@ static int meson_venc_power_on(struct meson_venc_dev *venc)
+ 	WRITE_ONCE(venc->powered, true);
+ 
+ 	return 0;
++
++disable_dos:
++	clk_disable_unprepare(venc->core->dos_clk);
++	return dev_err_probe(venc->dev, ret,
++			     "failed to configure HCODEC clocks\n");
+ }
+ 
+ static int meson_venc_stop_cpu(struct meson_venc_dev *venc)
+@@ -744,7 +765,7 @@ static int meson_venc_stop_cpu(struct meson_venc_dev *venc)
+ 					 HCODEC_IMEM_DMA_CTRL, val,
+ 					 !(val & BIT(15)), 10,
+ 					 MESON_VENC_DMA_TIMEOUT_US);
+-	meson_venc_reset(venc);
++	meson_venc_pulse_reset(venc, HCODEC_STOP_RESET_MASK);
+ 
+ 	return ret;
+ }
+@@ -767,6 +788,7 @@ static void meson_venc_power_off(struct meson_venc_dev *venc)
+ 	clk_disable_unprepare(venc->core->hcodec_clk);
+ 	regmap_update_bits(venc->core->regmap_ao, AO_RTI_GEN_PWR_SLEEP0,
+ 			   HCODEC_PWR_SLEEP_MASK, HCODEC_PWR_SLEEP_MASK);
++	clk_disable_unprepare(venc->core->dos_clk);
+ }
+ 
+ static int meson_venc_load_firmware(struct meson_venc_dev *venc)
+@@ -877,7 +899,7 @@ static int meson_venc_prepare_command(struct meson_venc_ctx *ctx,
+ 	dma_wmb();
+ 	meson_venc_write(venc, HCODEC_HENC_SCRATCH_0,
+ 			 MESON_VENC_CMD_IDLE);
+-	meson_venc_write(venc, HCODEC_MPSR, 1);
++	meson_venc_start_cpu(venc);
+ 
+ 	return 0;
+ }
+@@ -1506,7 +1528,7 @@ static int meson_venc_probe(struct platform_device *pdev)
+ 	int ret;
+ 
+ 	if (!core || !core->dos_base || !core->regmap_ao || !core->canvas ||
+-	    !core->hcodec_clk || !core->hw_lock || !core->dma_dev ||
++	    !core->dos_clk || !core->hcodec_clk || !core->hw_lock || !core->dma_dev ||
+ 	    core->irq < 0)
+ 		return dev_err_probe(&pdev->dev, -EINVAL,
+ 				     "incomplete DOS parent resources\n");
+@@ -1584,3 +1606,4 @@ MODULE_DESCRIPTION("Amlogic Meson V4L2 M2M H.264 encoder");
+ MODULE_AUTHOR("Meson Codec contributors");
+ MODULE_LICENSE("GPL");
+ MODULE_FIRMWARE(MESON_VENC_FW_NAME);
++MODULE_ALIAS("platform:" MESON_VENC_NAME);
+diff --git a/drivers/staging/media/meson/vdec/vdec.c b/drivers/staging/media/meson/vdec/vdec.c
+index 270390e..5f087b4 100644
+--- a/drivers/staging/media/meson/vdec/vdec.c
++++ b/drivers/staging/media/meson/vdec/vdec.c
+@@ -1040,6 +1040,7 @@ static int vdec_register_venc(struct platform_device *pdev,
+ 	data.dos_base = core->dos_base;
+ 	data.regmap_ao = core->regmap_ao;
+ 	data.canvas = core->canvas;
++	data.dos_clk = core->dos_clk;
+ 	data.hcodec_clk = hcodec_clk;
+ 	data.hw_lock = &core->hw_lock;
+ 	data.dma_dev = core->dev;
+diff --git a/include/linux/platform_data/media/meson-codec.h b/include/linux/platform_data/media/meson-codec.h
+index bfc02cb..85eea5e 100644
+--- a/include/linux/platform_data/media/meson-codec.h
++++ b/include/linux/platform_data/media/meson-codec.h
+@@ -30,6 +30,7 @@ enum meson_codec_revision {
+  * @dos_base: parent-owned mapping of the DOS register range
+  * @regmap_ao: parent-owned always-on bus regmap
+  * @canvas: parent-owned Canvas provider reference
++ * @dos_clk: parent-owned DOS bus clock
+  * @hcodec_clk: parent-owned HCODEC clock
+  * @hw_lock: serializes users of shared DOS power and reset registers
+  * @dma_dev: parent device used for DMA allocations and vb2 buffers
+@@ -40,6 +41,7 @@ struct meson_codec_child_data {
+ 	void __iomem *dos_base;
+ 	struct regmap *regmap_ao;
+ 	struct meson_canvas *canvas;
++	struct clk *dos_clk;
+ 	struct clk *hcodec_clk;
+ 	/* Serializes child access to shared DOS power and reset controls. */
+ 	struct mutex *hw_lock;
+-- 
+2.47.3
+

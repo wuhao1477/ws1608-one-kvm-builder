@@ -1,0 +1,186 @@
+From b87b7047a11671c2830e8749cc277ac394e24ff6 Mon Sep 17 00:00:00 2001
+From: Codex <codex@openai.com>
+Date: Sun, 23 Aug 2026 22:34:32 +0800
+Subject: [PATCH] media: meson: add packed YUYV encoder input
+
+Expose YUYV as a standard OUTPUT format.
+
+Program packed YUYV through a Canvas descriptor.
+
+MFDIN downsamples its chroma to 4:2:0 for H.264.
+
+Fully power-cycle and reload HCODEC after a failed job.
+
+A queued forced IDR can then recover without reopening the context.
+
+Signed-off-by: Codex <codex@openai.com>
+
+diff --git a/drivers/media/platform/amlogic/meson-venc/meson-venc.c b/drivers/media/platform/amlogic/meson-venc/meson-venc.c
+index d4981a1..1d154ed 100644
+--- a/drivers/media/platform/amlogic/meson-venc/meson-venc.c
++++ b/drivers/media/platform/amlogic/meson-venc/meson-venc.c
+@@ -341,13 +341,22 @@ static void meson_venc_program_mfdin(struct meson_venc_ctx *ctx)
+ 	out = &ctx->q_data[MESON_VENC_QUEUE_OUTPUT];
+ 	width = ALIGN(out->width, 16);
+ 	height = out->height;
+-	canvas = ws->input_canvas | BIT(28) | BIT(26) | BIT(24);
+-
+-	/* Canvas-backed NV12 input (iformat 3), 4:2:0 encoder output. */
+-	meson_venc_write(venc, HCODEC_MFDIN_CTRL_GXL, 3);
+-	meson_venc_write(venc, HCODEC_MFDIN_CANVAS_GXL, canvas);
+-	meson_venc_write(venc, HCODEC_MFDIN_LINEAR0_GXL, 0);
+-	meson_venc_write(venc, HCODEC_MFDIN_LINEAR1_GXL, 0);
++	canvas = BIT(28) | BIT(26) | BIT(24);
++	if (out->fourcc == V4L2_PIX_FMT_YUYV) {
++		/* Canvas-backed packed YUYV (iformat 0), downsampled to 4:2:0. */
++		canvas = ws->input_canvas | BIT(28) | BIT(26) | 2 << 24;
++		meson_venc_write(venc, HCODEC_MFDIN_CTRL_GXL, BIT(6));
++		meson_venc_write(venc, HCODEC_MFDIN_CANVAS_GXL, canvas);
++		meson_venc_write(venc, HCODEC_MFDIN_LINEAR0_GXL, 0);
++		meson_venc_write(venc, HCODEC_MFDIN_LINEAR1_GXL, 0);
++	} else {
++		/* Canvas-backed NV12 input (iformat 3). */
++		canvas |= ws->input_canvas;
++		meson_venc_write(venc, HCODEC_MFDIN_CTRL_GXL, 3);
++		meson_venc_write(venc, HCODEC_MFDIN_CANVAS_GXL, canvas);
++		meson_venc_write(venc, HCODEC_MFDIN_LINEAR0_GXL, 0);
++		meson_venc_write(venc, HCODEC_MFDIN_LINEAR1_GXL, 0);
++	}
+ 	meson_venc_write(venc, HCODEC_MFDIN_SIZE_GXL,
+ 			 width << 14 | height);
+ 	meson_venc_write(venc, HCODEC_MFDIN_ENDIAN_GXL,
+@@ -659,8 +668,9 @@ static int meson_venc_job_program_buffers(struct meson_venc_ctx *ctx,
+ 	out = &ctx->q_data[MESON_VENC_QUEUE_OUTPUT];
+ 	src_dma = vb2_dma_contig_plane_dma_addr(&src->vb2_buf, 0);
+ 	dst_dma = vb2_dma_contig_plane_dma_addr(&dst->vb2_buf, 0);
+-	src_y_size = (size_t)ws->stride * out->height;
+-	src_size = src_y_size * 3 / 2;
++	src_y_size = (size_t)out->bytesperline * out->height;
++	src_size = out->fourcc == V4L2_PIX_FMT_YUYV ? src_y_size :
++		   src_y_size * 3 / 2;
+ 	dst_size = vb2_plane_size(&dst->vb2_buf, 0);
+ 
+ 	if (vb2_plane_size(&src->vb2_buf, 0) < src_size ||
+@@ -677,6 +687,18 @@ static int meson_venc_job_program_buffers(struct meson_venc_ctx *ctx,
+ 	    upper_32_bits(dst_write_dma))
+ 		return -ERANGE;
+ 
++	if (out->fourcc == V4L2_PIX_FMT_YUYV) {
++		ret = meson_canvas_config(venc->core->canvas, canvas_y,
++					  lower_32_bits(src_dma),
++					  out->bytesperline, out->height,
++					  MESON_CANVAS_WRAP_NONE,
++					  MESON_CANVAS_BLKMODE_LINEAR, 0);
++		if (ret)
++			return ret;
++		ws->input_canvas = canvas_y;
++		goto program_capture;
++	}
++
+ 	ret = meson_canvas_config(venc->core->canvas, canvas_y,
+ 				  lower_32_bits(src_dma), ws->stride,
+ 				  out->height, MESON_CANVAS_WRAP_NONE,
+@@ -694,6 +716,7 @@ static int meson_venc_job_program_buffers(struct meson_venc_ctx *ctx,
+ 
+ 	ws->input_canvas = canvas_y | (canvas_uv << 8);
+ 
++program_capture:
+ 	meson_venc_write(venc, HCODEC_VLC_VB_MEM_CTL,
+ 			 BIT(31) | (0x3f << 24) | (0x20 << 16) | 2);
+ 	meson_venc_write(venc, HCODEC_VLC_VB_START_PTR,
+@@ -1167,6 +1190,14 @@ static u32 meson_venc_raw_size(u32 bytesperline, u32 height)
+ 	return bytesperline * height * 3 / 2;
+ }
+ 
++static u32 meson_venc_output_size(u32 fourcc, u32 bytesperline, u32 height)
++{
++	if (fourcc == V4L2_PIX_FMT_YUYV)
++		return bytesperline * height;
++
++	return meson_venc_raw_size(bytesperline, height);
++}
++
+ static u32 meson_venc_coded_size(u32 width, u32 height)
+ {
+ 	u32 worst_case = ALIGN(width * height * 4 + SZ_64K, SZ_64K);
+@@ -1280,13 +1311,22 @@ static int meson_venc_querycap(struct file *file, void *priv,
+ static int meson_venc_enum_fmt(struct file *file, void *priv,
+ 			       struct v4l2_fmtdesc *f)
+ {
+-	if (!meson_venc_type_is_valid(f->type) || f->index)
++	if (!meson_venc_type_is_valid(f->type))
+ 		return -EINVAL;
+ 
+-	if (V4L2_TYPE_IS_OUTPUT(f->type))
++	if (!V4L2_TYPE_IS_OUTPUT(f->type)) {
++		if (f->index)
++			return -EINVAL;
++		f->pixelformat = V4L2_PIX_FMT_H264;
++		return 0;
++	}
++
++	if (f->index == 0)
+ 		f->pixelformat = V4L2_PIX_FMT_NV12;
++	else if (f->index == 1)
++		f->pixelformat = V4L2_PIX_FMT_YUYV;
+ 	else
+-		f->pixelformat = V4L2_PIX_FMT_H264;
++		return -EINVAL;
+ 
+ 	return 0;
+ }
+@@ -1297,6 +1337,7 @@ static int meson_venc_enum_framesizes(struct file *file, void *priv,
+ 	if (fsize->index)
+ 		return -EINVAL;
+ 	if (fsize->pixel_format != V4L2_PIX_FMT_NV12 &&
++	    fsize->pixel_format != V4L2_PIX_FMT_YUYV &&
+ 	    fsize->pixel_format != V4L2_PIX_FMT_H264)
+ 		return -EINVAL;
+ 
+@@ -1335,11 +1376,16 @@ static int meson_venc_try_fmt(struct file *file, void *priv,
+ 	pix->flags = 0;
+ 
+ 	if (V4L2_TYPE_IS_OUTPUT(f->type)) {
+-		pix->pixelformat = V4L2_PIX_FMT_NV12;
+-		bytesperline = ALIGN(pix->width, MESON_VENC_STRIDE_ALIGN);
++		if (pix->pixelformat != V4L2_PIX_FMT_NV12 &&
++		    pix->pixelformat != V4L2_PIX_FMT_YUYV)
++			pix->pixelformat = V4L2_PIX_FMT_NV12;
++		bytesperline = pix->pixelformat == V4L2_PIX_FMT_YUYV ?
++			ALIGN(pix->width * 2, MESON_VENC_STRIDE_ALIGN) :
++			ALIGN(pix->width, MESON_VENC_STRIDE_ALIGN);
+ 		pix->plane_fmt[0].bytesperline = bytesperline;
+ 		pix->plane_fmt[0].sizeimage =
+-			meson_venc_raw_size(bytesperline, pix->height);
++			meson_venc_output_size(pix->pixelformat, bytesperline,
++					       pix->height);
+ 		if (!pix->colorspace)
+ 			pix->colorspace = V4L2_COLORSPACE_REC709;
+ 	} else {
+@@ -1639,6 +1685,7 @@ static void meson_venc_device_run(void *priv)
+ 	struct vb2_v4l2_buffer *dst;
+ 	size_t payload = 0;
+ 	bool keyframe;
++	int recover_ret;
+ 	int ret;
+ 
+ 	src = v4l2_m2m_src_buf_remove(ctx->fh.m2m_ctx);
+@@ -1668,9 +1715,12 @@ static void meson_venc_device_run(void *priv)
+ 	}
+ 	if (ret) {
+ 		WRITE_ONCE(ctx->force_keyframe, true);
+-		meson_venc_write(ctx->venc, HCODEC_ASSIST_MBOX2_MASK, 0);
+-		meson_venc_write(ctx->venc, HCODEC_MPSR, 0);
+-		meson_venc_reset(ctx->venc);
++		meson_venc_power_off(ctx->venc);
++		recover_ret = meson_venc_hw_prepare(ctx);
++		if (recover_ret)
++			dev_err(ctx->venc->dev,
++				"failed to recover HCODEC after job error: %d\n",
++				recover_ret);
+ 		vb2_set_plane_payload(&dst->vb2_buf, 0, 0);
+ 		v4l2_m2m_buf_done(src, VB2_BUF_STATE_ERROR);
+ 		v4l2_m2m_buf_done(dst, VB2_BUF_STATE_ERROR);
+-- 
+2.47.3
+

@@ -1,0 +1,38 @@
+From 8234ac862b0ef4e1d1a18c190d5c39db8f6cb59d Mon Sep 17 00:00:00 2001
+From: Codex <codex@openai.com>
+Date: Sat, 5 Sep 2026 12:21:07 +0800
+Subject: [PATCH] media: meson: trace HCODEC streamoff cleanup
+
+---
+ drivers/media/platform/amlogic/meson-venc/meson-venc.c | 8 ++++++++
+ 1 file changed, 8 insertions(+)
+
+diff --git a/drivers/media/platform/amlogic/meson-venc/meson-venc.c b/drivers/media/platform/amlogic/meson-venc/meson-venc.c
+index 6869bd5..93e540e 100644
+--- a/drivers/media/platform/amlogic/meson-venc/meson-venc.c
++++ b/drivers/media/platform/amlogic/meson-venc/meson-venc.c
+@@ -2258,6 +2258,12 @@ static void meson_venc_stop_streaming(struct vb2_queue *vq)
+ 	struct meson_venc_ctx *ctx = vb2_get_drv_priv(vq);
+ 	struct vb2_v4l2_buffer *vbuf;
+ 
++	if (meson_venc_trace_runtime_enabled)
++		dev_info(ctx->venc->dev,
++			 "trace: stop_streaming: type=%u owns=%u output=%u capture=%u\n",
++			 vq->type, ctx->owns_hw, ctx->streaming_output,
++			 ctx->streaming_capture);
++
+ 	for (;;) {
+ 		if (V4L2_TYPE_IS_OUTPUT(vq->type))
+ 			vbuf = v4l2_m2m_src_buf_remove(ctx->fh.m2m_ctx);
+@@ -2275,7 +2281,9 @@ static void meson_venc_stop_streaming(struct vb2_queue *vq)
+ 
+ 	if (ctx->owns_hw && !ctx->streaming_output &&
+ 	    !ctx->streaming_capture) {
++		meson_venc_trace_runtime(ctx->venc, "stop_streaming: power_off begin");
+ 		meson_venc_power_off(ctx->venc);
++		meson_venc_trace_runtime(ctx->venc, "stop_streaming: power_off end");
+ 		meson_venc_workspace_free(ctx);
+ 		ctx->owns_hw = false;
+ 		mutex_unlock(ctx->venc->core->hw_lock);
+-- 
+2.50.0

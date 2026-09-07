@@ -10,10 +10,12 @@ V4L2 M2M 路线。
 - [architecture.md](architecture.md)：稳定构建与 HCODEC 候选的架构关系。
 - [build-pipeline.md](build-pipeline.md)：现有稳定工作流和候选流程边界。
 - [image-lineage.md](image-lineage.md)：稳定基础来源和候选内核选型。
-- [manifest-schema.md](manifest-schema.md)：稳定资产及未来 HCODEC 候选证据字段。
+- [manifest-schema.md](manifest-schema.md)：稳定资产及 HCODEC 候选证据字段。
 - [maintenance.md](maintenance.md)：日常更新、候选升级和维护禁区。
 - [hardware-validation.md](hardware-validation.md)：V4L2 M2M、码流、One-KVM、HID 验收。
 - [troubleshooting.md](troubleshooting.md)：HCODEC、DT、固件、CMA 和发布排障。
+- [HCODEC 构建](../experimental/hcodec/docs/build.md)：固定输入与候选构建顺序。
+- [HCODEC artifact](../experimental/hcodec/docs/artifact.md)：制品内容、校验和硬件状态边界。
 - [ADR-0001](adr/0001-pinned-base-weekly-check.md)：固定已验证基础并每周检查。
 - [ADR-0002](adr/0002-immutable-versioned-rebuilds.md)：不可变版本化 Release。
 - [ADR-0003](adr/0003-armbian-6.12-hcodec-route.md)：放弃 3.10，采用 Armbian 6.12 HCODEC。
@@ -30,17 +32,17 @@ V4L2 M2M 路线。
 | 内核 | `6.12.28-current-meson` |
 | 稳定 One-KVM | `0.2.6` / `v260802` |
 | 稳定 Release | `ws1608-one-kvm-0.2.6-v260802-b028001` |
-| 自动检查 | 每周日 02:17 UTC |
-| HCODEC 候选 | 尚未实机验证 |
+| 自动检查 | CNB 每周日 02:17 UTC |
+| HCODEC 候选 | `run-29-1` 已完成 30 帧有效码流并独立解码，但测试后设备失联，稳定性验收未通过 |
 | 候选后端 | `h264_v4l2m2m` |
 
 ## 最短维护路径
 
 1. 先读 [HANDOFF.md](HANDOFF.md) 和 [ADR-0003](adr/0003-armbian-6.12-hcodec-route.md)。
-2. 稳定 One-KVM 更新继续使用 `.github/workflows/build.yml`。
+2. 稳定 One-KVM 更新使用 `.cnb.yml` 的定时、PR、API 和 Web Trigger 流程。
 3. 没有新上游 tag 与 Deb 摘要时，build/release 必须跳过。
-4. HCODEC 工作先验证 ARMv7 内核、DTB、固件和独立 V4L2 码流，不修改稳定资产。
-5. 独立探针通过后，才以 `ONE_KVM_V4L2M2M_ALLOW=1` 临时验证 One-KVM。
+4. HCODEC 工作先验证 ARMv7 内核、DTB、固件和独立 V4L2 码流，不修改稳定资产；当前仅编码数据路径通过。
+5. 修复 `STREAMOFF` 清理阻塞并完成新的单帧验收后，才以 `ONE_KVM_V4L2M2M_ALLOW=1` 临时验证 One-KVM。
 6. 实机结果按 [hardware-validation.md](hardware-validation.md) 记录。
 
 ## 已废弃历史
@@ -53,7 +55,7 @@ V4L2 M2M 路线。
 ## 事实来源优先级
 
 1. 当前配置、工作流和脚本。
-2. Release 的 manifest、validation report、`SHA256SUMS` 和 Actions 日志。
+2. Release 的 manifest、validation report、`SHA256SUMS` 和 CNB 构建日志。
 3. ADR、路线规格和本目录维护文档。
 4. 外部教程与研究资料只作候选证据，不能替代 WS1608 实测。
 

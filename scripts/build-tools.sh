@@ -8,7 +8,7 @@ SOURCE_DIR="$TOOLS_DIR/AmlImg-src"
 mkdir -p "$TOOLS_DIR"
 rm -rf "$SOURCE_DIR"
 git init -q "$SOURCE_DIR"
-git -C "$SOURCE_DIR" remote add origin "$AMLIMG_REPOSITORY"
+git -C "$SOURCE_DIR" remote add origin "${AMLIMG_GIT_PROXY:-$AMLIMG_REPOSITORY}"
 git -C "$SOURCE_DIR" fetch -q --depth=1 origin "$AMLIMG_COMMIT"
 git -C "$SOURCE_DIR" checkout -q --detach FETCH_HEAD
 (

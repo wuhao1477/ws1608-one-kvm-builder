@@ -1,0 +1,108 @@
+From 3df21d28b4a896b0fa5d26c52e59c326b7f79983 Mon Sep 17 00:00:00 2001
+From: Meson Codec <meson-codec@localhost>
+Date: Sun, 23 Aug 2026 11:18:36 +0800
+Subject: [PATCH] dt-bindings: media: meson: add optional HCODEC resources
+
+HCODEC shares the DOS register range and power controls with the decoder.
+Describe its clock and interrupt as optional resources on the existing VDEC
+node so a second node never claims overlapping MMIO.
+
+Signed-off-by: Meson Codec <meson-codec@localhost>
+---
+ .../bindings/media/amlogic,gx-vdec.yaml       | 42 +++++++++++++++++--
+ 1 file changed, 39 insertions(+), 3 deletions(-)
+
+diff --git a/Documentation/devicetree/bindings/media/amlogic,gx-vdec.yaml b/Documentation/devicetree/bindings/media/amlogic,gx-vdec.yaml
+index 47dce75..f36657c 100644
+--- a/Documentation/devicetree/bindings/media/amlogic,gx-vdec.yaml
++++ b/Documentation/devicetree/bindings/media/amlogic,gx-vdec.yaml
+@@ -25,6 +25,10 @@ description: |
+   Both VDEC_1 and VDEC_HEVC share the "vdec" IRQ and as such cannot run
+   concurrently.
+ 
++  On GX SoCs the HCODEC encoder shares the DOS register range and power/reset
++  controls with the decoder. It is therefore represented by optional resources
++  on this node rather than by a second node with an overlapping reg property.
++
+ properties:
+   compatible:
+     oneOf:
+@@ -41,11 +45,14 @@ properties:
+ 
+   interrupts:
+     minItems: 2
++    maxItems: 3
+ 
+   interrupt-names:
++    minItems: 2
+     items:
+       - const: vdec
+       - const: esparser
++      - const: venc
+ 
+   reg:
+     minItems: 2
+@@ -73,7 +80,9 @@ properties:
+       - const: dos
+       - const: vdec_1
+       - const: vdec_hevc
+-      - const: vdec_hevcf
++      - enum:
++          - hcodec
++          - vdec_hevcf
+ 
+   amlogic,ao-sysctrl:
+     description: should point to the AOBUS sysctrl node
+@@ -89,13 +98,35 @@ allOf:
+         compatible:
+           contains:
+             enum:
+-              - amlogic,gx-vdec
++              - amlogic,gxbb-vdec
+ 
+     then:
+       properties:
++        clocks:
++          maxItems: 4
+         clock-names:
+           maxItems: 4
+ 
++  - if:
++      properties:
++        compatible:
++          contains:
++            enum:
++              - amlogic,gxl-vdec
++              - amlogic,gxlx-vdec
++              - amlogic,gxm-vdec
++
++    then:
++      properties:
++        clock-names:
++          minItems: 4
++          items:
++            - const: dos_parser
++            - const: dos
++            - const: vdec_1
++            - const: vdec_hevc
++            - const: hcodec
++
+   - if:
+       properties:
+         compatible:
+@@ -107,7 +138,12 @@ allOf:
+     then:
+       properties:
+         clock-names:
+-          minItems: 5
++          items:
++            - const: dos_parser
++            - const: dos
++            - const: vdec_1
++            - const: vdec_hevc
++            - const: vdec_hevcf
+ 
+ required:
+   - compatible
+-- 
+2.47.3

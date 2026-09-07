@@ -2,34 +2,33 @@
 
 ## 稳定周检
 
-查看 [Actions](https://github.com/wuhao1477/ws1608-one-kvm-builder/actions)：
+在 [CNB 仓库](https://cnb.cool/wuhao1477/ws1608-one-kvm-builder) 的流水线页查看：
 
 - 新 One-KVM tag 或 Deb digest 出现时，必须运行 build 和 release；
 - 输入未变化时，必须进入 `No new One-KVM input`，build/release 为 skipped；
 - Release 必须包含五项资产，且 manifest、报告、`SHA256SUMS` 与远端 digest
   一致。
 
-普通检查：
+稳定手动构建：
 
 ```sh
-gh workflow run build.yml --repo wuhao1477/ws1608-one-kvm-builder \
-  --ref main -f force=false -f publish=true
+cnb build start-build --repo wuhao1477/ws1608-one-kvm-builder \
+  --branch main --event api_trigger_one-kvm-release --sync true
 ```
 
 同一输入独立重建：
 
-```sh
-gh workflow run build.yml --repo wuhao1477/ws1608-one-kvm-builder \
-  --ref main -f force=true -f publish=true
-```
+在 CNB 仓库 `main` 分支的 `Stable build` Web Trigger 按钮中设置
+`force=true`、`publish=true`。该按钮也用于 `publish=false` 或
+`prerelease=true` 的手动验证。
 
 只验证不发布时使用 `publish=false`。强制重建创建新 `bRRRAAA`，不覆盖旧
 Release；动态 apt 和 ext4 时间戳意味着成品 SHA-256 可以变化。
 
 ## One-KVM 更新
 
-通常不修改代码。`discover-release.sh` 选择上游唯一 armhf Deb，并验证版本、
-架构和 GitHub digest。若上游改变资产命名或不提供 digest，先增加精确规则和
+通常不修改代码。`cnb-discover-release.sh` 选择上游唯一 armhf Deb，并验证版本、
+架构和上游 digest。若上游改变资产命名或不提供 digest，先增加精确规则和
 测试，不能选择第一个近似资产。
 
 ## HCODEC 候选维护
@@ -67,12 +66,12 @@ HCODEC 工作遵循 [ADR-0003](adr/0003-armbian-6.12-hcodec-route.md)：
 
 不把 Armbian 每日构建 URL 写入稳定配置。
 
-## AmlImg 与 Actions 依赖
+## AmlImg 与 CNB 依赖
 
 - AmlImg 仓库和提交固定在 `config/tool-versions.env`；升级时验证 v2 CRC、
   item table、pack/unpack 和分区 VERIFY。
-- Actions 固定完整 commit SHA；升级前检查 runtime 和权限变化。
-- 默认权限保持 `contents: read`，只有 release job 使用写权限。
+- CNB 可信事件使用官方附件插件保存候选制品，再通过只读下载接口复验；CNB PR 因令牌权限限制只做本地独立复验。GitHub Actions 工作流与原 artifact 流程保留。
+- 稳定 Release 使用不可覆盖的 tag，并在上传后重新校验每个附件摘要。
 - qemu、Go、Node、交叉编译器和预编译模块不提交仓库。
 
 ## 发布前检查
@@ -81,7 +80,8 @@ HCODEC 工作遵循 [ADR-0003](adr/0003-armbian-6.12-hcodec-route.md)：
 pnpm test
 for script in scripts/*.sh; do bash -n "$script"; done
 git diff --check
-go run github.com/rhysd/actionlint/cmd/actionlint@v1.7.7 .github/workflows/build.yml
+node /Users/wuhao/.codex/skills/cnb-pipeline/validator/validate.js .cnb.yml
+node /Users/wuhao/.codex/skills/cnb-pipeline/validator/validate.js .cnb/web_trigger.yml
 ```
 
 发布后重新下载五项资产并运行 `scripts/verify-release-assets.sh`。实体结果单独

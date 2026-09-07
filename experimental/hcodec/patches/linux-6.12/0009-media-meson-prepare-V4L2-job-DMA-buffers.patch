@@ -1,0 +1,151 @@
+From 124d50051f479613b4607fb5bcf867c78915fa02 Mon Sep 17 00:00:00 2001
+From: Meson Codec <meson-codec@localhost>
+Date: Sun, 23 Aug 2026 16:27:05 +0800
+Subject: [PATCH] media: meson: prepare V4L2 job DMA buffers
+
+Allocate two reusable input Canvas IDs and configure them from each vb2
+source DMA address using the visible NV12 height.
+
+Program each CAPTURE DMA range directly as the VLC bitstream ring, removing
+the need for the vendor-private output area. Validate every source and
+destination range against the 32-bit hardware address limit before
+programming registers.
+
+Signed-off-by: Meson Codec <meson-codec@localhost>
+---
+ .../platform/amlogic/meson-venc/meson-venc.c  | 84 ++++++++++++++++++-
+ 1 file changed, 83 insertions(+), 1 deletion(-)
+
+diff --git a/drivers/media/platform/amlogic/meson-venc/meson-venc.c b/drivers/media/platform/amlogic/meson-venc/meson-venc.c
+index 1084c6d..df66f37 100644
+--- a/drivers/media/platform/amlogic/meson-venc/meson-venc.c
++++ b/drivers/media/platform/amlogic/meson-venc/meson-venc.c
+@@ -53,7 +53,9 @@
+ #define MESON_VENC_DMA_TIMEOUT_US 1000000
+ #define MESON_VENC_ASSIST_SIZE	(768 * SZ_1K)
+ #define MESON_VENC_WORK_ALIGN	SZ_64K
+-#define MESON_VENC_CANVAS_COUNT	6
++#define MESON_VENC_CANVAS_COUNT	8
++#define MESON_VENC_INPUT_CANVAS_Y 6
++#define MESON_VENC_INPUT_CANVAS_UV 7
+ 
+ #define AO_RTI_GEN_PWR_SLEEP0	0xe8
+ #define AO_RTI_GEN_PWR_ISO0	0xec
+@@ -80,6 +82,12 @@
+ #define HCODEC_DBKW_CANVAS_ADDR		0x66c4
+ #define HCODEC_REC_CANVAS_ADDR		0x66c8
+ #define HCODEC_VLC_HCMD_CONFIG		0x7550
++#define HCODEC_VLC_VB_START_PTR		0x7440
++#define HCODEC_VLC_VB_END_PTR		0x7444
++#define HCODEC_VLC_VB_WR_PTR		0x7448
++#define HCODEC_VLC_VB_SW_RD_PTR		0x7450
++#define HCODEC_VLC_VB_CONTROL		0x7458
++#define HCODEC_VLC_VB_MEM_CTL		0x745c
+ #define HCODEC_QDCT_MB_START_PTR	0x7c40
+ #define HCODEC_QDCT_MB_END_PTR		0x7c44
+ #define HCODEC_QDCT_MB_WR_PTR		0x7c48
+@@ -120,6 +128,7 @@ struct meson_venc_workspace {
+ 	u8 canvas[MESON_VENC_CANVAS_COUNT];
+ 	u8 canvas_count;
+ 	u32 recon_canvas[2];
++	u32 input_canvas;
+ };
+ 
+ struct meson_venc_dev {
+@@ -304,6 +313,73 @@ static void meson_venc_workspace_program(struct meson_venc_ctx *ctx)
+ 	meson_venc_write(venc, HCODEC_VLC_HCMD_CONFIG, 0);
+ }
+ 
++static int meson_venc_job_program_buffers(struct meson_venc_ctx *ctx,
++					  struct vb2_v4l2_buffer *src,
++					  struct vb2_v4l2_buffer *dst)
++{
++	struct meson_venc_workspace *ws = &ctx->workspace;
++	struct meson_venc_dev *venc = ctx->venc;
++	struct meson_venc_q_data *out;
++	dma_addr_t src_dma;
++	dma_addr_t dst_dma;
++	size_t src_y_size;
++	size_t src_size;
++	size_t dst_size;
++	u8 canvas_y = ws->canvas[MESON_VENC_INPUT_CANVAS_Y];
++	u8 canvas_uv = ws->canvas[MESON_VENC_INPUT_CANVAS_UV];
++	int ret;
++
++	out = &ctx->q_data[MESON_VENC_QUEUE_OUTPUT];
++	src_dma = vb2_dma_contig_plane_dma_addr(&src->vb2_buf, 0);
++	dst_dma = vb2_dma_contig_plane_dma_addr(&dst->vb2_buf, 0);
++	src_y_size = (size_t)ws->stride * out->height;
++	src_size = src_y_size * 3 / 2;
++	dst_size = vb2_plane_size(&dst->vb2_buf, 0);
++
++	if (vb2_plane_size(&src->vb2_buf, 0) < src_size ||
++	    dst_size < ctx->q_data[MESON_VENC_QUEUE_CAPTURE].sizeimage)
++		return -EINVAL;
++
++	if (upper_32_bits(src_dma) ||
++	    upper_32_bits(src_dma + src_size - 1) ||
++	    upper_32_bits(dst_dma) ||
++	    upper_32_bits(dst_dma + dst_size - 1))
++		return -ERANGE;
++
++	ret = meson_canvas_config(venc->core->canvas, canvas_y,
++				  lower_32_bits(src_dma), ws->stride,
++				  out->height, MESON_CANVAS_WRAP_NONE,
++				  MESON_CANVAS_BLKMODE_LINEAR, 0);
++	if (ret)
++		return ret;
++
++	ret = meson_canvas_config(venc->core->canvas, canvas_uv,
++				  lower_32_bits(src_dma + src_y_size),
++				  ws->stride, out->height / 2,
++				  MESON_CANVAS_WRAP_NONE,
++				  MESON_CANVAS_BLKMODE_LINEAR, 0);
++	if (ret)
++		return ret;
++
++	ws->input_canvas = canvas_y | (canvas_uv << 8);
++
++	meson_venc_write(venc, HCODEC_VLC_VB_MEM_CTL,
++			 BIT(31) | (0x3f << 24) | (0x20 << 16) | 2);
++	meson_venc_write(venc, HCODEC_VLC_VB_START_PTR,
++			 lower_32_bits(dst_dma));
++	meson_venc_write(venc, HCODEC_VLC_VB_END_PTR,
++			 lower_32_bits(dst_dma + dst_size - 1));
++	meson_venc_write(venc, HCODEC_VLC_VB_WR_PTR,
++			 lower_32_bits(dst_dma));
++	meson_venc_write(venc, HCODEC_VLC_VB_SW_RD_PTR,
++			 lower_32_bits(dst_dma));
++	meson_venc_write(venc, HCODEC_VLC_VB_CONTROL, 1);
++	meson_venc_write(venc, HCODEC_VLC_VB_CONTROL,
++			 (7 << 3) | BIT(1));
++
++	return 0;
++}
++
+ static void meson_venc_reset(struct meson_venc_dev *venc)
+ {
+ 	meson_venc_read(venc, DOS_SW_RESET1);
+@@ -893,6 +969,7 @@ static void meson_venc_device_run(void *priv)
+ 	struct meson_venc_q_data *cap;
+ 	struct vb2_v4l2_buffer *src;
+ 	struct vb2_v4l2_buffer *dst;
++	int ret;
+ 
+ 	src = v4l2_m2m_src_buf_remove(ctx->fh.m2m_ctx);
+ 	dst = v4l2_m2m_dst_buf_remove(ctx->fh.m2m_ctx);
+@@ -905,6 +982,11 @@ static void meson_venc_device_run(void *priv)
+ 		return;
+ 	}
+ 
++	ret = meson_venc_job_program_buffers(ctx, src, dst);
++	if (ret)
++		dev_err_ratelimited(ctx->venc->dev,
++				    "failed to prepare job buffers: %d\n", ret);
++
+ 	out = &ctx->q_data[MESON_VENC_QUEUE_OUTPUT];
+ 	cap = &ctx->q_data[MESON_VENC_QUEUE_CAPTURE];
+ 	src->sequence = out->sequence++;
+-- 
+2.47.3
+

@@ -84,7 +84,7 @@ assert_rootfs_path() {
   [[ "$resolved" == "$root"/* ]] || { echo "rootfs path escapes mount: $guest -> $resolved" >&2; exit 1; }
 }
 
-for command in awk chroot cmp e2fsck findmnt jq mknod mount mountpoint node realpath sha1sum umount unshare xz; do
+for command in awk chroot cmp e2fsck findmnt fuse2fs fusermount3 jq losetup mknod mount mountpoint node realpath sha1sum umount unshare xz; do
   require_command "$command"
 done
 require_private_dir "$WORK_DIR" WORK_DIR
@@ -115,6 +115,8 @@ rm -rf -- "$PACKAGE_DIR" "$BOOT_FILES" "$MOUNT_DIR"
 
 root_mounted=false
 dev_mounted=false
+loop_device=''
+fuse_mounted=false
 cleanup_mounts() (
   set +e
   local failed=0
@@ -123,7 +125,17 @@ cleanup_mounts() (
     as_root umount "$MOUNT_DIR/dev" || failed=1
   fi
   if [[ "$root_mounted" == true ]] && mountpoint -q "$MOUNT_DIR"; then
-    as_root umount "$MOUNT_DIR" || failed=1
+    if [[ "$fuse_mounted" == true ]]; then
+      as_root umount "$MOUNT_DIR" || as_root fusermount3 -u "$MOUNT_DIR" || true
+    else
+      as_root umount "$MOUNT_DIR" || failed=1
+    fi
+  fi
+  if [[ -n "$loop_device" ]]; then
+    as_root losetup --detach "$loop_device" || failed=1
+  fi
+  if [[ "$fuse_mounted" == true ]]; then
+    return 0
   fi
   mountpoint -q "$MOUNT_DIR/dev" && failed=1
   mountpoint -q "$MOUNT_DIR" && failed=1
@@ -150,15 +162,23 @@ rm -rf "$BOOT_FILES"
 node "$ROOT_DIR/scripts/sparse-to-raw.mjs" "$PACKAGE_DIR/$rootfs_sparse" "$ROOTFS_RAW"
 as_root e2fsck -fn "$ROOTFS_RAW"
 mkdir -p "$MOUNT_DIR"
-as_root mount -o loop "$ROOTFS_RAW" "$MOUNT_DIR"
+if [[ "${CNB_FUSE_ROOTFS:-false}" == true ]]; then
+  as_root fuse2fs -o rw "$ROOTFS_RAW" "$MOUNT_DIR"
+  fuse_mounted=true
+else
+  loop_device=$(as_root losetup --find --show "$ROOTFS_RAW")
+  as_root mount "$loop_device" "$MOUNT_DIR"
+fi
 root_mounted=true
 assert_rootfs_path /dev
-as_root mount -t tmpfs -o mode=0755,nosuid,noexec tmpfs "$MOUNT_DIR/dev"
-dev_mounted=true
-for device in 'null 1 3 666' 'zero 1 5 666' 'random 1 8 666' 'urandom 1 9 666' 'tty 5 0 666'; do
-  read -r name major minor mode <<<"$device"
-  as_root mknod -m "$mode" "$MOUNT_DIR/dev/$name" c "$major" "$minor"
-done
+if [[ "${CNB_FUSE_ROOTFS:-false}" != true ]]; then
+  as_root mount -t tmpfs -o mode=0755,nosuid,noexec tmpfs "$MOUNT_DIR/dev"
+  dev_mounted=true
+  for device in 'null 1 3 666' 'zero 1 5 666' 'random 1 8 666' 'urandom 1 9 666' 'tty 5 0 666'; do
+    read -r name major minor mode <<<"$device"
+    as_root mknod -m "$mode" "$MOUNT_DIR/dev/$name" c "$major" "$minor"
+  done
+fi
 assert_rootfs_path /proc
 as_root mkdir -p "$MOUNT_DIR/dev/pts" "$MOUNT_DIR/dev/shm" "$MOUNT_DIR/proc"
 as_root rm -f "$MOUNT_DIR/dev/fd"

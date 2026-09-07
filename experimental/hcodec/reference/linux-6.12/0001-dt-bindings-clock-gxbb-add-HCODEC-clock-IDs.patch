@@ -1,0 +1,29 @@
+From 5f17851a3ad6035d7f0ab19da6869c41ef36988f Mon Sep 17 00:00:00 2001
+From: Meson Codec <meson-codec@localhost>
+Date: Sun, 23 Aug 2026 10:29:00 +0800
+Subject: [PATCH 1/2] dt-bindings: clock: gxbb: add HCODEC clock IDs
+
+Expose IDs for the HCODEC mux, divider and gate in the upper half of
+HHI_VDEC_CLK_CNTL. These clocks are required by the H.264 encoder block on
+GXL and GXM.
+
+Signed-off-by: Meson Codec <meson-codec@localhost>
+---
+ include/dt-bindings/clock/gxbb-clkc.h | 3 +++
+ 1 file changed, 3 insertions(+)
+
+diff --git a/include/dt-bindings/clock/gxbb-clkc.h b/include/dt-bindings/clock/gxbb-clkc.h
+index c0ce5e9..e502b8e 100644
+--- a/include/dt-bindings/clock/gxbb-clkc.h
++++ b/include/dt-bindings/clock/gxbb-clkc.h
+@@ -212,5 +212,8 @@
+ #define CLKID_HDMI_DIV		204
+ #define CLKID_HDMI		205
+ #define CLKID_ACODEC		206
++#define CLKID_VDEC_HCODEC_SEL	207
++#define CLKID_VDEC_HCODEC_DIV	208
++#define CLKID_VDEC_HCODEC	209
+ 
+ #endif /* __GXBB_CLKC_H */
+-- 
+2.47.3

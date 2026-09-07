@@ -1,0 +1,177 @@
+#!/usr/bin/env bash
+set -Eeuo pipefail
+
+ROOT_DIR=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd -P)
+source "$ROOT_DIR/scripts/cnb-ci-env.sh"
+source "$ROOT_DIR/config/base.env"
+source "$ROOT_DIR/config/tool-versions.env"
+ensure_go
+export AMLIMG_GIT_PROXY="https://gh-proxy.com/$AMLIMG_REPOSITORY"
+
+apt-get update
+apt-get install -y binutils e2fsprogs file jq mtools qemu-user-static util-linux xz-utils
+
+FORCE_BUILD=${FORCE_BUILD:-false}
+PUBLISH=${PUBLISH:-true}
+RELEASE_PRERELEASE=${RELEASE_PRERELEASE:-false}
+STABLE_ROOT="$ROOT_DIR/.build/cnb-stable"
+CONTEXT_FILE="$STABLE_ROOT/context.env"
+CHANGED_FILE="$STABLE_ROOT/changed"
+mkdir -p "$STABLE_ROOT"
+rm -f -- "$CONTEXT_FILE" "$CHANGED_FILE"
+discovery=$(mktemp)
+trap 'rm -f "$discovery"' EXIT
+FORCE_BUILD="$FORCE_BUILD" "$ROOT_DIR/scripts/cnb-discover-release.sh" >"$discovery"
+source "$discovery"
+[[ "$changed" == true ]] || { echo "no new One-KVM input for $release_tag"; exit 0; }
+
+UPSTREAM_TAG=${UPSTREAM_TAG:-$release_tag}
+BUILD_TAG=${BUILD_TAG:-$build_tag}
+BUILD_NUMBER=${BUILD_NUMBER:-$build_number}
+BUILD_REVISION=${BUILD_REVISION:-$build_revision}
+IMAGE_STEM=${IMAGE_STEM:-$image_stem}
+ONE_KVM_VERSION=${ONE_KVM_VERSION:-$one_kvm_version}
+PACKAGE_NAME=${PACKAGE_NAME:-$package_name}
+PACKAGE_URL=${PACKAGE_URL:-$package_url}
+PACKAGE_DIGEST=${PACKAGE_DIGEST:-$package_digest}
+BUILDER_COMMIT=${BUILDER_COMMIT:-$CNB_COMMIT}
+
+export BASE_ID BASE_FLAVOR BASE_KERNEL BASE_BOARD BASE_RELEASE_TAG
+export BASE_IMAGE_NAME BASE_IMAGE_URL BASE_IMAGE_SHA256 AMLIMG_REPOSITORY AMLIMG_COMMIT
+export ONE_KVM_VERSION UPSTREAM_TAG PACKAGE_NAME PACKAGE_URL PACKAGE_DIGEST
+export BUILD_TAG BUILD_NUMBER BUILD_REVISION BUILDER_COMMIT
+export GITHUB_RUN_ID GITHUB_RUN_ATTEMPT GITHUB_RUN_NUMBER
+export OUTPUT_DIR="$ROOT_DIR/out/cnb-stable/$BUILD_TAG"
+export WORK_DIR="$ROOT_DIR/.build/cnb-stable/$BUILD_TAG"
+export VALIDATION_REPORT="$OUTPUT_DIR/validation-report.json"
+export VALIDATION_REPORT_NAME=validation-report.json
+export IMAGE_NAME="One-KVM_${IMAGE_STEM}_${BASE_FLAVOR}.burn.img"
+export GITHUB_OUTPUT=/dev/null
+
+mkdir -p "$OUTPUT_DIR" "$WORK_DIR"
+export TOOLS_DIR="$WORK_DIR/tools"
+export AMLIMG_BIN
+AMLIMG_BIN=$(TOOLS_DIR="$TOOLS_DIR" "$ROOT_DIR/scripts/build-tools.sh")
+
+download_url="$PACKAGE_URL"
+if [[ "$download_url" == https://github.com/* ]]; then
+  download_url="https://gh-proxy.com/$download_url"
+fi
+
+curl --fail --silent --show-error --location --retry 5 "$BASE_IMAGE_URL" \
+  -o "$WORK_DIR/$BASE_IMAGE_NAME"
+printf '%s  %s\n' "$BASE_IMAGE_SHA256" "$WORK_DIR/$BASE_IMAGE_NAME" | sha256sum --check
+export BASE_IMAGE_XZ="$WORK_DIR/$BASE_IMAGE_NAME"
+curl --fail --silent --show-error --location --retry 5 "$download_url" \
+  -o "$WORK_DIR/$PACKAGE_NAME"
+printf '%s  %s\n' "$PACKAGE_DIGEST" "$WORK_DIR/$PACKAGE_NAME" | sha256sum --check
+dpkg-deb -f "$WORK_DIR/$PACKAGE_NAME" Package | grep -Fx one-kvm >/dev/null
+dpkg-deb -f "$WORK_DIR/$PACKAGE_NAME" Version | grep -Fx "$ONE_KVM_VERSION" >/dev/null
+dpkg-deb -f "$WORK_DIR/$PACKAGE_NAME" Architecture | grep -Fx armhf >/dev/null
+export ONE_KVM_DEB="$WORK_DIR/$PACKAGE_NAME"
+
+container_path() {
+  local path=$1
+  printf '/workspace/%s\n' "${path#"$ROOT_DIR"/}"
+}
+
+docker_env=(
+  -e "BASE_ID=$BASE_ID"
+  -e "BASE_FLAVOR=$BASE_FLAVOR"
+  -e "BASE_KERNEL=$BASE_KERNEL"
+  -e "BASE_BOARD=$BASE_BOARD"
+  -e "BASE_RELEASE_TAG=$BASE_RELEASE_TAG"
+  -e "BASE_IMAGE_NAME=$BASE_IMAGE_NAME"
+  -e "BASE_IMAGE_URL=$BASE_IMAGE_URL"
+  -e "BASE_IMAGE_SHA256=$BASE_IMAGE_SHA256"
+  -e "AMLIMG_REPOSITORY=$AMLIMG_REPOSITORY"
+  -e "AMLIMG_COMMIT=$AMLIMG_COMMIT"
+  -e "ONE_KVM_VERSION=$ONE_KVM_VERSION"
+  -e "UPSTREAM_TAG=$UPSTREAM_TAG"
+  -e "PACKAGE_NAME=$PACKAGE_NAME"
+  -e "PACKAGE_URL=$PACKAGE_URL"
+  -e "PACKAGE_DIGEST=$PACKAGE_DIGEST"
+  -e "BUILD_TAG=$BUILD_TAG"
+  -e "BUILD_NUMBER=$BUILD_NUMBER"
+  -e "BUILD_REVISION=$BUILD_REVISION"
+  -e "BUILDER_COMMIT=$BUILDER_COMMIT"
+  -e "GITHUB_RUN_ID=$GITHUB_RUN_ID"
+  -e "GITHUB_RUN_ATTEMPT=$GITHUB_RUN_ATTEMPT"
+  -e "GITHUB_RUN_NUMBER=$GITHUB_RUN_NUMBER"
+  -e "OUTPUT_DIR=$(container_path "$OUTPUT_DIR")"
+  -e "WORK_DIR=$(container_path "$WORK_DIR")"
+  -e "BASE_IMAGE_XZ=$(container_path "$BASE_IMAGE_XZ")"
+  -e "ONE_KVM_DEB=$(container_path "$ONE_KVM_DEB")"
+  -e "AMLIMG_BIN=$(container_path "$AMLIMG_BIN")"
+  -e "VALIDATION_REPORT=$(container_path "$VALIDATION_REPORT")"
+  -e "CNB_FUSE_ROOTFS=true"
+  -e "IMAGE_NAME=$IMAGE_NAME"
+  -e "VALIDATION_REPORT_NAME=$VALIDATION_REPORT_NAME"
+)
+
+set +e
+docker run --rm --privileged --cap-add=SYS_ADMIN \
+  --security-opt seccomp=unconfined --security-opt apparmor=unconfined \
+  --security-opt systempaths=unconfined --pid=host --volume /sys:/sys:ro \
+  --device /dev/loop-control --device /dev/fuse --device-cgroup-rule='b 7:* rmw' --platform linux/amd64 \
+  -v "$ROOT_DIR:/workspace" -w /workspace \
+  "${docker_env[@]}" node:22-bookworm bash -lc '
+    set -Eeuo pipefail
+    export DEBIAN_FRONTEND=noninteractive
+    apt-get update
+    apt-get install -y binutils e2fsprogs file fuse2fs fuse3 jq mtools qemu-user-static util-linux xz-utils
+    for loop_minor in 0 1 2 3 4 5 6 7; do
+      mknod -m 660 "/dev/loop$loop_minor" b 7 "$loop_minor" 2>/dev/null || :
+    done
+    ls -l /dev/loop* || true
+    losetup -f
+    /workspace/scripts/cnb-run-stable-inner.sh
+  '
+inner_status=$?
+set -e
+echo "stable inner exit status: $inner_status"
+if [[ "$inner_status" -ne 0 ]]; then
+  exit "$inner_status"
+fi
+
+cat >"$WORK_DIR/release-notes.md" <<EOF
+## WS1608 One-KVM Rust $ONE_KVM_VERSION
+
+Upstream One-KVM release: [$UPSTREAM_TAG](https://github.com/mofeng-git/One-KVM/releases/tag/$UPSTREAM_TAG)
+
+Build: $BUILD_REVISION. Base: Armbian $BASE_RELEASE_TAG, kernel $BASE_KERNEL, $BASE_FLAVOR.
+
+Built and published by CNB. Hosted validation cannot flash a physical WS1608; this is not a hardware boot result.
+EOF
+
+{
+  printf 'BASE_ID=%q\n' "$BASE_ID"
+  printf 'BASE_FLAVOR=%q\n' "$BASE_FLAVOR"
+  printf 'BASE_KERNEL=%q\n' "$BASE_KERNEL"
+  printf 'BASE_BOARD=%q\n' "$BASE_BOARD"
+  printf 'BASE_RELEASE_TAG=%q\n' "$BASE_RELEASE_TAG"
+  printf 'BASE_IMAGE_NAME=%q\n' "$BASE_IMAGE_NAME"
+  printf 'BASE_IMAGE_URL=%q\n' "$BASE_IMAGE_URL"
+  printf 'BASE_IMAGE_SHA256=%q\n' "$BASE_IMAGE_SHA256"
+  printf 'AMLIMG_REPOSITORY=%q\n' "$AMLIMG_REPOSITORY"
+  printf 'AMLIMG_COMMIT=%q\n' "$AMLIMG_COMMIT"
+  printf 'ONE_KVM_VERSION=%q\n' "$ONE_KVM_VERSION"
+  printf 'UPSTREAM_TAG=%q\n' "$UPSTREAM_TAG"
+  printf 'PACKAGE_NAME=%q\n' "$PACKAGE_NAME"
+  printf 'PACKAGE_URL=%q\n' "$PACKAGE_URL"
+  printf 'PACKAGE_DIGEST=%q\n' "$PACKAGE_DIGEST"
+  printf 'BUILD_TAG=%q\n' "$BUILD_TAG"
+  printf 'BUILD_NUMBER=%q\n' "$BUILD_NUMBER"
+  printf 'BUILD_REVISION=%q\n' "$BUILD_REVISION"
+  printf 'BUILDER_COMMIT=%q\n' "$BUILDER_COMMIT"
+  printf 'PUBLISH=%q\n' "$PUBLISH"
+  printf 'RELEASE_PRERELEASE=%q\n' "$RELEASE_PRERELEASE"
+  printf 'OUTPUT_DIR=%q\n' "$OUTPUT_DIR"
+  printf 'WORK_DIR=%q\n' "$WORK_DIR"
+  printf 'AMLIMG_BIN=%q\n' "$AMLIMG_BIN"
+  printf 'IMAGE_NAME=%q\n' "$IMAGE_NAME"
+  printf 'VALIDATION_REPORT_NAME=%q\n' "$VALIDATION_REPORT_NAME"
+  printf 'RELEASE_NOTES_FILE=%q\n' "$WORK_DIR/release-notes.md"
+} >"$CONTEXT_FILE"
+touch "$CHANGED_FILE"
+echo "stable build ready for CNB attachment transfer: $BUILD_TAG"

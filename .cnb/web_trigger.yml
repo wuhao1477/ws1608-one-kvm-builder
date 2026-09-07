@@ -1,0 +1,44 @@
+branch:
+  - reg: ^main$
+    buttons:
+      - name: Stable build
+        description: Build and optionally publish the stable image
+        event: web_trigger_stable
+        permissions:
+          roles: [master, developer]
+        inputs:
+          force:
+            name: force
+            type: switch
+            default: "false"
+          publish:
+            name: publish
+            type: switch
+            default: "true"
+          prerelease:
+            name: prerelease
+            type: switch
+            default: "false"
+  - reg: ^codex/hcodec-.*$
+    buttons:
+      - name: HCODEC candidate
+        description: Build and upload an HCODEC ARMv7 candidate
+        event: web_trigger_hcodec
+        permissions:
+          roles: [master, developer]
+  - reg: ^codex/amlenc-.*$
+    buttons:
+      - name: AMLENC candidate
+        description: Build and optionally publish an untested AMLENC candidate
+        event: web_trigger_amlenc
+        permissions:
+          roles: [master, developer]
+        inputs:
+          publish:
+            name: publish
+            type: switch
+            default: "false"
+          acknowledge_experimental:
+            name: acknowledge_experimental
+            type: switch
+            default: "false"

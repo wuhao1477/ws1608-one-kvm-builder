@@ -35,12 +35,15 @@ test('release shell entrypoints reject path-bearing artifact names first', () =>
   }
 });
 
-test('release discovery includes repository tag refs hidden from the draft Release API', () => {
-  const script = read('scripts/discover-release.sh');
-  assert.match(script, /tags\?per_page=100/);
-  assert.match(script, /"\$release_file" "\$releases_file" "\$tags_file" "\$FORCE_BUILD"/);
-  assert.match(script, /WORKFLOW_RUN_NUMBER=\$\{GITHUB_RUN_NUMBER:-\}/);
-  assert.match(script, /"\$WORKFLOW_RUN_NUMBER" "\$WORKFLOW_RUN_ATTEMPT"/);
+test('CNB release discovery includes repository tag refs hidden from the draft Release API', () => {
+  const script = read('scripts/cnb-discover-release.sh');
+  assert.match(script, /cnb releases list-releases/);
+  assert.match(script, /cnb git list-tags/);
+  assert.match(script, /"\$TMP_DIR\/releases\.json"/);
+  assert.match(script, /"\$TMP_DIR\/tags\.json"/);
+  assert.match(script, /WORKFLOW_RUN_NUMBER=\$\{CNB_BUILD_NUMBER:-\$\{GITHUB_RUN_NUMBER:-\}\}/);
+  assert.match(script, /WORKFLOW_RUN_ATTEMPT=\$\{CNB_BUILD_ATTEMPT:-\$\{GITHUB_RUN_ATTEMPT:-\}\}/);
+  assert.match(script, /"\$FORCE_BUILD" "\$WORKFLOW_RUN_NUMBER" "\$WORKFLOW_RUN_ATTEMPT"/);
 });
 
 test('the metadata CLI verifies all workflow identity fields', () => {

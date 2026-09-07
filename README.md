@@ -9,10 +9,44 @@ Linux 6.12 HCODEC 研究路线。
 - 唯一稳定底座：Armbian `26.8.0-trunk.413`、Debian Trixie、
   Linux `6.12.28-current-meson`、`base-20260804-consolefix`。
 - 当前稳定 Release：
-  [`ws1608-one-kvm-0.2.6-v260802-b028001`](https://github.com/wuhao1477/ws1608-one-kvm-builder/releases/tag/ws1608-one-kvm-0.2.6-v260802-b028001)。
+  [`ws1608-one-kvm-0.2.6-v260802-b028001`](https://cnb.cool/wuhao1477/ws1608-one-kvm-builder/-/releases/tag/ws1608-one-kvm-0.2.6-v260802-b028001)。
 - 稳定底座已经具备实体启动、HDMI、网络、SSH、eMMC 和 One-KVM 运行证据。
-- H.264 HCODEC 候选尚未通过 WS1608 实机编码测试；不得把资料或 CI 结果
-  写成硬件已经可用。
+- H.264 HCODEC `run-16-1` 已在 WS1608 完成一次 640×480、MMAP、单帧硬件编码：
+  内核日志确认 `SEQUENCE`、`PICTURE`、`IDR` 完成，生成 6547 字节有效 Annex-B
+  H.264，`ffprobe` 读到 1 帧且 `ffmpeg` 解码成功；但探针在 `STREAMOFF` 清理阶段
+  未返回并导致 SSH 超时，完整实机验收仍阻塞，不创建 PR。
+- `run-12-1` 候选已能启动并注册 `/dev/video0`，`cma=128M` 生效。
+  640×480 单帧 probe 中 `SEQUENCE` 与 `PICTURE` 成功，但 IDR 输出 7 字节后
+  超时并返回 `-110`；CMA 充足，设备未发生 kernel panic。
+- 下一候选改用 Hardkernel Linux `5aed95d35d252cafc75ce613a3a0052285662de2`
+  的 `h264_enc_mix_dump_dblk.h`，生成 9536 字节 Meson8b dblk 微码，摘要为
+  `2a5b578c4cbfe2f9b80c110825d61bc94eba97667639fc5bf5639f1b7eec4368`。
+- GitHub Actions run `33854312358` 已生成并复验 `run-13-1` artifact；设备安装、
+  重启和 `/dev/video0` 启动均成功，但唯一一次 640×480、MMAP、1 帧 probe
+  超时并导致设备失联，未产生有效 H.264，仍未创建 PR。
+- GitHub Actions run `33874935950` 生成并复验 `run-15-1` artifact；该候选补齐
+  Meson8b Assist `INT1=0x19`。设备重启和启动检查均成功，但唯一一次 640×480、
+  MMAP、1 帧 probe 超过 120 秒未完成，输出为 0 字节，设备随后失联；`pstore`
+  为空，仍未创建 PR。
+- GitHub Actions run `33893613040` 生成并复验 `run-16-1` artifact；修复 Meson8b
+  微码长度门槛后，设备安装、重启、`/dev/video0`、`cma=128M`、模块 vermagic
+  和 9536 字节固件摘要均正确。唯一一次 640×480、MMAP、1 帧 probe 已完成硬件
+  编码，输出 SHA-256 为 `af392c6132fb1b349c62a0609164a5d92fb5dbda0805709614e00dfa636f407a`；
+  但工具在 `STREAMOFF` 清理阶段阻塞，SSH 超时，重启后 `pstore` 为空。该结果
+  证明编码数据路径可用，但清理路径未通过，仍不创建 PR。
+- GitHub Actions run `33967514846` 生成并复验 `run-24-1` artifact；安装保留构建
+  模块索引后，`armbian-zram-config.service` 已正常启动。唯一一次相同的 probe
+  返回 `0` 并生成同一有效码流，但设备随后失联；该候选只证明数据路径和用户态
+  清理返回，仍不创建 PR。下个候选会用 `capture-probe.sh` 保存持久化内核 trace。
+- GitHub Actions run `33973657980` 生成并复验 `run-25-1` artifact；持久化 trace
+  证明 probe、两个 `STREAMOFF` 和 `power_off end` 均在约一秒内返回 `0`，但设备
+  随后失联。下一候选仅让 Meson8b 保留 HCODEC 内部门控，仍不创建 PR。
+- GitHub Actions run `33987050987` 生成并复验 `run-29-1` artifact；WS1608 完成
+  640×480、MMAP、30 帧编码，输出 1 IDR、29 P 帧和 6866 字节码流。独立
+  `ffprobe` 识别 30 帧 640×480 Baseline H.264，`ffmpeg` 解码成功，SHA-256 为
+  `7d50f102b6405fcc637467a61a8c5ef62ef0c90f2af88136a2f9f9ae97f6413f`。编码和
+  `power_off end` 已通过，但测试后设备失联，稳定性验收未通过；下一构建加入
+  `capture-stability-probe.sh` 持久化 60 秒健康记录，仍不创建 PR。
 
 ## 自动更新规则
 
@@ -40,10 +74,14 @@ One-KVM 使用 `h264_v4l2m2m` 后端。
 - 附带模块是 AArch64 `6.12.98-ipkvm-release`，不能加载到 ARMv7
   `6.12.28-current-meson`；
 - 补丁与最终驱动不是同一修订，Meson8b 时钟和 HHI 资源仍需修正；
-- 缺少可追溯的 `meson8b_h264.bin` 固件；
+- 固件来源已固定为 Hardkernel M8 dblk 微码；新候选仍需实机验证；
 - `cma=128M` 是基于 1080p 缓冲预算的候选值，不是实机结论；
 - One-KVM 实验探测需要 `ONE_KVM_V4L2M2M_ALLOW=1`，通过独立编码测试前
   不写入稳定服务配置。
+- ARMv7 实机验证已确认 HCODEC probe 可到达 `/dev/video0`，V4L2 队列、
+  `start_streaming`、workspace 分配、`SEQUENCE/PICTURE/IDR` 命令和单帧 Annex-B
+  输出可通过；当前阻塞点是成功编码后的 `STREAMOFF` 清理路径。清理路径修复并
+  完成新的云构建、刷写和单帧验证前不创建 PR。
 
 Linux 3.10、Bullseye、`/dev/amvenc_avc`、`libvpcodec`、双内核和 kexec
 路线已经废弃，仅作为历史研究记录保留。正式决策见
@@ -55,7 +93,7 @@ CI 会重新解包成品并验证 Amlogic v2 CRC、boot FAT、Linux console、12
 标准条目、分区 VERIFY、非 rootfs 分区一致性、One-KVM armhf 包、systemd、
 OTG、ext4、manifest、压缩往返和所有摘要。
 
-GitHub 托管 runner 没有实体 WS1608、采集卡或被控机 USB。加入新内核或
+CNB 托管 runner 没有实体 WS1608、采集卡或被控机 USB。加入新内核或
 设备树的 HCODEC 候选必须保持 `hardware_boot_tested=false` 和
 `hardware_encoder_tested=false`，直到对应实机验收完成。
 
@@ -68,7 +106,7 @@ pnpm test
 ```
 
 完整镜像构建需要 Linux、root、qemu-user-static、Go、Node.js、e2fsprogs、
-mtools 和固定 AmlImg 工具；macOS 上优先使用 GitHub Actions。
+mtools 和固定 AmlImg 工具；macOS 上优先使用 CNB 流水线。
 
 ## 文档
 

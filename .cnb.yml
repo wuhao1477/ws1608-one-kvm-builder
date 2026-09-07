@@ -1,0 +1,200 @@
+.stable-artifact-stages: &stable-artifact-stages
+  - name: build-stable
+    timeout: 2h
+    script: ./scripts/cnb-run-stable.sh
+  - name: upload-stable-artifact
+    if: |
+      [ "${CNB_PULL_REQUEST:-false}" != true ] && test -f .build/cnb-stable/changed
+    image: cnbcool/attachments:latest
+    settings:
+      attachments:
+        - "./out/cnb-stable/*/*"
+      ttl: 14
+    exports:
+      ASSET_FILES: FILES
+  - name: download-and-finalize-stable
+    if: test -f .build/cnb-stable/changed
+    timeout: 2h
+    script: |
+      if [ "${CNB_PULL_REQUEST:-false}" = true ]; then
+        ./scripts/cnb-finalize-stable.sh .build/cnb-stable/context.env '' local
+      else
+        ./scripts/cnb-download-commit-assets.sh .build/cnb-stable/download
+        ./scripts/cnb-finalize-stable.sh .build/cnb-stable/context.env .build/cnb-stable/download
+      fi
+
+.hcodec-artifact-stages: &hcodec-artifact-stages
+  - name: build-hcodec
+    timeout: 2h
+    script: ./scripts/cnb-run-hcodec.sh
+  - name: upload-hcodec-artifact
+    if: '[ "${CNB_PULL_REQUEST:-false}" != true ]'
+    image: cnbcool/attachments:latest
+    settings:
+      attachments:
+        - "./out/hcodec/artifact/*"
+      ttl: 14
+    exports:
+      ASSET_FILES: FILES
+  - name: download-and-verify-hcodec
+    timeout: 2h
+    script: |
+      if [ "${CNB_PULL_REQUEST:-false}" = true ]; then
+        ./experimental/hcodec/scripts/verify-artifact.sh out/hcodec/artifact
+      else
+        ./scripts/cnb-download-commit-assets.sh .build/hcodec/download
+        ./experimental/hcodec/scripts/verify-artifact.sh .build/hcodec/download
+      fi
+
+.amlenc-artifact-stages: &amlenc-artifact-stages
+  - name: build-amlenc
+    timeout: 3h
+    script: ./scripts/cnb-run-amlenc.sh
+  - name: upload-amlenc-artifact
+    if: '[ "${CNB_PULL_REQUEST:-false}" != true ]'
+    image: cnbcool/attachments:latest
+    settings:
+      attachments:
+        - "./out/amlenc/burn/*"
+      ttl: 14
+    exports:
+      ASSET_FILES: FILES
+  - name: download-and-verify-amlenc
+    timeout: 3h
+    script: |
+      if [ "${CNB_PULL_REQUEST:-false}" = true ]; then
+        ./scripts/cnb-finalize-amlenc.sh .build/amlenc/context.env '' local
+      else
+        ./scripts/cnb-download-commit-assets.sh .build/amlenc/download
+        ./scripts/cnb-finalize-amlenc.sh .build/amlenc/context.env .build/amlenc/download
+      fi
+
+main:
+  "crontab: 17 2 * * 0":
+    - name: stable-weekly-check
+      lock:
+        key: ws1608-stable-release
+        wait: true
+        cancel-in-wait: true
+      runner:
+        cpus: 16
+      services:
+        - docker
+      stages: *stable-artifact-stages
+
+$:
+  pull_request:
+    - name: contract
+      stages:
+        - name: node-contracts
+          image: node:22
+          script: |
+            apt-get update
+            apt-get install -y ffmpeg file jq xz-utils
+            npm test
+        - name: shell-contracts
+          script: |
+            for script in scripts/*.sh experimental/amlenc/scripts/*.sh experimental/hcodec/scripts/*.sh; do
+              bash -n "$script"
+            done
+    - name: stable-pr-build
+      ifModify:
+        - .cnb.yml
+        - config/**
+        - scripts/**
+        - tests/**
+        - package.json
+      runner:
+        cpus: 16
+      services:
+        - docker
+      env:
+        FORCE_BUILD: "true"
+        PUBLISH: "false"
+      stages: *stable-artifact-stages
+  api_trigger_cnb_migration_contract:
+    - name: migration-contract
+      stages:
+        - name: node-contracts
+          image: node:22
+          script: |
+            apt-get update
+            apt-get install -y ffmpeg file jq xz-utils
+            npm test
+        - name: shell-contracts
+          script: |
+            for script in scripts/*.sh experimental/amlenc/scripts/*.sh experimental/hcodec/scripts/*.sh; do
+              bash -n "$script"
+            done
+  api_trigger_one-kvm-release:
+    - name: stable-api-build
+      lock:
+        key: ws1608-stable-release
+        wait: true
+        cancel-in-wait: true
+      runner:
+        cpus: 16
+      services:
+        - docker
+      env:
+        FORCE_BUILD: "false"
+        PUBLISH: "true"
+        RELEASE_PRERELEASE: "false"
+      stages: *stable-artifact-stages
+  web_trigger_stable:
+    - name: stable-manual-build
+      lock:
+        key: ws1608-stable-release
+        wait: true
+        cancel-in-wait: true
+      runner:
+        cpus: 16
+      services:
+        - docker
+      env:
+        FORCE_BUILD: $force
+        PUBLISH: $publish
+        RELEASE_PRERELEASE: $prerelease
+      stages: *stable-artifact-stages
+  web_trigger_hcodec:
+    - name: hcodec-manual-candidate
+      runner:
+        cpus: 16
+      services:
+        - docker
+      stages: *hcodec-artifact-stages
+  web_trigger_amlenc:
+    - name: amlenc-manual-candidate
+      runner:
+        cpus: 16
+      services:
+        - docker
+      env:
+        PUBLISH: $publish
+        ACKNOWLEDGE_EXPERIMENTAL: $acknowledge_experimental
+      stages: *amlenc-artifact-stages
+
+"codex/hcodec-*":
+  push:
+    - name: hcodec-candidate
+      runner:
+        cpus: 16
+      services:
+        - docker
+      stages: *hcodec-artifact-stages
+  pull_request:
+    - name: hcodec-candidate-pr
+      runner:
+        cpus: 16
+      services:
+        - docker
+      stages: *hcodec-artifact-stages
+
+"codex/amlenc-*":
+  pull_request:
+    - name: amlenc-candidate-pr
+      runner:
+        cpus: 16
+      services:
+        - docker
+      stages: *amlenc-artifact-stages

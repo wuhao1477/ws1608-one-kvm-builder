@@ -20,6 +20,7 @@ test('the image builder requires and embeds immutable build provenance', () => {
     assert.match(buildScript, new RegExp(`${variable}=\\$\\{${variable}:\\?`));
   }
   assert.match(buildScript, /write-image-metadata\.mjs/);
+  assert.match(fs.readFileSync('scripts/build-tools.sh', 'utf8'), /AMLIMG_GIT_PROXY/);
   assert.match(buildScript, /IMAGE_NAME=\$\{IMAGE_NAME:\?/);
   assert.doesNotMatch(buildScript, /release-identity\.mjs/);
   assert.match(buildScript, /One-KVM_\$\{image_identity\}_\$\{BASE_FLAVOR\}\.burn\.img/);
@@ -29,6 +30,12 @@ test('the image builder requires and embeds immutable build provenance', () => {
   assert.match(buildScript, /findmnt/);
   assert.match(buildScript, /verify-boot-console\.sh/);
   assert.match(buildScript, /cleanup_mounts\(\) \(/);
+  assert.match(buildScript, /losetup --find --show/);
+  assert.match(buildScript, /CNB_FUSE_ROOTFS/);
+  assert.match(buildScript, /fuse2fs -o rw/);
+  assert.match(buildScript, /CNB_FUSE_ROOTFS.*!= true/);
+  assert.match(verifyScript, /losetup --find --show --read-only/);
+  assert.match(verifyScript, /fuse2fs -o ro/);
   assert.match(manifestScript, /build_tag: env\('BUILD_TAG'\)/);
   assert.match(manifestScript, /build_number: Number\(env\('BUILD_NUMBER'\)\)/);
 });

@@ -1,0 +1,665 @@
+From e26553457769fb870fbbf13c228c6b8b1976ea3a Mon Sep 17 00:00:00 2001
+From: Meson Codec <meson-codec@localhost>
+Date: Sun, 23 Aug 2026 18:16:17 +0800
+Subject: [PATCH] media: meson: implement fixed-CQP GXL H.264 backend
+
+Port the minimum GXL HCODEC protocol needed for a testable encoder.
+
+Configure Canvas NV12 MFDIN, fixed QP tables, and firmware workspace.
+
+Submit sequence, picture and IDR commands through the mailbox IRQ.
+Bound every wait and reset HCODEC after errors.
+
+Emit SPS, PPS and IDR in one V4L2 CAPTURE buffer. This makes the
+first output an independently decodable Annex-B access unit.
+
+P-frame state and standard controls follow hardware validation.
+
+Signed-off-by: Meson Codec <meson-codec@localhost>
+---
+ .../platform/amlogic/meson-venc/meson-venc.c  | 474 +++++++++++++++++-
+ 1 file changed, 449 insertions(+), 25 deletions(-)
+
+diff --git a/drivers/media/platform/amlogic/meson-venc/meson-venc.c b/drivers/media/platform/amlogic/meson-venc/meson-venc.c
+index df66f37..37d6552 100644
+--- a/drivers/media/platform/amlogic/meson-venc/meson-venc.c
++++ b/drivers/media/platform/amlogic/meson-venc/meson-venc.c
+@@ -1,12 +1,12 @@
+ // SPDX-License-Identifier: GPL-2.0-only
+ /*
+- * Amlogic Meson V4L2 memory-to-memory encoder scaffold
++ * Amlogic Meson V4L2 memory-to-memory H.264 encoder
+  *
+  * Copyright (C) 2026 Meson Codec contributors
+  *
+- * M0 deliberately contains no vendor register programming.  device_run()
+- * returns buffers with an error until a reviewed HCODEC backend is
+- * installed.
++ * The fixed-CQP GXL backend is derived from the register protocol used by
++ * Amlogic's GPL-2.0 Linux 4.9 encoder driver.  The userspace ABI is V4L2 M2M;
++ * no vendor character-device ABI is retained.
+  */
+ 
+ #include <linux/align.h>
+@@ -48,14 +48,19 @@
+ #define MESON_VENC_MIN_CODED_SIZE SZ_512K
+ #define MESON_VENC_FW_NAME	"meson/venc/gxl_h264.bin"
+ #define MESON_VENC_MC_SIZE	SZ_32K
++#define MESON_VENC_MC_DATA_SIZE	(24 * SZ_1K)
+ #define MESON_VENC_MC_DMA_COUNT	0x1000
+ #define MESON_VENC_CLOCK_RATE	500000000UL
+ #define MESON_VENC_DMA_TIMEOUT_US 1000000
+ #define MESON_VENC_ASSIST_SIZE	(768 * SZ_1K)
++#define MESON_VENC_DUMP_BYTES_PER_MB 80U
++#define MESON_VENC_CBR_SIZE	SZ_8K
+ #define MESON_VENC_WORK_ALIGN	SZ_64K
+ #define MESON_VENC_CANVAS_COUNT	8
+ #define MESON_VENC_INPUT_CANVAS_Y 6
+ #define MESON_VENC_INPUT_CANVAS_UV 7
++#define MESON_VENC_CQP		26U
++#define MESON_VENC_CMD_TIMEOUT_MS	2000U
+ 
+ #define AO_RTI_GEN_PWR_SLEEP0	0xe8
+ #define AO_RTI_GEN_PWR_ISO0	0xec
+@@ -77,11 +82,36 @@
+ #define HCODEC_IMEM_DMA_COUNT		0x4d08
+ #define HCODEC_HENC_SCRATCH_0		0x6b00
+ #define HCODEC_HENC_SCRATCH_1		0x6b04
++#define HCODEC_HENC_SCRATCH_3		0x6b0c
++#define HCODEC_HENC_SCRATCH_4		0x6b10
++#define HCODEC_HENC_SCRATCH_5		0x6b14
++#define HCODEC_HENC_SCRATCH_6		0x6b18
++#define HCODEC_HENC_SCRATCH_7		0x6b1c
++#define HCODEC_HENC_SCRATCH_8		0x6b20
++#define HCODEC_HENC_SCRATCH_9		0x6b24
++#define HCODEC_HENC_SCRATCH_A		0x6b28
++#define HCODEC_HENC_SCRATCH_B		0x6b2c
++#define HCODEC_HENC_SCRATCH_D		0x6b34
++#define HCODEC_HENC_SCRATCH_E		0x6b38
++#define HCODEC_HENC_SCRATCH_F		0x6b3c
++#define HCODEC_HENC_SCRATCH_G		0x6b40
++#define HCODEC_HENC_SCRATCH_I		0x6b48
++#define HCODEC_HENC_SCRATCH_J		0x6b4c
++#define HCODEC_HENC_SCRATCH_L		0x6b54
++#define HCODEC_IE_DATA_FEED_BUFF_INFO	0x6b60
++#define HCODEC_HDEC_MC_OMEM_AUTO	0x64c0
++#define HCODEC_CURR_CANVAS_CTRL		0x66cc
+ #define HCODEC_ANC0_CANVAS_ADDR		0x6640
+ #define HCODEC_DBKR_CANVAS_ADDR		0x66c0
+ #define HCODEC_DBKW_CANVAS_ADDR		0x66c4
+ #define HCODEC_REC_CANVAS_ADDR		0x66c8
+ #define HCODEC_VLC_HCMD_CONFIG		0x7550
++#define HCODEC_VLC_CONFIG		0x7404
++#define HCODEC_VLC_TOTAL_BYTES		0x7468
++#define HCODEC_VLC_ADV_CONFIG		0x7494
++#define HCODEC_VLC_INT_CONTROL		0x74c0
++#define HCODEC_VLC_PIC_SIZE		0x74c4
++#define HCODEC_VLC_PIC_POSITION		0x74cc
+ #define HCODEC_VLC_VB_START_PTR		0x7440
+ #define HCODEC_VLC_VB_END_PTR		0x7444
+ #define HCODEC_VLC_VB_WR_PTR		0x7448
+@@ -93,6 +123,69 @@
+ #define HCODEC_QDCT_MB_WR_PTR		0x7c48
+ #define HCODEC_QDCT_MB_RD_PTR		0x7c4c
+ #define HCODEC_QDCT_MB_BUFF		0x7c5c
++#define HCODEC_IGNORE_CONFIG		0x7c08
++#define HCODEC_IGNORE_CONFIG_2		0x7c0c
++#define HCODEC_QDCT_MB_CONTROL		0x7c54
++#define HCODEC_QDCT_Q_QUANT_I		0x7c70
++#define HCODEC_QDCT_Q_QUANT_P		0x7c74
++#define HCODEC_QDCT_ADV_CONFIG		0x7cd0
++#define HCODEC_IE_WEIGHT		0x7cd4
++#define HCODEC_Q_QUANT_CONTROL		0x7cd8
++#define HCODEC_QUANT_TABLE_DATA		0x7ce4
++#define HCODEC_SAD_CONTROL_0		0x7ce8
++#define HCODEC_SAD_CONTROL_1		0x7cec
++#define HCODEC_QDCT_VLC_QUANT_CTL_0	0x7cf0
++#define HCODEC_QDCT_VLC_QUANT_CTL_1	0x7cf4
++#define HCODEC_IE_CONTROL		0x7d00
++#define HCODEC_SAD_CONTROL		0x7d0c
++#define HCODEC_IE_RESULT_BUFFER		0x7d10
++#define HCODEC_ME_SKIP_LINE		0x7d34
++#define HCODEC_ME_SAD_ENOUGH_01		0x7d40
++#define HCODEC_ME_SAD_ENOUGH_23		0x7d44
++#define HCODEC_ME_STEP0_CLOSE_MV	0x7d48
++#define HCODEC_ME_F_SKIP_SAD		0x7d4c
++#define HCODEC_ME_F_SKIP_WEIGHT		0x7d50
++#define HCODEC_ME_MV_MERGE_CTL		0x7d54
++#define HCODEC_ME_MV_WEIGHT_01		0x7d58
++#define HCODEC_ME_MV_WEIGHT_23		0x7d5c
++#define HCODEC_ME_SAD_RANGE_INC		0x7d60
++#define HCODEC_ME_WEIGHT		0x7d80
++#define HCODEC_ADV_MV_CTL0		0x7da4
++#define HCODEC_ADV_MV_CTL1		0x7da8
++#define HCODEC_V3_SKIP_CONTROL		0x7db0
++#define HCODEC_V3_SKIP_WEIGHT		0x7dc0
++#define HCODEC_V3_L1_SKIP_MAX_SAD	0x7dc4
++#define HCODEC_V3_L2_SKIP_WEIGHT	0x7dc8
++#define HCODEC_V3_MV_SAD_TABLE		0x7dcc
++#define HCODEC_V3_F_ZERO_CTL_0		0x7dd0
++#define HCODEC_V3_F_ZERO_CTL_1		0x7dd4
++#define HCODEC_V3_IPRED_TYPE_WEIGHT_0	0x7de0
++#define HCODEC_V3_IPRED_TYPE_WEIGHT_1	0x7de4
++#define HCODEC_V3_LEFT_SMALL_MAX_SAD	0x7de8
++#define HCODEC_V4_FORCE_SKIP_CFG	0x7dec
++
++/* GXL moves the MFDIN register bank eight word addresses down. */
++#define HCODEC_MFDIN_CTRL_GXL		0x4024
++#define HCODEC_MFDIN_CANVAS_GXL		0x402c
++#define HCODEC_MFDIN_LINEAR0_GXL	0x4030
++#define HCODEC_MFDIN_LINEAR1_GXL	0x4034
++#define HCODEC_MFDIN_SIZE_GXL		0x4040
++#define HCODEC_MFDIN_ENDIAN_GXL		0x4044
++
++#define HCODEC_ASSIST_AMR1_INT0		0x4094
++#define HCODEC_ASSIST_AMR1_INT1		0x4098
++#define HCODEC_ASSIST_AMR1_INT3		0x40a0
++
++enum meson_venc_command {
++	MESON_VENC_CMD_IDLE = 0,
++	MESON_VENC_CMD_SEQUENCE = 1,
++	MESON_VENC_CMD_PICTURE = 2,
++	MESON_VENC_CMD_IDR = 3,
++	MESON_VENC_STATUS_SEQUENCE_DONE = 7,
++	MESON_VENC_STATUS_PICTURE_DONE = 8,
++	MESON_VENC_STATUS_IDR_DONE = 9,
++	MESON_VENC_STATUS_ERROR = 0xff,
++};
+ 
+ /* DOS top-level registers. */
+ #define DOS_GEN_CTRL0			0xfc08
+@@ -123,6 +216,9 @@ struct meson_venc_workspace {
+ 	size_t recon_offset[2];
+ 	size_t recon_size;
+ 	size_t assist_offset;
++	size_t dump_offset;
++	size_t dump_size;
++	size_t cbr_offset;
+ 	u32 stride;
+ 	u32 height;
+ 	u8 canvas[MESON_VENC_CANVAS_COUNT];
+@@ -154,6 +250,7 @@ struct meson_venc_ctx {
+ 	bool streaming_output;
+ 	bool streaming_capture;
+ 	bool owns_hw;
++	bool aborting;
+ };
+ 
+ static u32 meson_venc_read(struct meson_venc_dev *venc, u32 reg)
+@@ -166,6 +263,189 @@ static void meson_venc_write(struct meson_venc_dev *venc, u32 reg, u32 val)
+ 	writel_relaxed(val, venc->core->dos_base + reg);
+ }
+ 
++static const u32 meson_venc_v3_mv_sad[64] = {
++	0x00000004, 0x00010008, 0x00020010, 0x00030018,
++	0x00040020, 0x00050028, 0x00060038, 0x00070048,
++	0x00080058, 0x00090068, 0x000a0080, 0x000b0098,
++	0x000c00b0, 0x000d00c8, 0x000e00e8, 0x000f0110,
++	0x00100002, 0x00110004, 0x00120008, 0x0013000c,
++	0x00140010, 0x00150014, 0x0016001c, 0x00170024,
++	0x0018002c, 0x00190034, 0x001a0044, 0x001b0054,
++	0x001c0064, 0x001d0074, 0x001e0094, 0x001f00b4,
++	0x00200006, 0x0021000c, 0x0022000c, 0x00230018,
++	0x00240018, 0x00250018, 0x00260018, 0x00270030,
++	0x00280030, 0x00290030, 0x002a0030, 0x002b0030,
++	0x002c0030, 0x002d0030, 0x002e0030, 0x002f0050,
++	0x00300001, 0x00310002, 0x00320002, 0x00330004,
++	0x00340004, 0x00350004, 0x00360004, 0x00370006,
++	0x00380006, 0x00390006, 0x003a0006, 0x003b0006,
++	0x003c0006, 0x003d0006, 0x003e0006, 0x003f0006,
++};
++
++static u32 meson_venc_chroma_qp(u32 qp)
++{
++	static const u8 map[] = {
++		0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14,
++		15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27,
++		28, 29, 29, 30, 31, 32, 32, 33, 34, 34, 35, 35, 36,
++		36, 37, 37, 37, 38, 38, 38, 39, 39, 39,
++	};
++
++	return map[min_t(u32, qp, ARRAY_SIZE(map) - 1)];
++}
++
++static void meson_venc_program_quant_table(struct meson_venc_dev *venc,
++					   u32 start, u32 qp)
++{
++	u32 packed = qp * 0x01010101;
++	unsigned int i;
++
++	meson_venc_write(venc, HCODEC_Q_QUANT_CONTROL,
++			 start << 23 | BIT(22));
++	for (i = 0; i < 8; i++)
++		meson_venc_write(venc, HCODEC_QUANT_TABLE_DATA, packed);
++}
++
++static void meson_venc_program_mfdin(struct meson_venc_ctx *ctx)
++{
++	struct meson_venc_workspace *ws = &ctx->workspace;
++	struct meson_venc_dev *venc = ctx->venc;
++	struct meson_venc_q_data *out;
++	u32 width;
++	u32 height;
++	u32 canvas;
++
++	out = &ctx->q_data[MESON_VENC_QUEUE_OUTPUT];
++	width = ALIGN(out->width, 16);
++	height = out->height;
++	canvas = ws->input_canvas | BIT(28) | BIT(26) | BIT(24);
++
++	/* Canvas-backed NV12 input (iformat 3), 4:2:0 encoder output. */
++	meson_venc_write(venc, HCODEC_MFDIN_CTRL_GXL, 3);
++	meson_venc_write(venc, HCODEC_MFDIN_CANVAS_GXL, canvas);
++	meson_venc_write(venc, HCODEC_MFDIN_LINEAR0_GXL, 0);
++	meson_venc_write(venc, HCODEC_MFDIN_LINEAR1_GXL, 0);
++	meson_venc_write(venc, HCODEC_MFDIN_SIZE_GXL,
++			 width << 14 | height);
++	meson_venc_write(venc, HCODEC_MFDIN_ENDIAN_GXL,
++			 7 | 6 << 3 | 5 << 6 | 4 << 9 |
++			 3 << 12 | 2 << 15 | 1 << 18);
++}
++
++static void meson_venc_protocol_init(struct meson_venc_ctx *ctx)
++{
++	struct meson_venc_dev *venc = ctx->venc;
++	struct meson_venc_q_data *out;
++	u32 qp = MESON_VENC_CQP;
++	u32 chroma_qp = meson_venc_chroma_qp(qp);
++	u32 quant;
++	unsigned int i;
++
++	out = &ctx->q_data[MESON_VENC_QUEUE_OUTPUT];
++
++	meson_venc_write(venc, HCODEC_VLC_TOTAL_BYTES, 0);
++	meson_venc_write(venc, HCODEC_VLC_CONFIG, 0x07);
++	meson_venc_write(venc, HCODEC_VLC_INT_CONTROL, 0);
++	meson_venc_write(venc, HCODEC_ASSIST_AMR1_INT0, 0x15);
++	meson_venc_write(venc, HCODEC_ASSIST_AMR1_INT1, 0x08);
++	meson_venc_write(venc, HCODEC_ASSIST_AMR1_INT3, 0x14);
++	meson_venc_write(venc, HCODEC_HENC_SCRATCH_5, 0);
++	meson_venc_write(venc, HCODEC_HENC_SCRATCH_6, 0);
++	meson_venc_write(venc, HCODEC_HENC_SCRATCH_7, 0);
++	meson_venc_write(venc, HCODEC_HENC_SCRATCH_8, 4);
++	meson_venc_write(venc, HCODEC_HENC_SCRATCH_9, 4);
++	meson_venc_write(venc, HCODEC_HENC_SCRATCH_A, 0);
++	meson_venc_write(venc, HCODEC_HENC_SCRATCH_B, qp);
++	meson_venc_write(venc, HCODEC_HENC_SCRATCH_D, 0x9);
++	meson_venc_write(venc, HCODEC_HENC_SCRATCH_E, 12);
++	meson_venc_write(venc, HCODEC_HENC_SCRATCH_F, 0);
++	meson_venc_write(venc, HCODEC_HENC_SCRATCH_L, 0);
++
++	meson_venc_write(venc, HCODEC_HDEC_MC_OMEM_AUTO,
++			 BIT(31) | (((out->width + 15) / 16 - 1) << 16));
++	meson_venc_write(venc, HCODEC_VLC_ADV_CONFIG,
++			 BIT(9) | BIT(8) | BIT(5) | BIT(4) |
++			 BIT(3) | BIT(2) | BIT(1));
++	meson_venc_write(venc, HCODEC_QDCT_ADV_CONFIG,
++			 GENMASK(29, 24) | BIT(22) | BIT(21) |
++			 BIT(19) | BIT(18) | BIT(14) |
++			 BIT(12) | BIT(10) | BIT(9) | BIT(8) |
++			 BIT(6) | BIT(5) | BIT(4) | BIT(3) |
++			 BIT(2) | 3);
++	meson_venc_write(venc, HCODEC_IE_WEIGHT, 0x5600655);
++	meson_venc_write(venc, HCODEC_ME_WEIGHT, 0x520);
++	meson_venc_write(venc, HCODEC_SAD_CONTROL_0, 0x5600655);
++	meson_venc_write(venc, HCODEC_SAD_CONTROL_1, 0x11100520);
++	meson_venc_write(venc, HCODEC_ADV_MV_CTL0,
++			 BIT(31) | BIT(30) | 0x240 << 16 | 0x3000);
++	meson_venc_write(venc, HCODEC_ADV_MV_CTL1,
++			 0x80 << 16 | BIT(15) | 0xe0);
++
++	meson_venc_program_quant_table(venc, 0, qp);
++	meson_venc_program_quant_table(venc, 8, qp);
++	meson_venc_program_quant_table(venc, 16, qp);
++	meson_venc_write(venc, HCODEC_QDCT_VLC_QUANT_CTL_0,
++			 qp << 13 | qp);
++	meson_venc_write(venc, HCODEC_QDCT_VLC_QUANT_CTL_1,
++			 14 << 6 | 13);
++	meson_venc_write(venc, HCODEC_VLC_PIC_SIZE,
++			 out->width | out->height << 16);
++	meson_venc_write(venc, HCODEC_VLC_PIC_POSITION, 0);
++
++	quant = chroma_qp << 22 | qp << 16 |
++		(chroma_qp % 6) << 12 | (chroma_qp / 6) << 8 |
++		(qp % 6) << 4 | qp / 6;
++	meson_venc_write(venc, HCODEC_QDCT_Q_QUANT_I, quant);
++	meson_venc_write(venc, HCODEC_QDCT_Q_QUANT_P, quant);
++	meson_venc_write(venc, HCODEC_IGNORE_CONFIG, 0);
++	meson_venc_write(venc, HCODEC_IGNORE_CONFIG_2, 0);
++
++	meson_venc_write(venc, HCODEC_QDCT_MB_CONTROL, BIT(9) | BIT(0));
++	meson_venc_write(venc, HCODEC_QDCT_MB_CONTROL,
++			 BIT(29) | BIT(28) | BIT(20) | BIT(19) |
++			 BIT(18) | BIT(17) | BIT(14) | BIT(13) |
++			 BIT(12) | BIT(10));
++	meson_venc_write(venc, HCODEC_SAD_CONTROL, BIT(2) | BIT(0));
++	meson_venc_write(venc, HCODEC_IE_RESULT_BUFFER, 0);
++	meson_venc_write(venc, HCODEC_SAD_CONTROL, BIT(3) | BIT(1));
++	meson_venc_write(venc, HCODEC_IE_CONTROL, BIT(30) | BIT(0));
++	meson_venc_write(venc, HCODEC_IE_CONTROL, BIT(30));
++
++	meson_venc_write(venc, HCODEC_ME_SKIP_LINE,
++			 8 << 24 | 8 << 18 | 2 << 12);
++	meson_venc_write(venc, HCODEC_ME_MV_MERGE_CTL, 0xff4ab080);
++	meson_venc_write(venc, HCODEC_ME_STEP0_CLOSE_MV, 0x40042);
++	meson_venc_write(venc, HCODEC_ME_SAD_ENOUGH_01, 0x4000);
++	meson_venc_write(venc, HCODEC_ME_SAD_ENOUGH_23, 0x20011);
++	meson_venc_write(venc, HCODEC_ME_F_SKIP_SAD, 0);
++	meson_venc_write(venc, HCODEC_ME_F_SKIP_WEIGHT, 0);
++	meson_venc_write(venc, HCODEC_ME_MV_WEIGHT_01, 0);
++	meson_venc_write(venc, HCODEC_ME_MV_WEIGHT_23, 0);
++	meson_venc_write(venc, HCODEC_ME_SAD_RANGE_INC, 1);
++
++	meson_venc_write(venc, HCODEC_V4_FORCE_SKIP_CFG,
++			 qp << 26 | qp << 20 | 5 << 16 | 6 << 12);
++	meson_venc_write(venc, HCODEC_V3_SKIP_CONTROL,
++			 BIT(31) | BIT(28) | BIT(27) | 0x60 << 12 | 0x10);
++	meson_venc_write(venc, HCODEC_V3_SKIP_WEIGHT, 0x00080010);
++	meson_venc_write(venc, HCODEC_V3_L1_SKIP_MAX_SAD, 0x00000006);
++	meson_venc_write(venc, HCODEC_V3_L2_SKIP_WEIGHT, 0x02500003);
++	meson_venc_write(venc, HCODEC_V3_F_ZERO_CTL_0, 0x05700675);
++	meson_venc_write(venc, HCODEC_V3_F_ZERO_CTL_1, 0x00030530);
++	for (i = 0; i < ARRAY_SIZE(meson_venc_v3_mv_sad); i++)
++		meson_venc_write(venc, HCODEC_V3_MV_SAD_TABLE,
++				 meson_venc_v3_mv_sad[i]);
++	meson_venc_write(venc, HCODEC_V3_IPRED_TYPE_WEIGHT_0, 0x08042818);
++	meson_venc_write(venc, HCODEC_V3_IPRED_TYPE_WEIGHT_1, 0x0c08040c);
++	meson_venc_write(venc, HCODEC_V3_LEFT_SMALL_MAX_SAD, 0x00400000);
++	meson_venc_write(venc, HCODEC_IE_DATA_FEED_BUFF_INFO, 0);
++	meson_venc_write(venc, HCODEC_CURR_CANVAS_CTRL, 0);
++	meson_venc_write(venc, HCODEC_VLC_CONFIG,
++			 meson_venc_read(venc, HCODEC_VLC_CONFIG) | BIT(0));
++	meson_venc_write(venc, HCODEC_ASSIST_MBOX2_CLR_REG, 1);
++	meson_venc_write(venc, HCODEC_ASSIST_MBOX2_MASK, 1);
++}
++
+ static void meson_venc_workspace_free(struct meson_venc_ctx *ctx)
+ {
+ 	struct meson_venc_workspace *ws = &ctx->workspace;
+@@ -252,7 +532,14 @@ static int meson_venc_workspace_alloc(struct meson_venc_ctx *ctx)
+ 	ws->assist_offset = ALIGN(ws->recon_offset[1] + ws->recon_size +
+ 				  MESON_VENC_WORK_ALIGN,
+ 				  MESON_VENC_WORK_ALIGN);
+-	ws->size = ALIGN(ws->assist_offset + MESON_VENC_ASSIST_SIZE,
++	ws->dump_offset = ALIGN(ws->assist_offset + MESON_VENC_ASSIST_SIZE,
++				MESON_VENC_WORK_ALIGN);
++	ws->dump_size = ALIGN(DIV_ROUND_UP(out->width, 16) *
++			      DIV_ROUND_UP(out->height, 16) *
++			      MESON_VENC_DUMP_BYTES_PER_MB,
++			      MESON_VENC_WORK_ALIGN);
++	ws->cbr_offset = ws->dump_offset + ws->dump_size;
++	ws->size = ALIGN(ws->cbr_offset + MESON_VENC_CBR_SIZE,
+ 			 MESON_VENC_WORK_ALIGN);
+ 
+ 	ws->vaddr = dma_alloc_coherent(ctx->venc->core->dma_dev, ws->size,
+@@ -293,6 +580,8 @@ static void meson_venc_workspace_program(struct meson_venc_ctx *ctx)
+ 	struct meson_venc_dev *venc = ctx->venc;
+ 	u32 dct = lower_32_bits(ws->dma + ws->dct_offset);
+ 	u32 assist = lower_32_bits(ws->dma + ws->assist_offset);
++	u32 dump = lower_32_bits(ws->dma + ws->dump_offset);
++	u32 cbr = lower_32_bits(ws->dma + ws->cbr_offset);
+ 
+ 	meson_venc_write(venc, HCODEC_QDCT_MB_START_PTR, dct);
+ 	meson_venc_write(venc, HCODEC_QDCT_MB_END_PTR,
+@@ -301,6 +590,12 @@ static void meson_venc_workspace_program(struct meson_venc_ctx *ctx)
+ 	meson_venc_write(venc, HCODEC_QDCT_MB_RD_PTR, dct);
+ 	meson_venc_write(venc, HCODEC_QDCT_MB_BUFF, 0);
+ 	meson_venc_write(venc, HCODEC_HENC_SCRATCH_1, assist);
++	meson_venc_write(venc, HCODEC_HENC_SCRATCH_I, dump);
++	meson_venc_write(venc, HCODEC_HENC_SCRATCH_3, cbr);
++	meson_venc_write(venc, HCODEC_HENC_SCRATCH_4, cbr + SZ_2K);
++	meson_venc_write(venc, HCODEC_HENC_SCRATCH_G,
++			 8 << 28 | 12 << 24 | 2 << 16 | 4);
++	meson_venc_write(venc, HCODEC_HENC_SCRATCH_J, 16 << 16 | 9);
+ 
+ 	meson_venc_write(venc, HCODEC_REC_CANVAS_ADDR,
+ 			 ws->recon_canvas[0]);
+@@ -315,7 +610,8 @@ static void meson_venc_workspace_program(struct meson_venc_ctx *ctx)
+ 
+ static int meson_venc_job_program_buffers(struct meson_venc_ctx *ctx,
+ 					  struct vb2_v4l2_buffer *src,
+-					  struct vb2_v4l2_buffer *dst)
++					  struct vb2_v4l2_buffer *dst,
++					  size_t dst_offset)
+ {
+ 	struct meson_venc_workspace *ws = &ctx->workspace;
+ 	struct meson_venc_dev *venc = ctx->venc;
+@@ -337,9 +633,13 @@ static int meson_venc_job_program_buffers(struct meson_venc_ctx *ctx,
+ 	dst_size = vb2_plane_size(&dst->vb2_buf, 0);
+ 
+ 	if (vb2_plane_size(&src->vb2_buf, 0) < src_size ||
+-	    dst_size < ctx->q_data[MESON_VENC_QUEUE_CAPTURE].sizeimage)
++	    dst_size < ctx->q_data[MESON_VENC_QUEUE_CAPTURE].sizeimage ||
++	    dst_offset >= dst_size)
+ 		return -EINVAL;
+ 
++	dst_dma += dst_offset;
++	dst_size -= dst_offset;
++
+ 	if (upper_32_bits(src_dma) ||
+ 	    upper_32_bits(src_dma + src_size - 1) ||
+ 	    upper_32_bits(dst_dma) ||
+@@ -483,9 +783,11 @@ static int meson_venc_load_firmware(struct meson_venc_dev *venc)
+ 				     "failed to request %s\n",
+ 				     MESON_VENC_FW_NAME);
+ 
+-	if (fw->size < MESON_VENC_MC_SIZE) {
+-		dev_err(venc->dev, "firmware is %zu bytes; expected at least %u\n",
+-			fw->size, MESON_VENC_MC_SIZE);
++	if (fw->size < MESON_VENC_MC_DATA_SIZE ||
++	    fw->size > MESON_VENC_MC_SIZE) {
++		dev_err(venc->dev,
++			"firmware is %zu bytes; expected %u..%u byte raw microcode\n",
++			fw->size, MESON_VENC_MC_DATA_SIZE, MESON_VENC_MC_SIZE);
+ 		ret = -EINVAL;
+ 		goto release_firmware;
+ 	}
+@@ -504,7 +806,8 @@ static int meson_venc_load_firmware(struct meson_venc_dev *venc)
+ 		goto free_dma;
+ 	}
+ 
+-	memcpy(mc_addr, fw->data, MESON_VENC_MC_SIZE);
++	memset(mc_addr, 0, MESON_VENC_MC_SIZE);
++	memcpy(mc_addr, fw->data, fw->size);
+ 	dma_wmb();
+ 	meson_venc_write(venc, HCODEC_MPSR, 0);
+ 	meson_venc_write(venc, HCODEC_CPSR, 0);
+@@ -551,6 +854,121 @@ static int meson_venc_hw_prepare(struct meson_venc_ctx *ctx)
+ 	return 0;
+ }
+ 
++static int meson_venc_prepare_command(struct meson_venc_ctx *ctx,
++				      struct vb2_v4l2_buffer *src,
++				      struct vb2_v4l2_buffer *dst,
++				      size_t dst_offset)
++{
++	struct meson_venc_dev *venc = ctx->venc;
++	int ret;
++
++	meson_venc_write(venc, HCODEC_ASSIST_MBOX2_MASK, 0);
++	meson_venc_write(venc, HCODEC_MPSR, 0);
++	meson_venc_write(venc, HCODEC_CPSR, 0);
++	meson_venc_reset(venc);
++	meson_venc_workspace_program(ctx);
++
++	ret = meson_venc_job_program_buffers(ctx, src, dst, dst_offset);
++	if (ret)
++		return ret;
++
++	meson_venc_program_mfdin(ctx);
++	meson_venc_protocol_init(ctx);
++	dma_wmb();
++	meson_venc_write(venc, HCODEC_HENC_SCRATCH_0,
++			 MESON_VENC_CMD_IDLE);
++	meson_venc_write(venc, HCODEC_MPSR, 1);
++
++	return 0;
++}
++
++static int meson_venc_command(struct meson_venc_ctx *ctx, u32 command,
++			      u32 expected)
++{
++	struct meson_venc_dev *venc = ctx->venc;
++	unsigned long timeout;
++	u32 status;
++
++	reinit_completion(&venc->irq_done);
++	WRITE_ONCE(venc->irq_status, MESON_VENC_CMD_IDLE);
++	meson_venc_write(venc, HCODEC_HENC_SCRATCH_0, command);
++
++	timeout = msecs_to_jiffies(MESON_VENC_CMD_TIMEOUT_MS);
++	timeout = wait_for_completion_timeout(&venc->irq_done, timeout);
++	if (!timeout) {
++		dev_err(venc->dev, "command %u timed out (status %#x)\n",
++			command,
++			meson_venc_read(venc, HCODEC_HENC_SCRATCH_0));
++		return -ETIMEDOUT;
++	}
++
++	if (READ_ONCE(ctx->aborting))
++		return -ECANCELED;
++
++	status = READ_ONCE(venc->irq_status);
++	if (status != expected) {
++		dev_err(venc->dev,
++			"command %u completed with status %#x, expected %#x\n",
++			command, status, expected);
++		return status == MESON_VENC_STATUS_ERROR ? -EIO : -EPROTO;
++	}
++
++	return 0;
++}
++
++static int meson_venc_encode_idr(struct meson_venc_ctx *ctx,
++				 struct vb2_v4l2_buffer *src,
++				 struct vb2_v4l2_buffer *dst,
++				 size_t *payload)
++{
++	struct meson_venc_dev *venc = ctx->venc;
++	size_t dst_size = vb2_plane_size(&dst->vb2_buf, 0);
++	u32 headers;
++	u32 frame;
++	int ret;
++
++	/* Emit SPS and PPS into the beginning of this capture buffer. */
++	ret = meson_venc_prepare_command(ctx, src, dst, 0);
++	if (ret)
++		return ret;
++	ret = meson_venc_command(ctx, MESON_VENC_CMD_SEQUENCE,
++				 MESON_VENC_STATUS_SEQUENCE_DONE);
++	if (ret)
++		return ret;
++	ret = meson_venc_command(ctx, MESON_VENC_CMD_PICTURE,
++				 MESON_VENC_STATUS_PICTURE_DONE);
++	if (ret)
++		return ret;
++
++	headers = meson_venc_read(venc, HCODEC_VLC_TOTAL_BYTES);
++	if (!headers || headers >= dst_size) {
++		dev_err(venc->dev, "invalid SPS/PPS size %u (buffer %zu)\n",
++			headers, dst_size);
++		return -EOVERFLOW;
++	}
++
++	/* The BSP resets HCODEC after PICTURE_DONE. Preserve the headers and
++	 * point the new bitstream ring immediately after them before IDR.
++	 */
++	ret = meson_venc_prepare_command(ctx, src, dst, headers);
++	if (ret)
++		return ret;
++	ret = meson_venc_command(ctx, MESON_VENC_CMD_IDR,
++				 MESON_VENC_STATUS_IDR_DONE);
++	if (ret)
++		return ret;
++
++	frame = meson_venc_read(venc, HCODEC_VLC_TOTAL_BYTES);
++	if (!frame || frame > dst_size - headers) {
++		dev_err(venc->dev, "invalid IDR size %u (remaining %zu)\n",
++			frame, dst_size - headers);
++		return -EOVERFLOW;
++	}
++
++	*payload = headers + frame;
++	return 0;
++}
++
+ static irqreturn_t meson_venc_irq(int irq, void *data)
+ {
+ 	struct meson_venc_dev *venc = data;
+@@ -969,6 +1387,7 @@ static void meson_venc_device_run(void *priv)
+ 	struct meson_venc_q_data *cap;
+ 	struct vb2_v4l2_buffer *src;
+ 	struct vb2_v4l2_buffer *dst;
++	size_t payload = 0;
+ 	int ret;
+ 
+ 	src = v4l2_m2m_src_buf_remove(ctx->fh.m2m_ctx);
+@@ -982,22 +1401,26 @@ static void meson_venc_device_run(void *priv)
+ 		return;
+ 	}
+ 
+-	ret = meson_venc_job_program_buffers(ctx, src, dst);
+-	if (ret)
+-		dev_err_ratelimited(ctx->venc->dev,
+-				    "failed to prepare job buffers: %d\n", ret);
+-
+ 	out = &ctx->q_data[MESON_VENC_QUEUE_OUTPUT];
+ 	cap = &ctx->q_data[MESON_VENC_QUEUE_CAPTURE];
+ 	src->sequence = out->sequence++;
+ 	dst->sequence = cap->sequence++;
+ 	dst->vb2_buf.timestamp = src->vb2_buf.timestamp;
+-	vb2_set_plane_payload(&dst->vb2_buf, 0, 0);
+-
+-	dev_warn_ratelimited(ctx->venc->dev,
+-			     "HCODEC backend is not implemented; rejecting encode job\n");
+-	v4l2_m2m_buf_done(src, VB2_BUF_STATE_ERROR);
+-	v4l2_m2m_buf_done(dst, VB2_BUF_STATE_ERROR);
++	WRITE_ONCE(ctx->aborting, false);
++	ret = meson_venc_encode_idr(ctx, src, dst, &payload);
++	if (ret) {
++		meson_venc_write(ctx->venc, HCODEC_ASSIST_MBOX2_MASK, 0);
++		meson_venc_write(ctx->venc, HCODEC_MPSR, 0);
++		meson_venc_reset(ctx->venc);
++		vb2_set_plane_payload(&dst->vb2_buf, 0, 0);
++		v4l2_m2m_buf_done(src, VB2_BUF_STATE_ERROR);
++		v4l2_m2m_buf_done(dst, VB2_BUF_STATE_ERROR);
++	} else {
++		vb2_set_plane_payload(&dst->vb2_buf, 0, payload);
++		dst->flags |= V4L2_BUF_FLAG_KEYFRAME;
++		v4l2_m2m_buf_done(src, VB2_BUF_STATE_DONE);
++		v4l2_m2m_buf_done(dst, VB2_BUF_STATE_DONE);
++	}
+ 	v4l2_m2m_job_finish(ctx->venc->m2m_dev, ctx->fh.m2m_ctx);
+ }
+ 
+@@ -1005,7 +1428,8 @@ static void meson_venc_job_abort(void *priv)
+ {
+ 	struct meson_venc_ctx *ctx = priv;
+ 
+-	v4l2_m2m_job_finish(ctx->venc->m2m_dev, ctx->fh.m2m_ctx);
++	WRITE_ONCE(ctx->aborting, true);
++	complete(&ctx->venc->irq_done);
+ }
+ 
+ static const struct v4l2_m2m_ops meson_venc_m2m_ops = {
+@@ -1123,7 +1547,7 @@ static int meson_venc_probe(struct platform_device *pdev)
+ 
+ 	platform_set_drvdata(pdev, venc);
+ 	dev_info(&pdev->dev,
+-		 "registered %s with HCODEC lifecycle and IRQ %d; command backend disabled\n",
++		 "registered %s with fixed-CQP GXL H.264 backend and IRQ %d\n",
+ 		 video_device_node_name(&venc->vdev), core->irq);
+ 
+ 	return 0;
+@@ -1156,7 +1580,7 @@ static struct platform_driver meson_venc_driver = {
+ };
+ module_platform_driver(meson_venc_driver);
+ 
+-MODULE_DESCRIPTION("Amlogic Meson V4L2 M2M H.264 encoder scaffold");
++MODULE_DESCRIPTION("Amlogic Meson V4L2 M2M H.264 encoder");
+ MODULE_AUTHOR("Meson Codec contributors");
+ MODULE_LICENSE("GPL");
+ MODULE_FIRMWARE(MESON_VENC_FW_NAME);
+-- 
+2.47.3
+

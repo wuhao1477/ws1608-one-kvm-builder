@@ -1,0 +1,286 @@
+From 1428eb1d6e8831c536936d7e06defd5c31ceb44d Mon Sep 17 00:00:00 2001
+From: Meson Codec <meson-codec@localhost>
+Date: Sun, 23 Aug 2026 11:18:46 +0800
+Subject: [PATCH] media: meson: share DOS resources with encoder child
+
+Keep meson-vdec as the sole owner of the DOS mapping. Register an encoder
+platform child when both optional HCODEC resources exist. Pass borrowed
+resource references to the child and serialize decoder/encoder streaming
+with one hardware mutex. Device trees without the resources remain
+decoder-only.
+
+Signed-off-by: Meson Codec <meson-codec@localhost>
+---
+ MAINTAINERS                                   |  3 +-
+ drivers/staging/media/meson/vdec/vdec.c       | 87 ++++++++++++++++++-
+ drivers/staging/media/meson/vdec/vdec.h       |  7 ++
+ .../linux/platform_data/media/meson-codec.h   | 48 ++++++++++
+ 4 files changed, 142 insertions(+), 3 deletions(-)
+ create mode 100644 include/linux/platform_data/media/meson-codec.h
+
+diff --git a/MAINTAINERS b/MAINTAINERS
+index 8dda2e6..8f9c430 100644
+--- a/MAINTAINERS
++++ b/MAINTAINERS
+@@ -15007,7 +15007,7 @@ S:	Maintained
+ F:	Documentation/devicetree/bindings/mtd/amlogic,meson-nand.yaml
+ F:	drivers/mtd/nand/raw/meson_*
+ 
+-MESON VIDEO DECODER DRIVER FOR AMLOGIC SOCS
++MESON VIDEO CODEC DRIVERS FOR AMLOGIC SOCS
+ M:	Neil Armstrong <neil.armstrong@linaro.org>
+ L:	linux-media@vger.kernel.org
+ L:	linux-amlogic@lists.infradead.org
+@@ -15015,6 +15015,7 @@ S:	Supported
+ T:	git git://linuxtv.org/media.git
+ F:	Documentation/devicetree/bindings/media/amlogic,gx-vdec.yaml
+ F:	drivers/staging/media/meson/vdec/
++F:	include/linux/platform_data/media/meson-codec.h
+ 
+ META ETHERNET DRIVERS
+ M:	Alexander Duyck <alexanderduyck@fb.com>
+diff --git a/drivers/staging/media/meson/vdec/vdec.c b/drivers/staging/media/meson/vdec/vdec.c
+index 6bf7ade..eebbe27 100644
+--- a/drivers/staging/media/meson/vdec/vdec.c
++++ b/drivers/staging/media/meson/vdec/vdec.c
+@@ -9,6 +9,7 @@
+ #include <linux/io.h>
+ #include <linux/module.h>
+ #include <linux/platform_device.h>
++#include <linux/platform_data/media/meson-codec.h>
+ #include <linux/mfd/syscon.h>
+ #include <linux/slab.h>
+ #include <linux/interrupt.h>
+@@ -312,6 +313,11 @@ static int vdec_start_streaming(struct vb2_queue *q, unsigned int count)
+ 	    sess->status == STATUS_INIT)
+ 		return 0;
+ 
++	if (!mutex_trylock(&core->hw_lock)) {
++		ret = -EBUSY;
++		goto bufs_done;
++	}
++
+ 	sess->vififo_size = SIZE_VIFIFO;
+ 	sess->vififo_vaddr =
+ 		dma_alloc_coherent(sess->core->dev, sess->vififo_size,
+@@ -333,7 +339,7 @@ static int vdec_start_streaming(struct vb2_queue *q, unsigned int count)
+ 
+ 	ret = vdec_poweron(sess);
+ 	if (ret)
+-		goto vififo_free;
++		goto hw_unlock;
+ 
+ 	sess->sequence_cap = 0;
+ 	sess->sequence_out = 0;
+@@ -346,7 +352,8 @@ static int vdec_start_streaming(struct vb2_queue *q, unsigned int count)
+ 	schedule_work(&sess->esparser_queue_work);
+ 	return 0;
+ 
+-vififo_free:
++hw_unlock:
++	mutex_unlock(&core->hw_lock);
+ 	dma_free_coherent(sess->core->dev, sess->vififo_size,
+ 			  sess->vififo_vaddr, sess->vififo_paddr);
+ bufs_done:
+@@ -417,6 +424,7 @@ static void vdec_stop_streaming(struct vb2_queue *q)
+ 		sess->priv = NULL;
+ 		core->cur_sess = NULL;
+ 		sess->status = STATUS_STOPPED;
++		mutex_unlock(&core->hw_lock);
+ 	}
+ 
+ 	if (q->type == V4L2_BUF_TYPE_VIDEO_OUTPUT_MPLANE) {
+@@ -992,6 +1000,68 @@ static const struct of_device_id vdec_dt_match[] = {
+ };
+ MODULE_DEVICE_TABLE(of, vdec_dt_match);
+ 
++#if IS_REACHABLE(CONFIG_VIDEO_MESON_VENC)
++static enum meson_codec_revision vdec_codec_revision(struct amvdec_core *core)
++{
++	switch (core->platform->revision) {
++	case VDEC_REVISION_GXL:
++		return MESON_CODEC_REVISION_GXL;
++	case VDEC_REVISION_GXLX:
++		return MESON_CODEC_REVISION_GXLX;
++	case VDEC_REVISION_GXM:
++		return MESON_CODEC_REVISION_GXM;
++	default:
++		return MESON_CODEC_REVISION_GXBB;
++	}
++}
++
++static int vdec_register_venc(struct platform_device *pdev,
++			      struct amvdec_core *core)
++{
++	struct meson_codec_child_data data;
++	struct clk *hcodec_clk;
++	int irq;
++
++	if (core->platform->revision != VDEC_REVISION_GXL &&
++	    core->platform->revision != VDEC_REVISION_GXLX &&
++	    core->platform->revision != VDEC_REVISION_GXM)
++		return 0;
++
++	hcodec_clk = devm_clk_get_optional(core->dev, "hcodec");
++	if (IS_ERR(hcodec_clk))
++		return PTR_ERR(hcodec_clk);
++
++	irq = platform_get_irq_byname_optional(pdev, "venc");
++	if (irq == -ENXIO || !hcodec_clk)
++		return 0;
++	if (irq < 0)
++		return irq;
++
++	data.dos_base = core->dos_base;
++	data.regmap_ao = core->regmap_ao;
++	data.canvas = core->canvas;
++	data.hcodec_clk = hcodec_clk;
++	data.hw_lock = &core->hw_lock;
++	data.revision = vdec_codec_revision(core);
++	data.irq = irq;
++
++	core->venc_pdev = platform_device_register_data(core->dev,
++							"meson-venc",
++							PLATFORM_DEVID_NONE,
++							&data, sizeof(data));
++	if (IS_ERR(core->venc_pdev))
++		return PTR_ERR(core->venc_pdev);
++
++	return 0;
++}
++#else
++static int vdec_register_venc(struct platform_device *pdev,
++			      struct amvdec_core *core)
++{
++	return 0;
++}
++#endif
++
+ static int vdec_probe(struct platform_device *pdev)
+ {
+ 	struct device *dev = &pdev->dev;
+@@ -1083,6 +1153,7 @@ static int vdec_probe(struct platform_device *pdev)
+ 	core->vdev_dec = vdev;
+ 	core->dev_dec = dev;
+ 	mutex_init(&core->lock);
++	mutex_init(&core->hw_lock);
+ 
+ 	strscpy(vdev->name, "meson-video-decoder", sizeof(vdev->name));
+ 	vdev->release = video_device_release;
+@@ -1101,8 +1172,18 @@ static int vdec_probe(struct platform_device *pdev)
+ 		goto err_vdev_release;
+ 	}
+ 
++	ret = vdec_register_venc(pdev, core);
++	if (ret) {
++		dev_err_probe(dev, ret, "failed to register encoder child\n");
++		goto err_vdev_unregister;
++	}
++
+ 	return 0;
+ 
++err_vdev_unregister:
++	video_unregister_device(vdev);
++	v4l2_device_unregister(&core->v4l2_dev);
++	return ret;
+ err_vdev_release:
+ 	video_device_release(vdev);
+ 	v4l2_device_unregister(&core->v4l2_dev);
+@@ -1113,6 +1194,8 @@ static void vdec_remove(struct platform_device *pdev)
+ {
+ 	struct amvdec_core *core = platform_get_drvdata(pdev);
+ 
++	if (core->venc_pdev)
++		platform_device_unregister(core->venc_pdev);
+ 	video_unregister_device(core->vdev_dec);
+ 	v4l2_device_unregister(&core->v4l2_dev);
+ }
+diff --git a/drivers/staging/media/meson/vdec/vdec.h b/drivers/staging/media/meson/vdec/vdec.h
+index e1e731b..4373cd4 100644
+--- a/drivers/staging/media/meson/vdec/vdec.h
++++ b/drivers/staging/media/meson/vdec/vdec.h
+@@ -45,6 +45,7 @@ struct amvdec_timestamp {
+ };
+ 
+ struct amvdec_session;
++struct platform_device;
+ 
+ /**
+  * struct amvdec_core - device parameters, singleton
+@@ -66,6 +67,8 @@ struct amvdec_session;
+  * @v4l2_dev: v4l2 device
+  * @cur_sess: current decoding session
+  * @lock: video device lock
++ * @hw_lock: serializes access to shared DOS hardware
++ * @venc_pdev: optional HCODEC encoder child
+  */
+ struct amvdec_core {
+ 	void __iomem *dos_base;
+@@ -91,6 +94,10 @@ struct amvdec_core {
+ 
+ 	struct amvdec_session *cur_sess;
+ 	struct mutex lock;
++	/* Serializes decoder and encoder ownership of DOS hardware. */
++	struct mutex hw_lock;
++	/* Optional child platform device for the HCODEC encoder. */
++	struct platform_device *venc_pdev;
+ };
+ 
+ /**
+diff --git a/include/linux/platform_data/media/meson-codec.h b/include/linux/platform_data/media/meson-codec.h
+new file mode 100644
+index 0000000..366e672
+--- /dev/null
++++ b/include/linux/platform_data/media/meson-codec.h
+@@ -0,0 +1,48 @@
++/* SPDX-License-Identifier: GPL-2.0-only */
++/*
++ * Shared resources for Meson DOS codec child devices.
++ *
++ * The device described by the vdec DT node remains the sole owner of the
++ * DOS register range. Child drivers receive borrowed references through
++ * this platform data and must not remap or release them.
++ */
++
++#ifndef _PLATFORM_DATA_MEDIA_MESON_CODEC_H
++#define _PLATFORM_DATA_MEDIA_MESON_CODEC_H
++
++#include <linux/compiler_types.h>
++
++struct clk;
++struct meson_canvas;
++struct mutex;
++struct regmap;
++
++enum meson_codec_revision {
++	MESON_CODEC_REVISION_GXBB,
++	MESON_CODEC_REVISION_GXL,
++	MESON_CODEC_REVISION_GXLX,
++	MESON_CODEC_REVISION_GXM,
++};
++
++/**
++ * struct meson_codec_child_data - resources borrowed from the DOS parent
++ * @dos_base: parent-owned mapping of the DOS register range
++ * @regmap_ao: parent-owned always-on bus regmap
++ * @canvas: parent-owned Canvas provider reference
++ * @hcodec_clk: parent-owned HCODEC clock
++ * @hw_lock: serializes users of shared DOS power and reset registers
++ * @revision: SoC generation used to select the HCODEC backend
++ * @irq: HCODEC mailbox interrupt
++ */
++struct meson_codec_child_data {
++	void __iomem *dos_base;
++	struct regmap *regmap_ao;
++	struct meson_canvas *canvas;
++	struct clk *hcodec_clk;
++	/* Serializes child access to shared DOS power and reset controls. */
++	struct mutex *hw_lock;
++	enum meson_codec_revision revision;
++	int irq;
++};
++
++#endif
+-- 
+2.47.3
+

@@ -1,0 +1,246 @@
+From 0ef9e4b1c640f59cbcf54b2c52909c44a7ef2712 Mon Sep 17 00:00:00 2001
+From: Codex <codex@openai.com>
+Date: Wed, 2 Sep 2026 20:34:00 +0800
+Subject: [PATCH 20/20] media: meson: add HCODEC runtime diagnostics
+
+The first Meson8b hardware encode probe can hang after STREAMON before any
+H.264 payload reaches userspace. Add default-on runtime breadcrumbs for the
+candidate branch so the next real-device run can identify whether the lockup
+happens before CPU start, during command delivery, in the mailbox IRQ path, or
+while checking the output ring.
+
+This only adds logging and register snapshots; it does not change the encoder
+protocol or buffer programming sequence.
+
+Signed-off-by: Codex <codex@openai.com>
+---
+ .../media/platform/amlogic/meson-venc/meson-venc.c | 121 ++++++++++++++++++++-
+ 1 file changed, 115 insertions(+), 6 deletions(-)
+
+diff --git a/drivers/media/platform/amlogic/meson-venc/meson-venc.c b/drivers/media/platform/amlogic/meson-venc/meson-venc.c
+index 7e8cdcb..b856e55 100644
+--- a/drivers/media/platform/amlogic/meson-venc/meson-venc.c
++++ b/drivers/media/platform/amlogic/meson-venc/meson-venc.c
+@@ -420,6 +420,70 @@ static void meson_venc_write(struct meson_venc_dev *venc, u32 reg, u32 val)
+ 	writel_relaxed(val, venc->core->dos_base + reg);
+ }
+ 
++static bool meson_venc_trace_runtime_enabled = true;
++module_param_named(trace_runtime, meson_venc_trace_runtime_enabled, bool, 0600);
++MODULE_PARM_DESC(trace_runtime, "log HCODEC encode command stages");
++
++static const char *meson_venc_command_name(u32 command)
++{
++	switch (command) {
++	case MESON_VENC_CMD_IDLE:
++		return "IDLE";
++	case MESON_VENC_CMD_SEQUENCE:
++		return "SEQUENCE";
++	case MESON_VENC_CMD_PICTURE:
++		return "PICTURE";
++	case MESON_VENC_CMD_IDR:
++		return "IDR";
++	case MESON_VENC_CMD_NON_IDR:
++		return "NON_IDR";
++	case MESON_VENC_STATUS_SEQUENCE_DONE:
++		return "SEQUENCE_DONE";
++	case MESON_VENC_STATUS_PICTURE_DONE:
++		return "PICTURE_DONE";
++	case MESON_VENC_STATUS_IDR_DONE:
++		return "IDR_DONE";
++	case MESON_VENC_STATUS_NON_IDR_DONE:
++		return "NON_IDR_DONE";
++	case MESON_VENC_STATUS_ERROR:
++		return "ERROR";
++	default:
++		return "UNKNOWN";
++	}
++}
++
++static void meson_venc_trace_runtime(struct meson_venc_dev *venc,
++				     const char *stage)
++{
++	if (meson_venc_trace_runtime_enabled)
++		dev_info(venc->dev, "trace: %s\n", stage);
++}
++
++static void meson_venc_dump_state(struct meson_venc_dev *venc,
++				  const char *stage)
++{
++	if (!meson_venc_trace_runtime_enabled)
++		return;
++
++	dev_info(venc->dev,
++		 "trace: %s: scratch0=%#x mpsr=%#x cpsr=%#x imem=%#x bytes=%#x vlc=%#x/%#x/%#x qdct=%#x/%#x/%#x/%#x gclk=%#x mempd=%#x\n",
++		 stage,
++		 meson_venc_read(venc, HCODEC_HENC_SCRATCH_0),
++		 meson_venc_read(venc, HCODEC_MPSR),
++		 meson_venc_read(venc, HCODEC_CPSR),
++		 meson_venc_read(venc, HCODEC_IMEM_DMA_CTRL),
++		 meson_venc_read(venc, HCODEC_VLC_TOTAL_BYTES),
++		 meson_venc_read(venc, HCODEC_VLC_VB_START_PTR),
++		 meson_venc_read(venc, HCODEC_VLC_VB_WR_PTR),
++		 meson_venc_read(venc, HCODEC_VLC_VB_END_PTR),
++		 meson_venc_read(venc, HCODEC_QDCT_MB_START_PTR),
++		 meson_venc_read(venc, HCODEC_QDCT_MB_WR_PTR),
++		 meson_venc_read(venc, HCODEC_QDCT_MB_RD_PTR),
++		 meson_venc_read(venc, HCODEC_QDCT_MB_END_PTR),
++		 meson_venc_read(venc, DOS_GCLK_EN0),
++		 meson_venc_read(venc, DOS_MEM_PD_HCODEC));
++}
++
+ static const u32 meson_venc_v3_mv_sad[64] = {
+ 	0x00000004, 0x00010008, 0x00020010, 0x00030018,
+ 	0x00040020, 0x00050028, 0x00060038, 0x00070048,
+@@ -971,8 +1035,10 @@ static void meson_venc_reset(struct meson_venc_dev *venc)
+ 
+ static void meson_venc_start_cpu(struct meson_venc_dev *venc)
+ {
++	meson_venc_trace_runtime(venc, "start_cpu: reset AMRISC");
+ 	meson_venc_pulse_reset(venc, HCODEC_CPU_RESET_MASK);
+ 	meson_venc_write(venc, HCODEC_MPSR, 1);
++	meson_venc_dump_state(venc, "start_cpu: running");
+ }
+ 
+ static int meson_venc_power_on(struct meson_venc_dev *venc)
+@@ -1171,23 +1237,33 @@ static int meson_venc_prepare_command(struct meson_venc_ctx *ctx,
+ 				      size_t dst_offset, bool idr)
+ {
+ 	struct meson_venc_dev *venc = ctx->venc;
++	struct meson_venc_q_data *out =
++		&ctx->q_data[MESON_VENC_QUEUE_OUTPUT];
+ 	int ret;
+ 
++	if (meson_venc_trace_runtime_enabled)
++		dev_info(venc->dev,
++			 "trace: prepare_command: %ux%u offset=%zu idr=%u\n",
++			 out->width, out->height, dst_offset, idr ? 1 : 0);
++
+ 	meson_venc_write(venc, HCODEC_ASSIST_MBOX2_MASK, 0);
+ 	meson_venc_write(venc, HCODEC_MPSR, 0);
+ 	meson_venc_write(venc, HCODEC_CPSR, 0);
+ 	meson_venc_reset(venc);
+ 	meson_venc_workspace_program(ctx);
++	meson_venc_dump_state(venc, "prepare_command: reset complete");
+ 
+ 	ret = meson_venc_job_program_buffers(ctx, src, dst, dst_offset);
+ 	if (ret)
+ 		return ret;
++	meson_venc_dump_state(venc, "prepare_command: buffers programmed");
+ 
+ 	meson_venc_program_mfdin(ctx);
+ 	meson_venc_protocol_init(ctx, idr);
+ 	dma_wmb();
+ 	meson_venc_write(venc, HCODEC_HENC_SCRATCH_0,
+ 			 MESON_VENC_CMD_IDLE);
++	meson_venc_dump_state(venc, "prepare_command: protocol ready");
+ 	meson_venc_start_cpu(venc);
+ 
+ 	return 0;
+@@ -1200,16 +1276,23 @@ static int meson_venc_command(struct meson_venc_ctx *ctx, u32 command,
+ 	unsigned long timeout;
+ 	u32 status;
+ 
++	if (meson_venc_trace_runtime_enabled)
++		dev_info(venc->dev, "trace: command: send %s(%u), expect %s(%u)\n",
++			 meson_venc_command_name(command), command,
++			 meson_venc_command_name(expected), expected);
++	meson_venc_dump_state(venc, "command: before write");
+ 	reinit_completion(&venc->irq_done);
+ 	WRITE_ONCE(venc->irq_status, MESON_VENC_CMD_IDLE);
+ 	meson_venc_write(venc, HCODEC_HENC_SCRATCH_0, command);
++	meson_venc_dump_state(venc, "command: after write");
+ 
+ 	timeout = msecs_to_jiffies(MESON_VENC_CMD_TIMEOUT_MS);
+ 	timeout = wait_for_completion_timeout(&venc->irq_done, timeout);
+ 	if (!timeout) {
++		meson_venc_dump_state(venc, "command: timeout");
+ 		dev_err(venc->dev,
+-			"command %u timeout: status %#x bytes %#x VLC %#x/%#x DCT %#x/%#x\n",
+-			command,
++			"command %s(%u) timeout: status %#x bytes %#x VLC %#x/%#x DCT %#x/%#x\n",
++			meson_venc_command_name(command), command,
+ 			meson_venc_read(venc, HCODEC_HENC_SCRATCH_0),
+ 			meson_venc_read(venc, HCODEC_VLC_TOTAL_BYTES),
+ 			meson_venc_read(venc, HCODEC_VLC_VB_WR_PTR),
+@@ -1224,12 +1307,22 @@ static int meson_venc_command(struct meson_venc_ctx *ctx, u32 command,
+ 
+ 	status = READ_ONCE(venc->irq_status);
+ 	if (status != expected) {
++		meson_venc_dump_state(venc, "command: unexpected status");
+ 		dev_err(venc->dev,
+-			"command %u completed with status %#x, expected %#x\n",
+-			command, status, expected);
++			"command %s(%u) completed with status %s(%#x), expected %s(%#x)\n",
++			meson_venc_command_name(command), command,
++			meson_venc_command_name(status), status,
++			meson_venc_command_name(expected), expected);
+ 		return status == MESON_VENC_STATUS_ERROR ? -EIO : -EPROTO;
+ 	}
+ 
++	if (meson_venc_trace_runtime_enabled)
++		dev_info(venc->dev,
++			 "trace: command: completed %s(%u), bytes=%#x\n",
++			 meson_venc_command_name(command), command,
++			 meson_venc_read(venc, HCODEC_VLC_TOTAL_BYTES));
++	meson_venc_dump_state(venc, "command: complete");
++
+ 	return 0;
+ }
+ 
+@@ -1559,13 +1652,18 @@ static int meson_venc_encode_p(struct meson_venc_ctx *ctx,
+ static irqreturn_t meson_venc_irq(int irq, void *data)
+ {
+ 	struct meson_venc_dev *venc = data;
++	u32 status;
+ 
+ 	if (!READ_ONCE(venc->powered))
+ 		return IRQ_NONE;
+ 
+ 	meson_venc_write(venc, HCODEC_ASSIST_MBOX2_CLR_REG, 1);
+-	WRITE_ONCE(venc->irq_status,
+-		   meson_venc_read(venc, HCODEC_HENC_SCRATCH_0));
++	status = meson_venc_read(venc, HCODEC_HENC_SCRATCH_0);
++	WRITE_ONCE(venc->irq_status, status);
++	if (meson_venc_trace_runtime_enabled)
++		dev_info(venc->dev, "trace: irq: status %s(%#x), bytes=%#x\n",
++			 meson_venc_command_name(status), status,
++			 meson_venc_read(venc, HCODEC_VLC_TOTAL_BYTES));
+ 	complete(&venc->irq_done);
+ 
+ 	return IRQ_HANDLED;
+@@ -2194,6 +2292,11 @@ static void meson_venc_device_run(void *priv)
+ 	WRITE_ONCE(ctx->aborting, false);
+ 	keyframe = !ctx->frame_count || READ_ONCE(ctx->force_keyframe) ||
+ 		   !(ctx->frame_count % READ_ONCE(ctx->gop_size));
++	if (meson_venc_trace_runtime_enabled)
++		dev_info(ctx->venc->dev,
++			 "trace: device_run: frame=%u src=%u dst=%u keyframe=%u\n",
++			 ctx->frame_count, src->sequence, dst->sequence,
++			 keyframe ? 1 : 0);
+ 	meson_venc_rate_control_begin(ctx, keyframe);
+ 	if (keyframe) {
+ 		WRITE_ONCE(ctx->force_keyframe, false);
+@@ -2204,6 +2307,8 @@ static void meson_venc_device_run(void *priv)
+ 	if (!ret)
+ 		ret = meson_venc_rate_control_finish(ctx, dst, &payload, keyframe);
+ 	if (ret) {
++		dev_err(ctx->venc->dev, "encode job failed: %d\n", ret);
++		meson_venc_dump_state(ctx->venc, "device_run: encode failed");
+ 		WRITE_ONCE(ctx->force_keyframe, true);
+ 		meson_venc_power_off(ctx->venc);
+ 		recover_ret = meson_venc_hw_prepare(ctx);
+@@ -2222,6 +2327,10 @@ static void meson_venc_device_run(void *priv)
+ 			      V4L2_BUF_FLAG_PFRAME;
+ 		v4l2_m2m_buf_done(src, VB2_BUF_STATE_DONE);
+ 		v4l2_m2m_buf_done(dst, VB2_BUF_STATE_DONE);
++		if (meson_venc_trace_runtime_enabled)
++			dev_info(ctx->venc->dev,
++				 "trace: device_run: done payload=%zu keyframe=%u\n",
++				 payload, keyframe ? 1 : 0);
+ 	}
+ 	v4l2_m2m_job_finish(ctx->venc->m2m_dev, ctx->fh.m2m_ctx);
+ }
+-- 
+2.51.0
+

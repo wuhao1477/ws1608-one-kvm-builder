@@ -1,0 +1,82 @@
+# HCODEC ARMv7 构建
+
+候选构建固定使用 Armbian build `fa7a7b2294d9e760a77630950afd460b7a0b2a26`、
+Linux `f08cdc6cc92e3d23a05745f0f12f8caa348a27b4`、`6.12.28-current-meson` 和
+Ubuntu 24.04 digest `sha256:1e0a86e57d247923571b75e0aaf48a1449cf8c543d51fb3e07a4a7d7bfa79316`。
+
+CNB 流程定义在 `.cnb.yml`，响应 `codex/hcodec-*` 分支的 `push`、Pull Request
+和 Web Trigger。`push` 触发只用于在创建 PR 前取得云构建证据，不创建 Release
+或 tag。构建顺序为：
+
+1. 运行仓库与 HCODEC 契约测试；
+2. 从固定基础镜像提取配置、DTB、uImage 地址和签名策略；
+3. 在 digest 固定容器中构建 ARMv7 zImage、uImage、DTB 和模块；
+4. 构建 glibc 动态链接的 V4L2 MMAP/DMABUF 工具；
+5. 生成并独立复验单一 `.tar.xz` artifact。
+
+`meson-venc` 保持模块形式，不自动加载。`cma=128M` 只写入候选 manifest，
+不修改稳定镜像。构建 manifest 的 `hardware_boot_tested` 和
+`hardware_encoder_tested` 仍为 `false`；硬件结果另行记录，不能由静态 artifact
+字段代替。
+
+`run-12-1` 候选已在 WS1608 上完成启动验证并注册 `/dev/video0`。640×480 单帧
+H.264 probe 确认 V4L2 队列、`start_streaming`、workspace 分配、硬件准备、
+`SEQUENCE` 和 `PICTURE` 命令通过；IDR 输出 7 字节后超时并返回 `-110`。
+CMA 充足，设备在失败后继续运行。offset VLC ring-base 修正已否定。
+
+下一候选由 CNB 从 Hardkernel Linux
+`5aed95d35d252cafc75ce613a3a0052285662de2` 的
+`drivers/amlogic/amports/m8/ucode/encoder/h264_enc_mix_dump_dblk.h` 生成
+9536 字节 Meson8b dblk 微码，SHA-256 为
+`2a5b578c4cbfe2f9b80c110825d61bc94eba97667639fc5bf5639f1b7eec4368`。
+
+GitHub Actions run `33854312358`（分支 `codex/hcodec-meson8b-ucode`）已完成
+contract、ARMv7 构建、artifact 上传/下载和独立复验。生成的
+`ws1608-hcodec-armv7-run-13-1.tar.xz` 已在 WS1608 安装并重启成功；启动后
+内核、`/dev/video0`、`cma=128M`、`/lib -> /usr/lib` 和微码摘要均正确。
+唯一一次 640×480、MMAP、1 帧 probe 在 120 秒内超时，随后设备 SSH 失联，未得到
+有效 Annex-B H.264。该候选标记为硬件编码失败，不继续其他分辨率或测试。
+
+GitHub Actions run `33874935950`（提交 `e5750cf`）已完成 contract、ARMv7 构建、
+artifact 上传/下载和独立复验。`run-15-1` 已安装并重启成功，内核、`/dev/video0`、
+`cma=128M`、`/lib -> /usr/lib` 和 9536 字节微码摘要均正确；该候选补齐
+Meson8b Assist `INT1=0x19`。唯一一次 640×480、MMAP、1 帧 probe 超过 120 秒未完成，
+输出为 0 字节，设备随后失联；重启后 `pstore` 为空，标记为硬件编码失败，不继续
+其他分辨率或测试，也不创建 PR。
+
+GitHub Actions run `33893613040` 已完成 contract、ARMv7 构建、artifact 上传/下载
+和独立复验。`run-16-1` 修复 Meson8b 微码长度门槛后已安装并重启成功；内核、
+`/dev/video0`、`cma=128M`、模块 vermagic 和固件摘要均正确。唯一一次 640×480、
+MMAP、1 帧 probe 已完成 `SEQUENCE`、`PICTURE`、`IDR`，生成 6547 字节 Annex-B
+H.264；`ffprobe` 识别 1 帧 640×480 Baseline，`ffmpeg` 解码成功，输出 SHA-256
+为 `af392c6132fb1b349c62a0609164a5d92fb5dbda0805709614e00dfa636f407a`。但工具
+在 `STREAMOFF` 清理阶段未返回并导致 SSH 超时，重启后 `pstore` 为空；编码数据
+路径已通过，清理路径仍失败，不创建 PR，也不继续更高分辨率或其他内存模式。
+
+GitHub Actions run `33967514846` 的 `run-24-1` 已修复设备端 `depmod` 覆盖模块索引
+的问题：zram 服务恢复正常。相同单帧 probe 返回 `0` 并写出已解码的 6547 字节码流，
+但设备在工具退出后失联，持久化日志不足以定位关电路径。下一候选将 artifact 根目录
+的 `capture-probe.sh` 与相同参数一起使用，保存 `kernel.before.log`、
+`kernel.live.log`、`kernel.after.log`、probe 输出和退出码到根文件系统。
+
+GitHub Actions run `33973657980` 的 `run-25-1` 使用该包装器完成一次最小 probe。
+码流、工具退出码、两个 `STREAMOFF` 和 `power_off end` 均正常，但设备随后失联。
+下一候选仅利用 Meson8b `full_power_reset` 判据，跳过 `DOS_GCLK_EN0` 的 HCODEC
+gate 清位；HCODEC 功能时钟、DOS 时钟、隔离和内存断电仍按原路径执行。
+
+GitHub Actions run `33987050987` 的 `run-29-1` 已完成云端构建、独立复验、安装和重启。
+640×480 MMAP 30 帧编码返回 `0`，生成 1 个 IDR、29 个 P 帧和 6866 字节 Annex-B
+H.264；`ffprobe` 与 `ffmpeg` 均通过，SHA-256 为
+`7d50f102b6405fcc637467a61a8c5ef62ef0c90f2af88136a2f9f9ae97f6413f`。编码与
+`power_off end` 已完成，但设备随后失联，稳定性验收仍未通过。
+
+下一候选 artifact 新增 `capture-stability-probe.sh`。它先复用 `capture-probe.sh`
+保存内核日志，再写入 60 秒的 uptime、eth0 状态、carrier 和 IP 记录；该工具只用于
+一次候选验证，不改变内核或固件。
+
+设备安装必须使用 `install-artifact.sh`：模块包先解到目标根分区 staging，再复制
+目标版本目录；固件从 artifact 的 `firmware/meson8b_h264.bin` 直接安装。
+构建阶段会拒绝缺少模块索引或 `zram.ko` 依赖链不完整的输出；安装时保留这些
+构建时索引，不再在设备上调用 `depmod`。不得把归档直接解到 `/`。
+执行稳定性 probe 时使用 `./capture-stability-probe.sh results ./tools/meson-venc-smoke \
+/dev/video0 results/stream.h264 640 480 30 30 4294967295 motion`。健康记录完整且设备保持可访问前不创建 PR。
