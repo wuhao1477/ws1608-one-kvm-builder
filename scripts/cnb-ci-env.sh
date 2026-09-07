@@ -22,6 +22,30 @@ ensure_node() {
   command -v node >/dev/null 2>&1 || { echo 'Node.js installation failed' >&2; exit 1; }
 }
 
+ensure_go() {
+  if command -v go >/dev/null 2>&1; then
+    return
+  fi
+  command -v curl >/dev/null 2>&1 || { echo 'curl is required to install Go' >&2; exit 1; }
+  command -v tar >/dev/null 2>&1 || { echo 'tar is required to install Go' >&2; exit 1; }
+  command -v sha256sum >/dev/null 2>&1 || { echo 'sha256sum is required to verify Go' >&2; exit 1; }
+  local version=${CNB_GO_VERSION:-1.24.13}
+  local platform=linux-amd64
+  local prefix=${CNB_GO_PREFIX:-${CNB_BUILD_WORKSPACE:-$ROOT_DIR}/.cnb-tools/go}
+  local archive="$prefix.tar.gz"
+  local digest=1fc94b57134d51669c72173ad5d49fd62afb0f1db9bf3f798fd98ee423f8d730
+  mkdir -p "$(dirname "$prefix")"
+  if [[ ! -x "$prefix/bin/go" ]]; then
+    curl --fail --silent --show-error --location --retry 5 --retry-all-errors \
+      "https://go.dev/dl/go$version.$platform.tar.gz" -o "$archive"
+    printf '%s  %s\n' "$digest" "$archive" | sha256sum --check
+    tar -xzf "$archive" -C "$(dirname "$prefix")"
+    rm -f "$archive"
+  fi
+  export PATH="$prefix/bin:$PATH"
+  command -v go >/dev/null 2>&1 || { echo 'Go installation failed' >&2; exit 1; }
+}
+
 ROOT_DIR=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd -P)
 
 ensure_cnb_cli() {
@@ -34,6 +58,7 @@ ensure_cnb_cli() {
 
 ensure_cnb_cli
 ensure_node
+ensure_go
 : "${CNB_COMMIT:=$(git -C "$ROOT_DIR" rev-parse HEAD)}"
 : "${CNB_REPO_SLUG:=wuhao1477/ws1608-one-kvm-builder}"
 : "${CNB_BRANCH:=main}"
