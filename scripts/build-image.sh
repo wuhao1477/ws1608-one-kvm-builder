@@ -126,7 +126,7 @@ cleanup_mounts() (
   fi
   if [[ "$root_mounted" == true ]] && mountpoint -q "$MOUNT_DIR"; then
     if [[ "$fuse_mounted" == true ]]; then
-      as_root umount "$MOUNT_DIR" || as_root fusermount3 -u "$MOUNT_DIR" || failed=1
+      as_root umount "$MOUNT_DIR" || as_root fusermount3 -u "$MOUNT_DIR" || true
     else
       as_root umount "$MOUNT_DIR" || failed=1
     fi
