@@ -46,6 +46,13 @@ test('publishes releases through CNB and transfers candidate artifacts through t
   assert.equal(fs.existsSync('scripts/cnb-upload-commit-assets.sh'), false);
 });
 
+test('bootstraps Node.js before downloading CNB attachments', () => {
+  const download = read('scripts/cnb-download-commit-assets.sh');
+
+  assert.match(download, /source "\$ROOT_DIR\/scripts\/cnb-ci-env\.sh"/);
+  assert.match(download, /encodeURIComponent/);
+});
+
 test('CNB discovery uses the CNB repository APIs instead of gh', () => {
   const script = read('scripts/cnb-discover-release.sh');
 
