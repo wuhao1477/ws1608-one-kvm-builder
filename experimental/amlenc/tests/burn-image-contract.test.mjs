@@ -46,6 +46,8 @@ test('runs burn image gates before metadata upload and keeps hardware gate expli
   assert.match(pipeline, /out\/amlenc\/burn\/\*/);
   assert.match(pipeline, /ttl: 14/);
   assert.match(pipeline, /cnb-download-commit-assets\.sh/);
+  assert.match(pipeline, /CNB_PULL_REQUEST/);
+  assert.match(pipeline, /cnb-finalize-amlenc\.sh .* local/);
   assert.doesNotMatch(runner, /cnb-upload-commit-assets\.sh/);
 });
 

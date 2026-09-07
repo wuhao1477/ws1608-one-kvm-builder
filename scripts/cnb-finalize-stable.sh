@@ -7,8 +7,12 @@ source "$ROOT_DIR/config/base.env"
 source "$ROOT_DIR/config/tool-versions.env"
 
 CONTEXT_FILE=${1:?usage: cnb-finalize-stable.sh CONTEXT_FILE DOWNLOAD_DIR}
-OUTPUT_DIR=${2:?usage: cnb-finalize-stable.sh CONTEXT_FILE DOWNLOAD_DIR}
 source "$CONTEXT_FILE"
+if [[ "${3:-}" == local ]]; then
+  OUTPUT_DIR=${OUTPUT_DIR:?OUTPUT_DIR is required in stable context}
+else
+  OUTPUT_DIR=${2:?usage: cnb-finalize-stable.sh CONTEXT_FILE DOWNLOAD_DIR}
+fi
 [[ -d "$OUTPUT_DIR" && ! -L "$OUTPUT_DIR" ]] || { echo 'invalid downloaded stable artifact directory' >&2; exit 1; }
 export OUTPUT_DIR IMAGE_NAME VALIDATION_REPORT_NAME
 export ONE_KVM_VERSION UPSTREAM_TAG PACKAGE_NAME PACKAGE_URL PACKAGE_DIGEST

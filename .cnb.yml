@@ -3,7 +3,8 @@
     timeout: 2h
     script: ./scripts/cnb-run-stable.sh
   - name: upload-stable-artifact
-    if: test -f .build/cnb-stable/changed
+    if: |
+      [ "${CNB_PULL_REQUEST:-false}" != true ] && test -f .build/cnb-stable/changed
     image: cnbcool/attachments:latest
     settings:
       attachments:
@@ -15,14 +16,19 @@
     if: test -f .build/cnb-stable/changed
     timeout: 2h
     script: |
-      ./scripts/cnb-download-commit-assets.sh .build/cnb-stable/download
-      ./scripts/cnb-finalize-stable.sh .build/cnb-stable/context.env .build/cnb-stable/download
+      if [ "${CNB_PULL_REQUEST:-false}" = true ]; then
+        ./scripts/cnb-finalize-stable.sh .build/cnb-stable/context.env '' local
+      else
+        ./scripts/cnb-download-commit-assets.sh .build/cnb-stable/download
+        ./scripts/cnb-finalize-stable.sh .build/cnb-stable/context.env .build/cnb-stable/download
+      fi
 
 .hcodec-artifact-stages: &hcodec-artifact-stages
   - name: build-hcodec
     timeout: 2h
     script: ./scripts/cnb-run-hcodec.sh
   - name: upload-hcodec-artifact
+    if: '[ "${CNB_PULL_REQUEST:-false}" != true ]'
     image: cnbcool/attachments:latest
     settings:
       attachments:
@@ -33,14 +39,19 @@
   - name: download-and-verify-hcodec
     timeout: 2h
     script: |
-      ./scripts/cnb-download-commit-assets.sh .build/hcodec/download
-      ./experimental/hcodec/scripts/verify-artifact.sh .build/hcodec/download
+      if [ "${CNB_PULL_REQUEST:-false}" = true ]; then
+        ./experimental/hcodec/scripts/verify-artifact.sh out/hcodec/artifact
+      else
+        ./scripts/cnb-download-commit-assets.sh .build/hcodec/download
+        ./experimental/hcodec/scripts/verify-artifact.sh .build/hcodec/download
+      fi
 
 .amlenc-artifact-stages: &amlenc-artifact-stages
   - name: build-amlenc
     timeout: 3h
     script: ./scripts/cnb-run-amlenc.sh
   - name: upload-amlenc-artifact
+    if: '[ "${CNB_PULL_REQUEST:-false}" != true ]'
     image: cnbcool/attachments:latest
     settings:
       attachments:
@@ -51,8 +62,12 @@
   - name: download-and-verify-amlenc
     timeout: 3h
     script: |
-      ./scripts/cnb-download-commit-assets.sh .build/amlenc/download
-      ./scripts/cnb-finalize-amlenc.sh .build/amlenc/context.env .build/amlenc/download
+      if [ "${CNB_PULL_REQUEST:-false}" = true ]; then
+        ./scripts/cnb-finalize-amlenc.sh .build/amlenc/context.env '' local
+      else
+        ./scripts/cnb-download-commit-assets.sh .build/amlenc/download
+        ./scripts/cnb-finalize-amlenc.sh .build/amlenc/context.env .build/amlenc/download
+      fi
 
 main:
   "crontab: 17 2 * * 0":

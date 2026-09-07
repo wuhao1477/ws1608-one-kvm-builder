@@ -71,12 +71,15 @@ test('CNB runner scripts bootstrap the CLI when the runner image does not includ
   assert.match(cli, /post-commit-asset-upload-confirmation/);
 });
 
-test('stable CNB publication is independent of GitHub Actions', () => {
+test('keeps CNB publication and GitHub Actions available', () => {
   const pipeline = read('.cnb.yml');
   const scripts = `${read('scripts/cnb-discover-release.sh')}\n${read('scripts/cnb-publish-release.sh')}`;
   const stable = read('scripts/cnb-run-stable.sh');
   const finalize = read('scripts/cnb-finalize-stable.sh');
   const inner = read('scripts/cnb-run-stable-inner.sh');
+  const githubBuild = read('.github/workflows/build.yml');
+  const githubHcodec = read('.github/workflows/hcodec-candidate.yml');
+  const githubAmlenc = read('.github/workflows/amlenc-experimental.yml');
 
   assert.match(stable, /scripts\/cnb-discover-release\.sh/);
   assert.match(finalize, /scripts\/cnb-publish-release\.sh/);
@@ -89,7 +92,9 @@ test('stable CNB publication is independent of GitHub Actions', () => {
     assert.match(stable, new RegExp(`${field}=\\$\\{${field}:-`));
   }
   assert.doesNotMatch(scripts, /gh api|gh release/);
-  assert.equal(fs.existsSync('.github/workflows/build.yml'), false);
-  assert.equal(fs.existsSync('.github/workflows/hcodec-candidate.yml'), false);
-  assert.equal(fs.existsSync('.github/workflows/amlenc-experimental.yml'), false);
+  for (const workflow of [githubBuild, githubHcodec, githubAmlenc]) {
+    assert.match(workflow, /actions\/checkout@/);
+    assert.match(workflow, /actions\/upload-artifact@/);
+    assert.match(workflow, /actions\/download-artifact@/);
+  }
 });

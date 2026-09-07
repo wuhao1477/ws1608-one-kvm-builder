@@ -2,9 +2,9 @@
 
 > **For agentic workers:** 按任务逐项执行；每项先写失败测试，再实现，再运行对应验证。
 
-**Goal:** 使用 CNB 官方制品附件机制恢复 GitHub Actions 的上传、下载和复验语义，同时保留 PR 事件的最小权限安全边界。
+**Goal:** 迁移 CNB 能支持的构建与制品流程，保留原 GitHub Actions 工作流，并对 CNB PR 令牌不支持的远端制品上传采用本地复验。
 
-**Architecture:** 构建脚本只负责发现输入、构建、打包和验证；候选制品存储交给 `cnbcool/attachments:latest`，Release 创建继续使用项目已有的不可覆盖 tag、草稿 Release 和摘要复验逻辑。PR 事件先在云端验证附件插件是否真的拥有官方文档所述的上传能力；若平台实际拒绝写入，则停止并报告 CNB 能力冲突，不用本地复制伪装成上传下载。
+**Architecture:** 构建脚本只负责发现输入、构建、打包和验证；可信 CNB 事件的候选制品存储交给 `cnbcool/attachments:latest`，再用只读接口下载复验。CNB `pull_request` 事件因令牌只有 `repo-code:r` 而跳过远端附件写入，直接执行独立本地复验；原 `.github/workflows/` 和 GitHub artifact 流程完整保留。Release 创建继续使用项目已有的不可覆盖 tag、草稿 Release 和摘要复验逻辑。
 
 **Tech Stack:** CNB `.cnb.yml`、`cnbcool/attachments:latest`、Bash、Node.js 内置测试、CNB OpenAPI/CLI。
 
@@ -13,6 +13,7 @@
 ## Global Constraints
 
 - `pull_request` 仍使用 CNB 的不可信事件权限，不导入可写 PAT 或 Release 密钥。
+- `.github/workflows/`、GitHub Actions artifact 和 GitHub Release 脚本继续保留。
 - 稳定 Release 只允许可信的定时、API Trigger 和 Web Trigger 路径创建。
 - 稳定产物必须保持五项文件、SHA-256、manifest 和 validation report 不变。
 - HCODEC、AMLENC 候选继续只保留 14 天，不创建稳定 Release。
@@ -82,9 +83,9 @@ node --test tests/workflow-policy.test.mjs experimental/hcodec/tests/artifact-co
 
 使用 `cnb pulls check-status`、`cnb build get-build-status` 和 `cnb build get-build-stage`，记录附件插件的 HTTP 状态、目标 Commit 和最终下载复验结果，不隐藏错误输出。
 
-- [ ] **Step 3: 验证真实对象**
+- [ ] **Step 3: 验证真实对象和权限分流**
 
-使用 `CNB_COMMIT` 对应的预合并 Commit，查询 commit asset 列表，下载每个文件并与构建目录逐字节比较。若插件仍因 `repo-code:r` 或预合并对象限制失败，停止实现并将其记录为 CNB 平台能力冲突，不提交本地复制方案。
+可信事件使用 `CNB_COMMIT` 对应 Commit 查询附件，下载每个文件并与构建目录逐字节比较；PR 事件确认上传 Stage 被条件跳过，并确认原输出目录的独立验证成功。不要向 PR 令牌注入 `repo-code:rw`。
 
 ### Task 4: 恢复全部触发行为
 
@@ -100,7 +101,7 @@ node --test tests/workflow-policy.test.mjs experimental/hcodec/tests/artifact-co
 
 - [ ] **Step 2: 验证可信与不可信事件边界**
 
-PR 只构建和产出候选制品；定时、API Trigger 和 Web Trigger 才能写 Release 或可信候选附件。`force`、`publish`、`prerelease`、`acknowledge_experimental` 的默认值和作用保持不变。
+PR 只构建并本地复验；定时、API Trigger 和 Web Trigger 才能写 Release 或上传可信候选附件。GitHub Actions 继续运行原有 PR artifact 流程。`force`、`publish`、`prerelease`、`acknowledge_experimental` 的默认值和作用保持不变。
 
 ### Task 5: 本地与云端验收
 

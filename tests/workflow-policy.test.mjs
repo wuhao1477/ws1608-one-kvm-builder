@@ -70,6 +70,7 @@ test('uses official attachment upload and independent download verification for 
   assert.match(pipeline, /image: cnbcool\/attachments:latest/);
   assert.match(pipeline, /ASSET_FILES: FILES/);
   assert.match(pipeline, /ttl: 14/);
+  assert.match(pipeline, /CNB_PULL_REQUEST/);
   assert.match(pipeline, /cnb-download-commit-assets\.sh/);
   assert.match(stable, /context\.env/);
   assert.doesNotMatch(stable, /cnb-upload-commit-assets\.sh/);
@@ -77,12 +78,19 @@ test('uses official attachment upload and independent download verification for 
   assert.match(download, /cmp/);
   assert.match(finalize, /verify-release-assets\.sh/);
   assert.match(finalize, /cnb-publish-release\.sh/);
+  assert.match(finalize, /local/);
 });
 
-test('does not retain active GitHub Actions entrypoints', () => {
+test('retains GitHub Actions workflows alongside CNB', () => {
   for (const file of [
     '.github/workflows/build.yml',
     '.github/workflows/hcodec-candidate.yml',
     '.github/workflows/amlenc-experimental.yml',
-  ]) assert.equal(fs.existsSync(file), false, file);
+  ]) {
+    assert.equal(fs.existsSync(file), true, file);
+    const workflow = fs.readFileSync(file, 'utf8');
+    assert.match(workflow, /actions\/checkout@/);
+    assert.match(workflow, /actions\/upload-artifact@/);
+    assert.match(workflow, /actions\/download-artifact@/);
+  }
 });

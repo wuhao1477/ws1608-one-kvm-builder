@@ -4,8 +4,12 @@ set -Eeuo pipefail
 ROOT_DIR=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd -P)
 source "$ROOT_DIR/scripts/cnb-ci-env.sh"
 CONTEXT_FILE=${1:?usage: cnb-finalize-amlenc.sh CONTEXT_FILE DOWNLOAD_DIR}
-OUTPUT_DIR=${2:?usage: cnb-finalize-amlenc.sh CONTEXT_FILE DOWNLOAD_DIR}
 source "$CONTEXT_FILE"
+if [[ "${3:-}" == local ]]; then
+  OUTPUT_DIR="$ROOT_DIR/out/amlenc/burn"
+else
+  OUTPUT_DIR=${2:?usage: cnb-finalize-amlenc.sh CONTEXT_FILE DOWNLOAD_DIR}
+fi
 [[ -d "$OUTPUT_DIR" && ! -L "$OUTPUT_DIR" ]] || { echo 'invalid downloaded AMLENC artifact directory' >&2; exit 1; }
 
 "$ROOT_DIR/experimental/amlenc/scripts/verify-burn-release.sh" "$OUTPUT_DIR"

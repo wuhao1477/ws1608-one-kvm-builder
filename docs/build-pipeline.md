@@ -8,14 +8,15 @@
 | 触发器 | 行为 |
 | --- | --- |
 | `crontab` | 每周日 02:17 UTC 检查上游 |
-| `pull_request` | 完整构建与验证；上传 CNB commit asset、下载并复验，不发布 |
+| `pull_request` | 完整构建与验证；CNB 因权限限制只做本地独立复验，不发布 |
 | `api_trigger_one-kvm-release` | 发布稳定 Release |
 | `web_trigger_stable force=false` | 相同输入已发布时跳过 |
 | `web_trigger_stable force=true` | 为同一输入创建新 `bRRRAAA` 构建 |
 | `web_trigger_stable publish=false` | 上传 14 天 commit asset，不创建 Release |
 
-稳定 Release 和候选构建使用 CNB 官方附件插件保存临时制品；PR 事件使用平台提供的
-只读令牌完成上传后的只读下载与复验，不导入额外的可写凭证。
+稳定 Release 和可信候选构建使用 CNB 官方附件插件保存临时制品；CNB PR 事件的令牌
+只有只读权限，因此跳过远端附件写入并执行本地独立复验。GitHub Actions 工作流保留，
+GitHub PR 继续使用原有 artifact 上传和下载流程。
 
 ### 1. 发现输入
 
@@ -69,8 +70,9 @@ systemd、OTG、`libcomposite` 和来源 metadata，严格卸载文件系统，�
 4. `manifest.json`
 5. `validation-report.json`
 
-候选构建通过 CNB 官方附件插件上传，再通过 CNB 只读下载接口下载到全新目录并复验；稳定
-镜像还会在特权验证容器中重新执行镜像校验。发布路径创建指向 builder
+可信候选构建通过 CNB 官方附件插件上传，再通过 CNB 只读下载接口下载到全新目录并复验；CNB
+PR 在原输出目录重新执行独立验证；GitHub Actions PR 仍按原工作流上传、下载并复验 artifact。
+稳定镜像还会在特权验证容器中重新执行镜像校验。发布路径创建指向 builder
 commit 的 tag 和 draft Release。五项资产全部上传并核对远端 digest 后才公开。
 
 ## HCODEC 候选流程

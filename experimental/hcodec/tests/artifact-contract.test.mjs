@@ -112,6 +112,8 @@ test('workflow only runs on pull requests or manual dispatch and keeps artifact 
   assert.match(pipeline, /out\/hcodec\/artifact\/\*/);
   assert.match(pipeline, /ttl: 14/);
   assert.match(pipeline, /cnb-download-commit-assets\.sh/);
+  assert.match(pipeline, /CNB_PULL_REQUEST/);
+  assert.match(pipeline, /verify-artifact\.sh out\/hcodec\/artifact/);
   assert.doesNotMatch(runner, /cnb-upload-commit-assets\.sh/);
 });
 
