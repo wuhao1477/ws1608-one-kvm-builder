@@ -37,6 +37,9 @@ test('publishes release assets through CNB and candidate assets through commit s
   assert.match(release, /post-release-asset-upload-confirmation/);
   assert.match(candidate, /post-commit-asset-upload-url/);
   assert.match(candidate, /post-commit-asset-upload-confirmation/);
+  assert.match(release, /decodeURIComponent/);
+  assert.match(candidate, /decodeURIComponent/);
+  assert.match(candidate, /application\/vnd\.cnb\.api\+json/);
   assert.match(candidate, /TTL=\$\{CNB_ASSET_TTL:-14\}/);
 });
 

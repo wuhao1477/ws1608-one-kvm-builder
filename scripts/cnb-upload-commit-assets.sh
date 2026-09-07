@@ -22,16 +22,18 @@ for file in "$ASSET_DIR"/*; do
   verify_url=$(jq -er '.data.verify_url' <<<"$response")
   curl --fail --silent --show-error --request PUT \
     --header 'Content-Type: application/octet-stream' --upload-file "$file" "$upload_url"
-  confirmation=$(printf '%s' "$verify_url" | sed -E 's#^.*/asset-upload-confirmation/([^/]+)/(.+)$#\1\t\2#')
-  upload_token=${confirmation%%$'\t'*}
-  asset_path=${confirmation#*$'\t'}
+  confirmation=$(node -e 'const u = new URL(process.argv[1]); const p = u.pathname.split("/asset-upload-confirmation/")[1].split("/"); process.stdout.write(p[0] + "\n" + decodeURIComponent(p.slice(1).join("/")))' "$verify_url")
+  upload_token=$(sed -n '1p' <<<"$confirmation")
+  asset_path=$(sed -n '2p' <<<"$confirmation")
   cnb git post-commit-asset-upload-confirmation --repo "$REPO" --sha1 "$COMMIT" \
     --upload-token "$upload_token" --asset-path "$asset_path" --ttl "$TTL" >/dev/null
 
   downloaded="$TMP_DIR/$name"
+  encoded_name=$(jq -nr --arg name "$name" '$name | @uri')
   curl --fail --silent --show-error --location \
+    --header 'Accept: application/vnd.cnb.api+json' \
     -H "Authorization: Bearer ${CNB_TOKEN:?CNB_TOKEN is required}" \
-    "$CNB_API_ENDPOINT/$REPO/-/commit-assets/download/$COMMIT/$name?share=true" -o "$downloaded"
+    "$CNB_API_ENDPOINT/$REPO/-/commit-assets/download/$COMMIT/$encoded_name?share=true" -o "$downloaded"
   cmp "$file" "$downloaded"
   printf 'uploaded and reverified commit asset: %s\n' "$name"
 done

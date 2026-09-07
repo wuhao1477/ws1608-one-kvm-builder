@@ -74,9 +74,9 @@ for file in "${assets[@]}"; do
   verify_url=$(jq -er '.data.verify_url' <<<"$upload_json")
   curl --fail --silent --show-error --request PUT \
     --header 'Content-Type: application/octet-stream' --upload-file "$file" "$upload_url"
-  confirmation=$(printf '%s' "$verify_url" | sed -E 's#^.*/asset-upload-confirmation/([^/]+)/(.+)$#\1\t\2#')
-  upload_token=${confirmation%%$'\t'*}
-  asset_path=${confirmation#*$'\t'}
+  confirmation=$(node -e 'const u = new URL(process.argv[1]); const p = u.pathname.split("/asset-upload-confirmation/")[1].split("/"); process.stdout.write(p[0] + "\n" + decodeURIComponent(p.slice(1).join("/")))' "$verify_url")
+  upload_token=$(sed -n '1p' <<<"$confirmation")
+  asset_path=$(sed -n '2p' <<<"$confirmation")
   cnb releases post-release-asset-upload-confirmation --repo "$REPO" \
     --release-id "$release_id" --upload-token "$upload_token" \
     --asset-path "$asset_path" --ttl "$RELEASE_ASSET_TTL" >/dev/null
