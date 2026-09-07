@@ -76,6 +76,9 @@ cleanup() (
   if [[ -n "$loop_device" ]]; then
     as_root losetup --detach "$loop_device" || failed=1
   fi
+  if [[ "$fuse_mounted" == true ]]; then
+    return 0
+  fi
   if mountpoint -q "$MOUNT_DIR"; then
     failed=1
   else

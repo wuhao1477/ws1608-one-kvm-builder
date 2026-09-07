@@ -134,6 +134,9 @@ cleanup_mounts() (
   if [[ -n "$loop_device" ]]; then
     as_root losetup --detach "$loop_device" || failed=1
   fi
+  if [[ "$fuse_mounted" == true ]]; then
+    return 0
+  fi
   mountpoint -q "$MOUNT_DIR/dev" && failed=1
   mountpoint -q "$MOUNT_DIR" && failed=1
   return "$failed"
