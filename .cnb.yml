@@ -1,3 +1,59 @@
+.stable-artifact-stages: &stable-artifact-stages
+  - name: build-stable
+    timeout: 2h
+    script: ./scripts/cnb-run-stable.sh
+  - name: upload-stable-artifact
+    if: test -f .build/cnb-stable/changed
+    image: cnbcool/attachments:latest
+    settings:
+      attachments:
+        - "./out/cnb-stable/*/*"
+      ttl: 14
+    exports:
+      ASSET_FILES: FILES
+  - name: download-and-finalize-stable
+    if: test -f .build/cnb-stable/changed
+    timeout: 2h
+    script: |
+      ./scripts/cnb-download-commit-assets.sh .build/cnb-stable/download
+      ./scripts/cnb-finalize-stable.sh .build/cnb-stable/context.env .build/cnb-stable/download
+
+.hcodec-artifact-stages: &hcodec-artifact-stages
+  - name: build-hcodec
+    timeout: 2h
+    script: ./scripts/cnb-run-hcodec.sh
+  - name: upload-hcodec-artifact
+    image: cnbcool/attachments:latest
+    settings:
+      attachments:
+        - "./out/hcodec/artifact/*"
+      ttl: 14
+    exports:
+      ASSET_FILES: FILES
+  - name: download-and-verify-hcodec
+    timeout: 2h
+    script: |
+      ./scripts/cnb-download-commit-assets.sh .build/hcodec/download
+      ./experimental/hcodec/scripts/verify-artifact.sh .build/hcodec/download
+
+.amlenc-artifact-stages: &amlenc-artifact-stages
+  - name: build-amlenc
+    timeout: 3h
+    script: ./scripts/cnb-run-amlenc.sh
+  - name: upload-amlenc-artifact
+    image: cnbcool/attachments:latest
+    settings:
+      attachments:
+        - "./out/amlenc/burn/*"
+      ttl: 14
+    exports:
+      ASSET_FILES: FILES
+  - name: download-and-verify-amlenc
+    timeout: 3h
+    script: |
+      ./scripts/cnb-download-commit-assets.sh .build/amlenc/download
+      ./scripts/cnb-finalize-amlenc.sh .build/amlenc/context.env .build/amlenc/download
+
 main:
   "crontab: 17 2 * * 0":
     - name: stable-weekly-check
@@ -9,10 +65,7 @@ main:
         cpus: 16
       services:
         - docker
-      stages:
-        - name: build-and-publish-stable
-          timeout: 2h
-          script: ./scripts/cnb-run-stable.sh
+      stages: *stable-artifact-stages
 
 $:
   pull_request:
@@ -43,10 +96,7 @@ $:
       env:
         FORCE_BUILD: "true"
         PUBLISH: "false"
-      stages:
-        - name: build-and-upload-stable-pr
-          timeout: 2h
-          script: ./scripts/cnb-run-stable.sh
+      stages: *stable-artifact-stages
   api_trigger_cnb_migration_contract:
     - name: migration-contract
       stages:
@@ -75,10 +125,7 @@ $:
         FORCE_BUILD: "false"
         PUBLISH: "true"
         RELEASE_PRERELEASE: "false"
-      stages:
-        - name: build-and-publish-stable
-          timeout: 2h
-          script: ./scripts/cnb-run-stable.sh
+      stages: *stable-artifact-stages
   web_trigger_stable:
     - name: stable-manual-build
       lock:
@@ -93,20 +140,14 @@ $:
         FORCE_BUILD: $force
         PUBLISH: $publish
         RELEASE_PRERELEASE: $prerelease
-      stages:
-        - name: build-and-publish-stable
-          timeout: 2h
-          script: ./scripts/cnb-run-stable.sh
+      stages: *stable-artifact-stages
   web_trigger_hcodec:
     - name: hcodec-manual-candidate
       runner:
         cpus: 16
       services:
         - docker
-      stages:
-        - name: build-and-upload-hcodec
-          timeout: 2h
-          script: ./scripts/cnb-run-hcodec.sh
+      stages: *hcodec-artifact-stages
   web_trigger_amlenc:
     - name: amlenc-manual-candidate
       runner:
@@ -116,10 +157,7 @@ $:
       env:
         PUBLISH: $publish
         ACKNOWLEDGE_EXPERIMENTAL: $acknowledge_experimental
-      stages:
-        - name: build-and-upload-amlenc
-          timeout: 3h
-          script: ./scripts/cnb-run-amlenc.sh
+      stages: *amlenc-artifact-stages
 
 "codex/hcodec-*":
   push:
@@ -128,20 +166,14 @@ $:
         cpus: 16
       services:
         - docker
-      stages:
-        - name: build-and-upload-hcodec
-          timeout: 2h
-          script: ./scripts/cnb-run-hcodec.sh
+      stages: *hcodec-artifact-stages
   pull_request:
     - name: hcodec-candidate-pr
       runner:
         cpus: 16
       services:
         - docker
-      stages:
-        - name: build-and-upload-hcodec
-          timeout: 2h
-          script: ./scripts/cnb-run-hcodec.sh
+      stages: *hcodec-artifact-stages
 
 "codex/amlenc-*":
   pull_request:
@@ -150,7 +182,4 @@ $:
         cpus: 16
       services:
         - docker
-      stages:
-        - name: build-and-upload-amlenc
-          timeout: 3h
-          script: ./scripts/cnb-run-amlenc.sh
+      stages: *amlenc-artifact-stages

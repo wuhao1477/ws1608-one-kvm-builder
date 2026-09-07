@@ -28,6 +28,7 @@ test('keeps stable publication isolated from PR checks', () => {
 test('runs every image and release-asset gate before CNB publication', () => {
   const script = fs.readFileSync('scripts/cnb-run-stable.sh', 'utf8');
   const inner = fs.readFileSync('scripts/cnb-run-stable-inner.sh', 'utf8');
+  const finalize = fs.readFileSync('scripts/cnb-finalize-stable.sh', 'utf8');
   assert.match(script, /docker run --rm --privileged/);
   assert.match(script, /seccomp=unconfined/);
   assert.match(script, /systempaths=unconfined/);
@@ -44,7 +45,7 @@ test('runs every image and release-asset gate before CNB publication', () => {
   for (const gate of ['build-image\.sh', 'verify-image\.sh', 'package-release\.sh', 'verify-release-assets\.sh']) {
     assert.match(inner, new RegExp(gate));
   }
-  assert.match(script, /cnb-publish-release\.sh/);
+  assert.match(finalize, /cnb-publish-release\.sh/);
 });
 
 test('installs the FAT image tooling required for boot-console validation', () => {
@@ -57,6 +58,25 @@ test('uploads and reverifies immutable assets through CNB', () => {
   assert.match(script, /post-release-asset-upload-confirmation/);
   assert.match(script, /get-release-by-tag/);
   assert.match(script, /hash_value/);
+});
+
+test('uses official attachment upload and independent download verification for artifacts', () => {
+  const pipeline = fs.readFileSync('.cnb.yml', 'utf8');
+  const stable = fs.readFileSync('scripts/cnb-run-stable.sh', 'utf8');
+  const inner = fs.readFileSync('scripts/cnb-run-stable-inner.sh', 'utf8');
+  const download = fs.readFileSync('scripts/cnb-download-commit-assets.sh', 'utf8');
+  const finalize = fs.readFileSync('scripts/cnb-finalize-stable.sh', 'utf8');
+
+  assert.match(pipeline, /image: cnbcool\/attachments:latest/);
+  assert.match(pipeline, /ASSET_FILES: FILES/);
+  assert.match(pipeline, /ttl: 14/);
+  assert.match(pipeline, /cnb-download-commit-assets\.sh/);
+  assert.match(stable, /context\.env/);
+  assert.doesNotMatch(stable, /cnb-upload-commit-assets\.sh/);
+  assert.doesNotMatch(inner, /pr-uploaded|CNB_PULL_REQUEST/);
+  assert.match(download, /cmp/);
+  assert.match(finalize, /verify-release-assets\.sh/);
+  assert.match(finalize, /cnb-publish-release\.sh/);
 });
 
 test('does not retain active GitHub Actions entrypoints', () => {

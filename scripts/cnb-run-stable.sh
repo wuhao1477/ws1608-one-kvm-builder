@@ -14,6 +14,11 @@ apt-get install -y binutils e2fsprogs file jq mtools qemu-user-static util-linux
 FORCE_BUILD=${FORCE_BUILD:-false}
 PUBLISH=${PUBLISH:-true}
 RELEASE_PRERELEASE=${RELEASE_PRERELEASE:-false}
+STABLE_ROOT="$ROOT_DIR/.build/cnb-stable"
+CONTEXT_FILE="$STABLE_ROOT/context.env"
+CHANGED_FILE="$STABLE_ROOT/changed"
+mkdir -p "$STABLE_ROOT"
+rm -f -- "$CONTEXT_FILE" "$CHANGED_FILE"
 discovery=$(mktemp)
 trap 'rm -f "$discovery"' EXIT
 FORCE_BUILD="$FORCE_BUILD" "$ROOT_DIR/scripts/cnb-discover-release.sh" >"$discovery"
@@ -139,12 +144,34 @@ Build: $BUILD_REVISION. Base: Armbian $BASE_RELEASE_TAG, kernel $BASE_KERNEL, $B
 Built and published by CNB. Hosted validation cannot flash a physical WS1608; this is not a hardware boot result.
 EOF
 
-if [[ "$PUBLISH" == true ]]; then
-  RELEASE_TAG="$BUILD_TAG" RELEASE_NAME="WS1608 One-KVM Rust $ONE_KVM_VERSION ($UPSTREAM_TAG, $BUILD_REVISION)" \
-    RELEASE_COMMIT="$BUILDER_COMMIT" RELEASE_NOTES_FILE="$WORK_DIR/release-notes.md" \
-    RELEASE_ASSET_DIR="$OUTPUT_DIR" RELEASE_PRERELEASE="$RELEASE_PRERELEASE" \
-    RELEASE_LATEST="$([[ "$RELEASE_PRERELEASE" == false ]] && printf true || printf false)" \
-    "$ROOT_DIR/scripts/cnb-publish-release.sh"
-else
-  CNB_ASSET_TTL=14 "$ROOT_DIR/scripts/cnb-upload-commit-assets.sh" "$OUTPUT_DIR"
-fi
+{
+  printf 'BASE_ID=%q\n' "$BASE_ID"
+  printf 'BASE_FLAVOR=%q\n' "$BASE_FLAVOR"
+  printf 'BASE_KERNEL=%q\n' "$BASE_KERNEL"
+  printf 'BASE_BOARD=%q\n' "$BASE_BOARD"
+  printf 'BASE_RELEASE_TAG=%q\n' "$BASE_RELEASE_TAG"
+  printf 'BASE_IMAGE_NAME=%q\n' "$BASE_IMAGE_NAME"
+  printf 'BASE_IMAGE_URL=%q\n' "$BASE_IMAGE_URL"
+  printf 'BASE_IMAGE_SHA256=%q\n' "$BASE_IMAGE_SHA256"
+  printf 'AMLIMG_REPOSITORY=%q\n' "$AMLIMG_REPOSITORY"
+  printf 'AMLIMG_COMMIT=%q\n' "$AMLIMG_COMMIT"
+  printf 'ONE_KVM_VERSION=%q\n' "$ONE_KVM_VERSION"
+  printf 'UPSTREAM_TAG=%q\n' "$UPSTREAM_TAG"
+  printf 'PACKAGE_NAME=%q\n' "$PACKAGE_NAME"
+  printf 'PACKAGE_URL=%q\n' "$PACKAGE_URL"
+  printf 'PACKAGE_DIGEST=%q\n' "$PACKAGE_DIGEST"
+  printf 'BUILD_TAG=%q\n' "$BUILD_TAG"
+  printf 'BUILD_NUMBER=%q\n' "$BUILD_NUMBER"
+  printf 'BUILD_REVISION=%q\n' "$BUILD_REVISION"
+  printf 'BUILDER_COMMIT=%q\n' "$BUILDER_COMMIT"
+  printf 'PUBLISH=%q\n' "$PUBLISH"
+  printf 'RELEASE_PRERELEASE=%q\n' "$RELEASE_PRERELEASE"
+  printf 'OUTPUT_DIR=%q\n' "$OUTPUT_DIR"
+  printf 'WORK_DIR=%q\n' "$WORK_DIR"
+  printf 'AMLIMG_BIN=%q\n' "$AMLIMG_BIN"
+  printf 'IMAGE_NAME=%q\n' "$IMAGE_NAME"
+  printf 'VALIDATION_REPORT_NAME=%q\n' "$VALIDATION_REPORT_NAME"
+  printf 'RELEASE_NOTES_FILE=%q\n' "$WORK_DIR/release-notes.md"
+} >"$CONTEXT_FILE"
+touch "$CHANGED_FILE"
+echo "stable build ready for CNB attachment transfer: $BUILD_TAG"

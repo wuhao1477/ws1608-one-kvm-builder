@@ -70,7 +70,7 @@ HCODEC 工作遵循 [ADR-0003](adr/0003-armbian-6.12-hcodec-route.md)：
 
 - AmlImg 仓库和提交固定在 `config/tool-versions.env`；升级时验证 v2 CRC、
   item table、pack/unpack 和分区 VERIFY。
-- CNB 使用仓库级 token 完成 Release 与 commit asset 上传；候选构建只上传当前提交附件。
+- CNB 使用官方附件插件保存候选制品，再通过只读下载接口复验；Release 仍由可信事件的临时令牌创建，PR 流程不导入额外可写凭证。
 - 稳定 Release 使用不可覆盖的 tag，并在上传后重新校验每个附件摘要。
 - qemu、Go、Node、交叉编译器和预编译模块不提交仓库。
 

@@ -38,4 +38,3 @@ docker run --rm --platform linux/amd64 --privileged \
   "$ROOT_DIR/out/hcodec/firmware" "$ROOT_DIR/out/hcodec/artifact" \
   "$GITHUB_RUN_NUMBER" "$GITHUB_RUN_ATTEMPT"
 "$ROOT_DIR/experimental/hcodec/scripts/verify-artifact.sh" "$ROOT_DIR/out/hcodec/artifact"
-CNB_ASSET_TTL=14 "$ROOT_DIR/scripts/cnb-upload-commit-assets.sh" "$ROOT_DIR/out/hcodec/artifact"

@@ -37,16 +37,23 @@ test('defines an isolated burn image build and verification chain', () => {
 
 test('runs burn image gates before metadata upload and keeps hardware gate explicit', () => {
   const runner = read('scripts/cnb-run-amlenc.sh');
+  const pipeline = read(workflowPath);
   assert.match(runner, /build-burn-image\.sh/);
   assert.match(runner, /verify-burn-image\.sh/);
   assert.match(runner, /package-burn-release\.sh/);
   assert.match(runner, /verify-burn-release\.sh/);
-  assert.match(runner, /cnb-upload-commit-assets\.sh/);
+  assert.match(pipeline, /image: cnbcool\/attachments:latest/);
+  assert.match(pipeline, /out\/amlenc\/burn\/\*/);
+  assert.match(pipeline, /ttl: 14/);
+  assert.match(pipeline, /cnb-download-commit-assets\.sh/);
+  assert.doesNotMatch(runner, /cnb-upload-commit-assets\.sh/);
 });
 
 test('keeps untested hardware status explicit in the experimental prerelease', () => {
   const runner = read('scripts/cnb-run-amlenc.sh');
-  assert.match(runner, /RELEASE_PRERELEASE=true/);
+  const finalize = read('scripts/cnb-finalize-amlenc.sh');
+  assert.match(finalize, /RELEASE_PRERELEASE=true/);
+  assert.match(finalize, /ACKNOWLEDGE_EXPERIMENTAL/);
   assert.match(runner, /ACKNOWLEDGE_EXPERIMENTAL/);
   assert.match(runner, /hardware_encoder_tested/);
   assert.match(runner, /hardware_boot_tested/);

@@ -29,18 +29,20 @@ test('maps GitHub workflow inputs to CNB Web Trigger inputs', () => {
   }
 });
 
-test('publishes release assets through CNB and candidate assets through commit storage', () => {
+test('publishes releases through CNB and transfers candidate artifacts through the official attachment flow', () => {
   const release = read('scripts/cnb-publish-release.sh');
-  const candidate = read('scripts/cnb-upload-commit-assets.sh');
+  const pipeline = read('.cnb.yml');
+  const download = read('scripts/cnb-download-commit-assets.sh');
 
   assert.match(release, /post-release-asset-upload-url/);
   assert.match(release, /post-release-asset-upload-confirmation/);
-  assert.match(candidate, /post-commit-asset-upload-url/);
-  assert.match(candidate, /post-commit-asset-upload-confirmation/);
   assert.match(release, /decodeURIComponent/);
-  assert.match(candidate, /decodeURIComponent/);
-  assert.match(candidate, /application\/vnd\.cnb\.api\+json/);
-  assert.match(candidate, /TTL=\$\{CNB_ASSET_TTL:-14\}/);
+  assert.match(pipeline, /cnbcool\/attachments:latest/);
+  assert.match(pipeline, /ttl: 14/);
+  assert.match(pipeline, /ASSET_FILES: FILES/);
+  assert.match(download, /commit-assets\/download/);
+  assert.match(download, /application\/vnd\.cnb\.api\+json/);
+  assert.equal(fs.existsSync('scripts/cnb-upload-commit-assets.sh'), false);
 });
 
 test('CNB discovery uses the CNB repository APIs instead of gh', () => {
@@ -73,10 +75,11 @@ test('stable CNB publication is independent of GitHub Actions', () => {
   const pipeline = read('.cnb.yml');
   const scripts = `${read('scripts/cnb-discover-release.sh')}\n${read('scripts/cnb-publish-release.sh')}`;
   const stable = read('scripts/cnb-run-stable.sh');
+  const finalize = read('scripts/cnb-finalize-stable.sh');
   const inner = read('scripts/cnb-run-stable-inner.sh');
 
   assert.match(stable, /scripts\/cnb-discover-release\.sh/);
-  assert.match(stable, /scripts\/cnb-publish-release\.sh/);
+  assert.match(finalize, /scripts\/cnb-publish-release\.sh/);
   assert.match(stable, /ensure_go/);
   assert.match(stable, /AMLIMG_GIT_PROXY/);
   assert.match(stable, /gh-proxy\.com/);

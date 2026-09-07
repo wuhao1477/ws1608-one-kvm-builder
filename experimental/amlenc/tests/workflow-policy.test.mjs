@@ -7,6 +7,7 @@ const workflowPath = '.cnb.yml';
 test('keeps AMLENC builds isolated from the stable image workflow', () => {
   const workflow = fs.readFileSync(workflowPath, 'utf8');
   const runner = fs.readFileSync('scripts/cnb-run-amlenc.sh', 'utf8');
+  const finalize = fs.readFileSync('scripts/cnb-finalize-amlenc.sh', 'utf8');
 
   assert.match(workflow, /"codex\/amlenc-\*":/);
   assert.match(workflow, /pull_request:/);
@@ -23,18 +24,19 @@ test('keeps AMLENC builds isolated from the stable image workflow', () => {
   assert.match(runner, /qemu-user-static/);
   assert.match(runner, /hardware_encoder_tested/);
   assert.match(runner, /stable_channel_modified/);
-  assert.match(runner, /ws1608-amlenc-exp-/);
+  assert.match(finalize, /ws1608-amlenc-exp-/);
   assert.doesNotMatch(runner, /gh release create/);
 });
 
 test('publishes an explicitly acknowledged immutable experimental prerelease', () => {
   const triggers = fs.readFileSync('.cnb/web_trigger.yml', 'utf8');
   const runner = fs.readFileSync('scripts/cnb-run-amlenc.sh', 'utf8');
+  const finalize = fs.readFileSync('scripts/cnb-finalize-amlenc.sh', 'utf8');
   assert.match(triggers, /publish:/);
   assert.match(triggers, /acknowledge_experimental:/);
   assert.match(runner, /PUBLISH:-false/);
   assert.match(runner, /ACKNOWLEDGE_EXPERIMENTAL:-false/);
-  assert.match(runner, /RELEASE_PRERELEASE=true/);
-  assert.match(runner, /cnb-publish-release\.sh/);
+  assert.match(finalize, /RELEASE_PRERELEASE=true/);
+  assert.match(finalize, /cnb-publish-release\.sh/);
   assert.doesNotMatch(runner, /--clobber|--latest/);
 });

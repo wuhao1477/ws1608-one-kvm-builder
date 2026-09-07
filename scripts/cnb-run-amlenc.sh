@@ -10,6 +10,8 @@ export AMLIMG_GIT_PROXY="https://gh-proxy.com/$AMLIMG_REPOSITORY"
 
 BUILD_NUMBER=${BUILD_NUMBER:-run-${GITHUB_RUN_NUMBER}-${GITHUB_RUN_ATTEMPT}}
 export BUILD_NUMBER
+CONTEXT_FILE="$ROOT_DIR/.build/amlenc/context.env"
+rm -f -- "$CONTEXT_FILE"
 export AMLENC_BUILD_REVISION="$BUILD_NUMBER"
 export AMLENC_WORK_DIR="$ROOT_DIR/.build/amlenc"
 export AMLENC_OUTPUT_DIR="$ROOT_DIR/out/amlenc"
@@ -113,17 +115,17 @@ OUTPUT_DIR="$ROOT_DIR/out/amlenc/burn" IMAGE_NAME="$IMAGE_NAME" \
 jq -e '.hardware_encoder_tested == false and .hardware_boot_tested == false and .one_kvm_included == true and .stable_channel_modified == false' \
   "$ROOT_DIR/out/amlenc/burn/manifest.json" >/dev/null
 
-CNB_ASSET_TTL=14 "$ROOT_DIR/scripts/cnb-upload-commit-assets.sh" "$ROOT_DIR/out/amlenc/burn"
-if [[ "${PUBLISH:-false}" == true && "${ACKNOWLEDGE_EXPERIMENTAL:-false}" == true ]]; then
-  release_tag="ws1608-amlenc-exp-0.2.6-v260802-k3.10.107-b$(printf '%06d' "$((GITHUB_RUN_NUMBER * 1000 + GITHUB_RUN_ATTEMPT))")"
-  notes="$ROOT_DIR/.build/amlenc/release-notes.md"
-  cat >"$notes" <<EOF
-Experimental WS1608/S805 image with One-KVM Rust 0.2.6 and the Meson8b AMLENC H.264 integration.
-
-Hosted build and image validation passed. Physical flashing, boot, and hardware encoding were not tested for this build.
-EOF
-  RELEASE_TAG="$release_tag" RELEASE_NAME="WS1608 AMLENC experimental $BUILD_NUMBER" \
-    RELEASE_COMMIT="$CNB_COMMIT" RELEASE_NOTES_FILE="$notes" \
-    RELEASE_ASSET_DIR="$ROOT_DIR/out/amlenc/burn" RELEASE_PRERELEASE=true \
-    RELEASE_LATEST=false "$ROOT_DIR/scripts/cnb-publish-release.sh"
-fi
+{
+  printf 'BUILD_NUMBER=%q\n' "$BUILD_NUMBER"
+  printf 'BUILD_REVISION=%q\n' "$BUILD_NUMBER"
+  printf 'IMAGE_NAME=%q\n' "$IMAGE_NAME"
+  printf 'PUBLISH=%q\n' "${PUBLISH:-false}"
+  printf 'ACKNOWLEDGE_EXPERIMENTAL=%q\n' "${ACKNOWLEDGE_EXPERIMENTAL:-false}"
+  printf 'BASE_IMAGE=%q\n' "$ROOT_DIR/.build/amlenc/base.burn.img"
+  printf 'AMLIMG_BIN=%q\n' "$ROOT_DIR/.tools/AmlImg"
+  printf 'WORK_DIR=%q\n' "$ROOT_DIR/.build/amlenc/burn"
+  printf 'CNB_COMMIT=%q\n' "$CNB_COMMIT"
+  printf 'GITHUB_RUN_NUMBER=%q\n' "$GITHUB_RUN_NUMBER"
+  printf 'GITHUB_RUN_ATTEMPT=%q\n' "$GITHUB_RUN_ATTEMPT"
+} >"$CONTEXT_FILE"
+echo "AMLENC build ready for CNB attachment transfer: $BUILD_NUMBER"

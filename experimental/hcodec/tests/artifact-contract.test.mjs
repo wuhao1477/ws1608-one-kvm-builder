@@ -107,8 +107,12 @@ test('workflow only runs on pull requests or manual dispatch and keeps artifact 
   const runner = fs.readFileSync('scripts/cnb-run-hcodec.sh', 'utf8');
   assert.match(runner, /package-artifact\.sh/);
   assert.match(runner, /verify-artifact\.sh/);
-  assert.match(runner, /CNB_ASSET_TTL=14/);
-  assert.match(runner, /cnb-upload-commit-assets\.sh/);
+  const pipeline = fs.readFileSync(workflow, 'utf8');
+  assert.match(pipeline, /image: cnbcool\/attachments:latest/);
+  assert.match(pipeline, /out\/hcodec\/artifact\/\*/);
+  assert.match(pipeline, /ttl: 14/);
+  assert.match(pipeline, /cnb-download-commit-assets\.sh/);
+  assert.doesNotMatch(runner, /cnb-upload-commit-assets\.sh/);
 });
 
 test('workflow keeps generated Meson8b firmware as a separate package input', () => {
