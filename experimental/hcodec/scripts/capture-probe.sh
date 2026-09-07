@@ -32,6 +32,10 @@ printf '\n' >>"$RESULTS_DIR/command.txt"
 dmesg --time-format iso >"$RESULTS_DIR/kernel.before.log"
 dmesg --follow-new --time-format iso >"$RESULTS_DIR/kernel.live.log" 2>&1 &
 follower_pid=$!
+for attempt in 1 2 3 4 5; do
+  [[ -s "$RESULTS_DIR/kernel.live.log" ]] && break
+  sleep 0.05
+done
 sync
 "$SMOKE_BINARY" "$DEVICE" "$OUTPUT" "$@" \
   >"$RESULTS_DIR/probe.stdout.log" 2>"$RESULTS_DIR/probe.stderr.log"
