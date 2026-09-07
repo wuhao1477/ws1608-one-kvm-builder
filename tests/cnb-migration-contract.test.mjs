@@ -75,6 +75,7 @@ test('stable CNB publication is independent of GitHub Actions', () => {
   assert.match(stable, /scripts\/cnb-discover-release\.sh/);
   assert.match(stable, /scripts\/cnb-publish-release\.sh/);
   assert.match(stable, /ensure_go/);
+  assert.match(stable, /AMLIMG_GIT_PROXY/);
   assert.match(stable, /apt-get install -y binutils e2fsprogs file jq mtools qemu-user-static util-linux xz-utils/);
   assert.match(inner, /verify-release-assets\.sh/);
   for (const field of ['UPSTREAM_TAG', 'BUILD_TAG', 'BUILD_NUMBER', 'BUILD_REVISION', 'IMAGE_STEM', 'ONE_KVM_VERSION', 'PACKAGE_NAME', 'PACKAGE_URL', 'PACKAGE_DIGEST', 'BUILDER_COMMIT']) {

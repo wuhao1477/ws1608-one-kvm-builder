@@ -6,6 +6,7 @@ source "$ROOT_DIR/scripts/cnb-ci-env.sh"
 source "$ROOT_DIR/config/base.env"
 source "$ROOT_DIR/config/tool-versions.env"
 ensure_go
+export AMLIMG_GIT_PROXY="https://gh-proxy.com/$AMLIMG_REPOSITORY"
 
 apt-get update
 apt-get install -y binutils e2fsprogs file jq mtools qemu-user-static util-linux xz-utils

@@ -6,6 +6,7 @@ source "$ROOT_DIR/scripts/cnb-ci-env.sh"
 source "$ROOT_DIR/config/base.env"
 source "$ROOT_DIR/experimental/amlenc/config/sources.env"
 ensure_go
+export AMLIMG_GIT_PROXY="https://gh-proxy.com/$AMLIMG_REPOSITORY"
 
 BUILD_NUMBER=${BUILD_NUMBER:-run-${GITHUB_RUN_NUMBER}-${GITHUB_RUN_ATTEMPT}}
 export BUILD_NUMBER

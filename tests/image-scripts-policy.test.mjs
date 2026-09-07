@@ -20,6 +20,7 @@ test('the image builder requires and embeds immutable build provenance', () => {
     assert.match(buildScript, new RegExp(`${variable}=\\$\\{${variable}:\\?`));
   }
   assert.match(buildScript, /write-image-metadata\.mjs/);
+  assert.match(fs.readFileSync('scripts/build-tools.sh', 'utf8'), /AMLIMG_GIT_PROXY/);
   assert.match(buildScript, /IMAGE_NAME=\$\{IMAGE_NAME:\?/);
   assert.doesNotMatch(buildScript, /release-identity\.mjs/);
   assert.match(buildScript, /One-KVM_\$\{image_identity\}_\$\{BASE_FLAVOR\}\.burn\.img/);
