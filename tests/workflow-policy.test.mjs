@@ -37,7 +37,7 @@ test('runs every image and release-asset gate before CNB publication', () => {
   assert.match(script, /mknod -m 660.*\/dev\/loop/);
   assert.match(script, /losetup -f/);
   assert.match(script, /device \/dev\/fuse/);
-  assert.match(script, /apt-get install -y binutils e2fsprogs file fuse3/);
+  assert.match(script, /apt-get install -y binutils e2fsprogs file fuse2fs fuse3/);
   assert.match(script, /cnb-run-stable-inner\.sh/);
   assert.match(script, /AMLIMG_BIN=\$\(container_path/);
   assert.match(script, /VALIDATION_REPORT=\$\(container_path/);
