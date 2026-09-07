@@ -97,7 +97,9 @@ docker_env=(
   -e "VALIDATION_REPORT_NAME=$VALIDATION_REPORT_NAME"
 )
 
-docker run --rm --privileged --platform linux/amd64 \
+docker run --rm --privileged --cap-add=SYS_ADMIN \
+  --security-opt seccomp=unconfined --security-opt apparmor=unconfined \
+  --device /dev/loop-control --platform linux/amd64 \
   -v "$ROOT_DIR:/workspace" -w /workspace \
   "${docker_env[@]}" node:22-bookworm bash -lc '
     set -Eeuo pipefail
