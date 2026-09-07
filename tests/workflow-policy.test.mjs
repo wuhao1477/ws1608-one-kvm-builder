@@ -68,7 +68,8 @@ test('uses official attachment upload and independent download verification for 
   const finalize = fs.readFileSync('scripts/cnb-finalize-stable.sh', 'utf8');
 
   assert.match(pipeline, /image: cnbcool\/attachments:latest/);
-  assert.match(pipeline, /ASSET_FILES: FILES/);
+  assert.equal((pipeline.match(/FILES: ASSET_FILES/g) ?? []).length, 3);
+  assert.doesNotMatch(pipeline, /ASSET_FILES: FILES/);
   assert.match(pipeline, /ttl: 14/);
   assert.match(pipeline, /CNB_PULL_REQUEST/);
   assert.match(pipeline, /cnb-download-commit-assets\.sh/);

@@ -39,7 +39,8 @@ test('publishes releases through CNB and transfers candidate artifacts through t
   assert.match(release, /decodeURIComponent/);
   assert.match(pipeline, /cnbcool\/attachments:latest/);
   assert.match(pipeline, /ttl: 14/);
-  assert.match(pipeline, /ASSET_FILES: FILES/);
+  assert.equal((pipeline.match(/FILES: ASSET_FILES/g) ?? []).length, 3);
+  assert.doesNotMatch(pipeline, /ASSET_FILES: FILES/);
   assert.match(download, /commit-assets\/download/);
   assert.match(download, /application\/vnd\.cnb\.api\+json/);
   assert.equal(fs.existsSync('scripts/cnb-upload-commit-assets.sh'), false);

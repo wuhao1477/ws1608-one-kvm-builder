@@ -11,7 +11,7 @@
         - "./out/cnb-stable/*/*"
       ttl: 14
     exports:
-      ASSET_FILES: FILES
+      FILES: ASSET_FILES
   - name: download-and-finalize-stable
     if: test -f .build/cnb-stable/changed
     timeout: 2h
@@ -35,7 +35,7 @@
         - "./out/hcodec/artifact/*"
       ttl: 14
     exports:
-      ASSET_FILES: FILES
+      FILES: ASSET_FILES
   - name: download-and-verify-hcodec
     timeout: 2h
     script: |
@@ -58,7 +58,7 @@
         - "./out/amlenc/burn/*"
       ttl: 14
     exports:
-      ASSET_FILES: FILES
+      FILES: ASSET_FILES
   - name: download-and-verify-amlenc
     timeout: 3h
     script: |
