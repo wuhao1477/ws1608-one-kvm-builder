@@ -48,11 +48,16 @@ export TOOLS_DIR="$WORK_DIR/tools"
 export AMLIMG_BIN
 AMLIMG_BIN=$(TOOLS_DIR="$TOOLS_DIR" "$ROOT_DIR/scripts/build-tools.sh")
 
+download_url="$PACKAGE_URL"
+if [[ "$download_url" == https://github.com/* ]]; then
+  download_url="https://gh-proxy.com/$download_url"
+fi
+
 curl --fail --silent --show-error --location --retry 5 "$BASE_IMAGE_URL" \
   -o "$WORK_DIR/$BASE_IMAGE_NAME"
 printf '%s  %s\n' "$BASE_IMAGE_SHA256" "$WORK_DIR/$BASE_IMAGE_NAME" | sha256sum --check
 export BASE_IMAGE_XZ="$WORK_DIR/$BASE_IMAGE_NAME"
-curl --fail --silent --show-error --location --retry 5 "$PACKAGE_URL" \
+curl --fail --silent --show-error --location --retry 5 "$download_url" \
   -o "$WORK_DIR/$PACKAGE_NAME"
 printf '%s  %s\n' "$PACKAGE_DIGEST" "$WORK_DIR/$PACKAGE_NAME" | sha256sum --check
 dpkg-deb -f "$WORK_DIR/$PACKAGE_NAME" Package | grep -Fx one-kvm >/dev/null
