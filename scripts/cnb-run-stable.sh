@@ -59,11 +59,53 @@ dpkg-deb -f "$WORK_DIR/$PACKAGE_NAME" Version | grep -Fx "$ONE_KVM_VERSION" >/de
 dpkg-deb -f "$WORK_DIR/$PACKAGE_NAME" Architecture | grep -Fx armhf >/dev/null
 export ONE_KVM_DEB="$WORK_DIR/$PACKAGE_NAME"
 
-"$ROOT_DIR/scripts/build-image.sh"
-IMAGE="$OUTPUT_DIR/$IMAGE_NAME" BASE_IMAGE="$WORK_DIR/base.burn.img" \
-  VERIFY_DIR="$WORK_DIR/verify" "$ROOT_DIR/scripts/verify-image.sh"
-"$ROOT_DIR/scripts/package-release.sh"
-"$ROOT_DIR/scripts/verify-release-assets.sh"
+container_path() {
+  local path=$1
+  printf '/workspace/%s\n' "${path#"$ROOT_DIR"/}"
+}
+
+docker_env=(
+  -e "BASE_ID=$BASE_ID"
+  -e "BASE_FLAVOR=$BASE_FLAVOR"
+  -e "BASE_KERNEL=$BASE_KERNEL"
+  -e "BASE_BOARD=$BASE_BOARD"
+  -e "BASE_RELEASE_TAG=$BASE_RELEASE_TAG"
+  -e "BASE_IMAGE_NAME=$BASE_IMAGE_NAME"
+  -e "BASE_IMAGE_URL=$BASE_IMAGE_URL"
+  -e "BASE_IMAGE_SHA256=$BASE_IMAGE_SHA256"
+  -e "AMLIMG_REPOSITORY=$AMLIMG_REPOSITORY"
+  -e "AMLIMG_COMMIT=$AMLIMG_COMMIT"
+  -e "ONE_KVM_VERSION=$ONE_KVM_VERSION"
+  -e "UPSTREAM_TAG=$UPSTREAM_TAG"
+  -e "PACKAGE_NAME=$PACKAGE_NAME"
+  -e "PACKAGE_URL=$PACKAGE_URL"
+  -e "PACKAGE_DIGEST=$PACKAGE_DIGEST"
+  -e "BUILD_TAG=$BUILD_TAG"
+  -e "BUILD_NUMBER=$BUILD_NUMBER"
+  -e "BUILD_REVISION=$BUILD_REVISION"
+  -e "BUILDER_COMMIT=$BUILDER_COMMIT"
+  -e "GITHUB_RUN_ID=$GITHUB_RUN_ID"
+  -e "GITHUB_RUN_ATTEMPT=$GITHUB_RUN_ATTEMPT"
+  -e "GITHUB_RUN_NUMBER=$GITHUB_RUN_NUMBER"
+  -e "OUTPUT_DIR=$(container_path "$OUTPUT_DIR")"
+  -e "WORK_DIR=$(container_path "$WORK_DIR")"
+  -e "BASE_IMAGE_XZ=$(container_path "$BASE_IMAGE_XZ")"
+  -e "ONE_KVM_DEB=$(container_path "$ONE_KVM_DEB")"
+  -e "AMLIMG_BIN=$(container_path "$AMLIMG_BIN")"
+  -e "VALIDATION_REPORT=$(container_path "$VALIDATION_REPORT")"
+  -e "IMAGE_NAME=$IMAGE_NAME"
+  -e "VALIDATION_REPORT_NAME=$VALIDATION_REPORT_NAME"
+)
+
+docker run --rm --privileged --platform linux/amd64 \
+  -v "$ROOT_DIR:/workspace" -w /workspace \
+  "${docker_env[@]}" node:22-bookworm bash -lc '
+    set -Eeuo pipefail
+    export DEBIAN_FRONTEND=noninteractive
+    apt-get update
+    apt-get install -y binutils e2fsprogs file jq mtools qemu-user-static util-linux xz-utils
+    /workspace/scripts/cnb-run-stable-inner.sh
+  '
 
 cat >"$WORK_DIR/release-notes.md" <<EOF
 ## WS1608 One-KVM Rust $ONE_KVM_VERSION

@@ -70,11 +70,13 @@ test('stable CNB publication is independent of GitHub Actions', () => {
   const pipeline = read('.cnb.yml');
   const scripts = `${read('scripts/cnb-discover-release.sh')}\n${read('scripts/cnb-publish-release.sh')}`;
   const stable = read('scripts/cnb-run-stable.sh');
+  const inner = read('scripts/cnb-run-stable-inner.sh');
 
   assert.match(stable, /scripts\/cnb-discover-release\.sh/);
   assert.match(stable, /scripts\/cnb-publish-release\.sh/);
   assert.match(stable, /ensure_go/);
   assert.match(stable, /apt-get install -y binutils e2fsprogs file jq mtools qemu-user-static util-linux xz-utils/);
+  assert.match(inner, /verify-release-assets\.sh/);
   for (const field of ['UPSTREAM_TAG', 'BUILD_TAG', 'BUILD_NUMBER', 'BUILD_REVISION', 'IMAGE_STEM', 'ONE_KVM_VERSION', 'PACKAGE_NAME', 'PACKAGE_URL', 'PACKAGE_DIGEST', 'BUILDER_COMMIT']) {
     assert.match(stable, new RegExp(`${field}=\\$\\{${field}:-`));
   }

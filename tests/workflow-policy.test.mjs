@@ -27,10 +27,14 @@ test('keeps stable publication isolated from PR checks', () => {
 
 test('runs every image and release-asset gate before CNB publication', () => {
   const script = fs.readFileSync('scripts/cnb-run-stable.sh', 'utf8');
-  assert.match(script, /build-image\.sh/);
-  assert.match(script, /verify-image\.sh/);
-  assert.match(script, /package-release\.sh/);
-  assert.match(script, /verify-release-assets\.sh/);
+  const inner = fs.readFileSync('scripts/cnb-run-stable-inner.sh', 'utf8');
+  assert.match(script, /docker run --rm --privileged/);
+  assert.match(script, /cnb-run-stable-inner\.sh/);
+  assert.match(script, /AMLIMG_BIN=\$\(container_path/);
+  assert.match(script, /VALIDATION_REPORT=\$\(container_path/);
+  for (const gate of ['build-image\.sh', 'verify-image\.sh', 'package-release\.sh', 'verify-release-assets\.sh']) {
+    assert.match(inner, new RegExp(gate));
+  }
   assert.match(script, /cnb-publish-release\.sh/);
 });
 
