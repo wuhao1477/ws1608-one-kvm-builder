@@ -1,6 +1,9 @@
 #!/usr/bin/env bash
 set -Eeuo pipefail
 
+ROOT_DIR=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd -P)
+source "$ROOT_DIR/scripts/cnb-ci-env.sh"
+
 REPO=${CNB_REPO_SLUG:?CNB_REPO_SLUG is required}
 RELEASE_TAG=${RELEASE_TAG:?RELEASE_TAG is required}
 RELEASE_NAME=${RELEASE_NAME:?RELEASE_NAME is required}

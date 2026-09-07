@@ -50,10 +50,13 @@ test('CNB discovery uses the CNB repository APIs instead of gh', () => {
 
 test('CNB runner scripts bootstrap the CLI when the runner image does not include it', () => {
   const environment = read('scripts/cnb-ci-env.sh');
+  const cli = read('scripts/cnb');
 
-  assert.match(environment, /npm install --prefix/);
-  assert.match(environment, /@cnbcool\/cnb-cli/);
   assert.match(environment, /export PATH=/);
+  assert.match(cli, /CNB_API_ENDPOINT/);
+  assert.match(cli, /Authorization: Bearer/);
+  assert.match(cli, /post-release-asset-upload-confirmation/);
+  assert.match(cli, /post-commit-asset-upload-confirmation/);
 });
 
 test('stable CNB publication is independent of GitHub Actions', () => {

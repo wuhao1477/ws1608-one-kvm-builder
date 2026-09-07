@@ -2,6 +2,7 @@
 set -Eeuo pipefail
 
 ROOT_DIR=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd -P)
+source "$ROOT_DIR/scripts/cnb-ci-env.sh"
 ASSET_DIR=${1:?usage: cnb-upload-commit-assets.sh ASSET_DIR}
 REPO=${CNB_REPO_SLUG:?CNB_REPO_SLUG is required}
 COMMIT=${CNB_COMMIT:?CNB_COMMIT is required}
