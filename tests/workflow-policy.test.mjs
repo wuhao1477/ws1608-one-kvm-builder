@@ -33,6 +33,8 @@ test('runs every image and release-asset gate before CNB publication', () => {
   assert.match(script, /systempaths=unconfined/);
   assert.match(script, /volume \/sys:\/sys:ro/);
   assert.match(script, /device \/dev\/loop-control/);
+  assert.match(script, /device-cgroup-rule='b 7:\* rmw'/);
+  assert.match(script, /mknod -m 660.*\/dev\/loop/);
   assert.match(script, /cnb-run-stable-inner\.sh/);
   assert.match(script, /AMLIMG_BIN=\$\(container_path/);
   assert.match(script, /VALIDATION_REPORT=\$\(container_path/);

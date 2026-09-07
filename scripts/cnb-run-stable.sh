@@ -100,13 +100,16 @@ docker_env=(
 docker run --rm --privileged --cap-add=SYS_ADMIN \
   --security-opt seccomp=unconfined --security-opt apparmor=unconfined \
   --security-opt systempaths=unconfined --pid=host --volume /sys:/sys:ro \
-  --device /dev/loop-control --platform linux/amd64 \
+  --device /dev/loop-control --device-cgroup-rule='b 7:* rmw' --platform linux/amd64 \
   -v "$ROOT_DIR:/workspace" -w /workspace \
   "${docker_env[@]}" node:22-bookworm bash -lc '
     set -Eeuo pipefail
     export DEBIAN_FRONTEND=noninteractive
     apt-get update
     apt-get install -y binutils e2fsprogs file jq mtools qemu-user-static util-linux xz-utils
+    for loop_minor in 0 1 2 3 4 5 6 7; do
+      mknod -m 660 "/dev/loop$loop_minor" b 7 "$loop_minor" 2>/dev/null || true
+    done
     /workspace/scripts/cnb-run-stable-inner.sh
   '
 
