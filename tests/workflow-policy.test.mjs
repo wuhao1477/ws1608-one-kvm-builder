@@ -30,6 +30,8 @@ test('runs every image and release-asset gate before CNB publication', () => {
   const inner = fs.readFileSync('scripts/cnb-run-stable-inner.sh', 'utf8');
   assert.match(script, /docker run --rm --privileged/);
   assert.match(script, /seccomp=unconfined/);
+  assert.match(script, /systempaths=unconfined/);
+  assert.match(script, /volume \/sys:\/sys:ro/);
   assert.match(script, /device \/dev\/loop-control/);
   assert.match(script, /cnb-run-stable-inner\.sh/);
   assert.match(script, /AMLIMG_BIN=\$\(container_path/);

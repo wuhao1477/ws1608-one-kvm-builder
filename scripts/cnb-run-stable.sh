@@ -99,6 +99,7 @@ docker_env=(
 
 docker run --rm --privileged --cap-add=SYS_ADMIN \
   --security-opt seccomp=unconfined --security-opt apparmor=unconfined \
+  --security-opt systempaths=unconfined --pid=host --volume /sys:/sys:ro \
   --device /dev/loop-control --platform linux/amd64 \
   -v "$ROOT_DIR:/workspace" -w /workspace \
   "${docker_env[@]}" node:22-bookworm bash -lc '
