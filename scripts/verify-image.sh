@@ -26,7 +26,7 @@ VERIFY_ROOT=${VERIFY_DIR:-$ROOT_DIR/.verify}
 export ONE_KVM_VERSION UPSTREAM_TAG PACKAGE_NAME PACKAGE_URL PACKAGE_DIGEST
 export BUILD_TAG BUILD_NUMBER BUILD_REVISION BUILDER_COMMIT GITHUB_RUN_ID GITHUB_RUN_ATTEMPT GITHUB_RUN_NUMBER
 
-for command in awk cmp diff dpkg-query e2fsck file find grep mcopy mount mountpoint node readlink readelf realpath sed sha1sum umount; do
+for command in awk cmp diff dpkg-query e2fsck file find grep losetup mcopy mount mountpoint node readlink readelf realpath sed sha1sum umount; do
   command -v "$command" >/dev/null || { echo "missing command: $command" >&2; exit 1; }
 done
 [[ -x "$AMLIMG_BIN" ]] || { echo "AmlImg binary is not executable: $AMLIMG_BIN" >&2; exit 1; }
@@ -60,12 +60,16 @@ BASE_DIR="$VERIFY_WORK_DIR/base"
 ROOTFS_RAW="$VERIFY_WORK_DIR/rootfs.raw"
 MOUNT_DIR="$VERIFY_WORK_DIR/rootfs.mnt"
 root_mounted=false
+loop_device=''
 
 cleanup() (
   set +e
   local failed=0
   if [[ "$root_mounted" == true ]] && mountpoint -q "$MOUNT_DIR"; then
     as_root umount "$MOUNT_DIR" || failed=1
+  fi
+  if [[ -n "$loop_device" ]]; then
+    as_root losetup --detach "$loop_device" || failed=1
   fi
   if mountpoint -q "$MOUNT_DIR"; then
     failed=1
@@ -130,7 +134,8 @@ cmp --silent "$BASE_DIR/$rootfs_sparse" "$FINAL_DIR/$rootfs_sparse" && {
 }
 node "$ROOT_DIR/scripts/sparse-to-raw.mjs" "$FINAL_DIR/$rootfs_sparse" "$ROOTFS_RAW"
 as_root e2fsck -fn "$ROOTFS_RAW"
-as_root mount -o loop,ro "$ROOTFS_RAW" "$MOUNT_DIR"
+loop_device=$(as_root losetup --find --show --read-only "$ROOTFS_RAW")
+as_root mount -o ro "$loop_device" "$MOUNT_DIR"
 root_mounted=true
 
 dpkg_admin=$(resolve_rootfs_path /var/lib/dpkg)
