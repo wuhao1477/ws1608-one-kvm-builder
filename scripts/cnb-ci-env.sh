@@ -10,12 +10,12 @@ ensure_node() {
   local version=${CNB_NODE_VERSION:-22.21.0}
   local platform=linux-x64
   local prefix=${CNB_NODE_PREFIX:-${CNB_BUILD_WORKSPACE:-$ROOT_DIR}/.cnb-tools/node-v$version-$platform}
-  local archive="$prefix.tar.xz"
+  local archive="$prefix.tar.gz"
   mkdir -p "$(dirname "$prefix")"
   if [[ ! -x "$prefix/bin/node" ]]; then
     curl --fail --silent --show-error --location --retry 5 --retry-all-errors \
-      "https://nodejs.org/dist/v$version/node-v$version-$platform.tar.xz" -o "$archive"
-    tar -xJf "$archive" -C "$(dirname "$prefix")"
+      "https://nodejs.org/dist/v$version/node-v$version-$platform.tar.gz" -o "$archive"
+    tar -xzf "$archive" -C "$(dirname "$prefix")"
     rm -f "$archive"
   fi
   export PATH="$prefix/bin:$PATH"
