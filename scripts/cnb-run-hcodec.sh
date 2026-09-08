@@ -18,7 +18,7 @@ mkdir -p "$ROOT_DIR/.tools"
 "$ROOT_DIR/scripts/build-tools.sh" >/dev/null
 export DEBIAN_FRONTEND=noninteractive
 apt-get update
-apt-get install -y e2fsprogs mtools xz-utils
+apt-get install -y e2fsprogs mtools xz-utils gcc-arm-linux-gnueabihf binutils-arm-linux-gnueabihf
 export GITHUB_SOURCE="${GITHUB_SOURCE:-https://gh-proxy.com/https://github.com}"
 
 curl --fail --silent --show-error --location --retry 5 "$BASE_IMAGE_URL" -o "$BASE_IMAGE_XZ"
