@@ -39,6 +39,7 @@
   - name: download-and-verify-hcodec
     timeout: 2h
     script: |
+      source "./scripts/cnb-ci-env.sh"
       if [ "${CNB_PULL_REQUEST:-false}" = true ]; then
         ./experimental/hcodec/scripts/verify-artifact.sh out/hcodec/artifact
       else

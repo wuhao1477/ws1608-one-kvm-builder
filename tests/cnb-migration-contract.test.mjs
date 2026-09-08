@@ -115,6 +115,12 @@ test('HCODEC runner uses the CNB Docker-in-Docker permissions required by Armbia
   assert.match(kernel, /oras-project\/oras\/releases\/download/);
 });
 
+test('HCODEC artifact verification stage bootstraps Node before running the verifier', () => {
+  const pipeline = read('.cnb.yml');
+
+  assert.match(pipeline, /name: download-and-verify-hcodec[\s\S]*source "\.\/scripts\/cnb-ci-env\.sh"/);
+});
+
 test('keeps CNB publication and GitHub Actions available', () => {
   const pipeline = read('.cnb.yml');
   const scripts = `${read('scripts/cnb-discover-release.sh')}\n${read('scripts/cnb-publish-release.sh')}`;
