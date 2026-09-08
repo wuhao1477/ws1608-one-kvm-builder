@@ -81,6 +81,13 @@ test('CNB runner scripts bootstrap the CLI when the runner image does not includ
   assert.match(cli, /post-commit-asset-upload-confirmation/);
 });
 
+test('HCODEC runner creates its build workspace before downloading the base image', () => {
+  const runner = read('scripts/cnb-run-hcodec.sh');
+
+  assert.match(runner, /mkdir -p "\$ROOT_DIR\/\.build\/hcodec"/);
+  assert.match(runner, /mkdir -p "\$ROOT_DIR\/out\/hcodec\/kernel"/);
+});
+
 test('keeps CNB publication and GitHub Actions available', () => {
   const pipeline = read('.cnb.yml');
   const scripts = `${read('scripts/cnb-discover-release.sh')}\n${read('scripts/cnb-publish-release.sh')}`;

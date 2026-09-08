@@ -10,6 +10,7 @@ ARMBIAN_IMAGE=${ARMBIAN_IMAGE:-ubuntu:24.04@sha256:1e0a86e57d247923571b75e0aaf48
 export BASE_RELEASE_TAG BASE_IMAGE_SHA256
 export BASE_IMAGE_XZ="$ROOT_DIR/.build/hcodec/base.burn.img.xz"
 export HCODEC_BASE_EVIDENCE="$ROOT_DIR/.build/hcodec/base-evidence"
+mkdir -p "$ROOT_DIR/.build/hcodec"
 mkdir -p "$ROOT_DIR/out/hcodec/kernel" "$ROOT_DIR/out/hcodec/tools" \
   "$ROOT_DIR/out/hcodec/firmware" "$ROOT_DIR/out/hcodec/artifact"
 
