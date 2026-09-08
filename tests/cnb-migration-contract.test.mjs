@@ -88,6 +88,14 @@ test('HCODEC runner creates its build workspace before downloading the base imag
   assert.match(runner, /mkdir -p "\$ROOT_DIR\/out\/hcodec\/kernel"/);
 });
 
+test('HCODEC runner builds and exports the pinned AmlImg tool before base evidence', () => {
+  const runner = read('scripts/cnb-run-hcodec.sh');
+
+  assert.match(runner, /scripts\/build-tools\.sh/);
+  assert.match(runner, /AMLIMG_BIN=.*AmlImg/);
+  assert.match(runner, /collect-base-evidence\.sh/);
+});
+
 test('keeps CNB publication and GitHub Actions available', () => {
   const pipeline = read('.cnb.yml');
   const scripts = `${read('scripts/cnb-discover-release.sh')}\n${read('scripts/cnb-publish-release.sh')}`;

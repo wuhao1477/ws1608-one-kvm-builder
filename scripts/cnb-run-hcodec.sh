@@ -13,6 +13,9 @@ export HCODEC_BASE_EVIDENCE="$ROOT_DIR/.build/hcodec/base-evidence"
 mkdir -p "$ROOT_DIR/.build/hcodec"
 mkdir -p "$ROOT_DIR/out/hcodec/kernel" "$ROOT_DIR/out/hcodec/tools" \
   "$ROOT_DIR/out/hcodec/firmware" "$ROOT_DIR/out/hcodec/artifact"
+export AMLIMG_BIN="$ROOT_DIR/.tools/AmlImg"
+mkdir -p "$ROOT_DIR/.tools"
+"$ROOT_DIR/scripts/build-tools.sh" >/dev/null
 
 curl --fail --silent --show-error --location --retry 5 "$BASE_IMAGE_URL" -o "$BASE_IMAGE_XZ"
 printf '%s  %s\n' "$BASE_IMAGE_SHA256" "$BASE_IMAGE_XZ" | sha256sum --check
