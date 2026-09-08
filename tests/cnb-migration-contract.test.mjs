@@ -93,7 +93,7 @@ test('HCODEC runner builds and exports the pinned AmlImg tool before base eviden
 
   assert.match(runner, /scripts\/build-tools\.sh/);
   assert.match(runner, /AMLIMG_BIN=.*AmlImg/);
-  assert.match(runner, /apt-get install -y e2fsprogs mtools xz-utils gcc-arm-linux-gnueabihf binutils-arm-linux-gnueabihf/);
+  assert.match(runner, /apt-get install -y e2fsprogs mtools xz-utils gcc-arm-linux-gnueabihf binutils-arm-linux-gnueabihf build-essential/);
   assert.match(runner, /collect-base-evidence\.sh/);
 });
 
