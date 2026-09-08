@@ -9,7 +9,7 @@ ensure_node() {
   command -v tar >/dev/null 2>&1 || { echo 'tar is required to install Node.js' >&2; exit 1; }
   local version=${CNB_NODE_VERSION:-22.21.0}
   local platform=linux-x64
-  local prefix=${CNB_NODE_PREFIX:-${CNB_BUILD_WORKSPACE:-$ROOT_DIR}/.cnb-tools/node-v$version-$platform}
+  local prefix=${CNB_NODE_PREFIX:-/tmp/cnb-tools/node-v$version-$platform}
   local archive="$prefix.tar.gz"
   mkdir -p "$(dirname "$prefix")"
   if [[ ! -x "$prefix/bin/node" ]]; then
@@ -31,7 +31,7 @@ ensure_go() {
   command -v sha256sum >/dev/null 2>&1 || { echo 'sha256sum is required to verify Go' >&2; exit 1; }
   local version=${CNB_GO_VERSION:-1.24.13}
   local platform=linux-amd64
-  local prefix=${CNB_GO_PREFIX:-${CNB_BUILD_WORKSPACE:-$ROOT_DIR}/.cnb-tools/go}
+  local prefix=${CNB_GO_PREFIX:-/tmp/cnb-tools/go}
   local archive="$prefix.tar.gz"
   local digest=1fc94b57134d51669c72173ad5d49fd62afb0f1db9bf3f798fd98ee423f8d730
   mkdir -p "$(dirname "$prefix")"
