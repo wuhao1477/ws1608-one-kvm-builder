@@ -32,6 +32,7 @@ docker run --rm --privileged --cap-add=SYS_ADMIN \
   -e ALLOW_ROOT=yes -e PRE_PREPARED_HOST=yes -e ARMBIAN_INSIDE_DOCKERFILE_BUILD=yes \
   -e SKIP_LOG_ARCHIVE=yes -e KERNEL_CONFIGURE=no -e SHARE_LOG=no \
   -e GITHUB_SOURCE="$GITHUB_SOURCE" \
+  -e KERNEL_GIT=shallow \
   -e HCODEC_BASE_EVIDENCE=/repo/.build/hcodec/base-evidence \
   -v "$ROOT_DIR:/repo" -w /repo "$ARMBIAN_IMAGE" bash -lc '
     set -Eeuo pipefail

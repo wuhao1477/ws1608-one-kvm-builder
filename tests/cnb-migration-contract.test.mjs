@@ -109,6 +109,7 @@ test('HCODEC runner uses the CNB Docker-in-Docker permissions required by Armbia
   assert.match(runner, /--volume \/sys:\/sys:ro/);
   assert.match(runner, /GITHUB_SOURCE=.*gh-proxy\.com/);
   assert.match(runner, /-e GITHUB_SOURCE=/);
+  assert.match(runner, /-e KERNEL_GIT=shallow/);
   assert.match(kernel, /oras_version=1\.3\.3/);
   assert.match(kernel, /cache\/tools\/oras/);
   assert.match(kernel, /oras-project\/oras\/releases\/download/);
