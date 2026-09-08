@@ -99,6 +99,7 @@ test('HCODEC runner builds and exports the pinned AmlImg tool before base eviden
 
 test('HCODEC runner uses the CNB Docker-in-Docker permissions required by Armbian', () => {
   const runner = read('scripts/cnb-run-hcodec.sh');
+  const kernel = read('experimental/hcodec/scripts/build-kernel.sh');
 
   assert.match(runner, /--cap-add=SYS_ADMIN/);
   assert.match(runner, /seccomp=unconfined/);
@@ -108,9 +109,9 @@ test('HCODEC runner uses the CNB Docker-in-Docker permissions required by Armbia
   assert.match(runner, /--volume \/sys:\/sys:ro/);
   assert.match(runner, /GITHUB_SOURCE=.*gh-proxy\.com/);
   assert.match(runner, /-e GITHUB_SOURCE=/);
-  assert.match(runner, /ORAS_VERSION=1\.3\.3/);
-  assert.match(runner, /cache\/tools\/oras/);
-  assert.match(runner, /oras-project\/oras\/releases\/download/);
+  assert.match(kernel, /oras_version=1\.3\.3/);
+  assert.match(kernel, /cache\/tools\/oras/);
+  assert.match(kernel, /oras-project\/oras\/releases\/download/);
 });
 
 test('keeps CNB publication and GitHub Actions available', () => {

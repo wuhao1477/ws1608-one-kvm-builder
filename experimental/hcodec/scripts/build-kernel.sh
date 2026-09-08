@@ -49,6 +49,23 @@ armbian_archive="$WORK_DIR/armbian-build-$ARMBIAN_BUILD_COMMIT.tar.gz"
 printf '%s  %s\n' "$ARMBIAN_BUILD_ARCHIVE_SHA256" "$armbian_archive" | sha256sum --check
 tar -xzf "$armbian_archive" -C "$ARMBIAN_DIR" --strip-components=1
 
+oras_version=1.3.3
+oras_name="oras_${oras_version}_linux_amd64"
+oras_dir="$ARMBIAN_DIR/cache/tools/oras"
+oras_bin="$oras_dir/$oras_name"
+mkdir -p "$oras_dir"
+if [[ ! -x "$oras_bin" ]]; then
+  oras_archive="$oras_dir/$oras_name.tar.gz"
+  github_source=${GITHUB_SOURCE:-https://github.com}
+  curl --fail --silent --show-error --location --retry 5 \
+    "$github_source/oras-project/oras/releases/download/v$oras_version/$oras_name.tar.gz" \
+    -o "$oras_archive"
+  tar -xf "$oras_archive" -C "$oras_dir" oras
+  mv "$oras_dir/oras" "$oras_bin"
+  chmod 0755 "$oras_bin"
+  rm -f "$oras_archive"
+fi
+
 staging="$ARMBIAN_DIR/userpatches/kernel/archive/meson-6.12"
 mkdir -p "$staging"
 for patch in "$PATCH_DIR"/*.patch; do
