@@ -97,6 +97,17 @@ test('HCODEC runner builds and exports the pinned AmlImg tool before base eviden
   assert.match(runner, /collect-base-evidence\.sh/);
 });
 
+test('HCODEC runner uses the CNB Docker-in-Docker permissions required by Armbian', () => {
+  const runner = read('scripts/cnb-run-hcodec.sh');
+
+  assert.match(runner, /--cap-add=SYS_ADMIN/);
+  assert.match(runner, /seccomp=unconfined/);
+  assert.match(runner, /apparmor=unconfined/);
+  assert.match(runner, /systempaths=unconfined/);
+  assert.match(runner, /--pid=host/);
+  assert.match(runner, /--volume \/sys:\/sys:ro/);
+});
+
 test('keeps CNB publication and GitHub Actions available', () => {
   const pipeline = read('.cnb.yml');
   const scripts = `${read('scripts/cnb-discover-release.sh')}\n${read('scripts/cnb-publish-release.sh')}`;

@@ -24,7 +24,10 @@ curl --fail --silent --show-error --location --retry 5 "$BASE_IMAGE_URL" -o "$BA
 printf '%s  %s\n' "$BASE_IMAGE_SHA256" "$BASE_IMAGE_XZ" | sha256sum --check
 "$ROOT_DIR/experimental/hcodec/scripts/collect-base-evidence.sh" collect "$HCODEC_BASE_EVIDENCE"
 
-docker run --rm --platform linux/amd64 --privileged \
+docker run --rm --privileged --cap-add=SYS_ADMIN \
+  --security-opt seccomp=unconfined --security-opt apparmor=unconfined \
+  --security-opt systempaths=unconfined --pid=host --volume /sys:/sys:ro \
+  --platform linux/amd64 \
   -e ALLOW_ROOT=yes -e PRE_PREPARED_HOST=yes -e ARMBIAN_INSIDE_DOCKERFILE_BUILD=yes \
   -e SKIP_LOG_ARCHIVE=yes -e KERNEL_CONFIGURE=no -e SHARE_LOG=no \
   -e HCODEC_BASE_EVIDENCE=/repo/.build/hcodec/base-evidence \
