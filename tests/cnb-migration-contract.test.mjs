@@ -106,6 +106,8 @@ test('HCODEC runner uses the CNB Docker-in-Docker permissions required by Armbia
   assert.match(runner, /systempaths=unconfined/);
   assert.match(runner, /--pid=host/);
   assert.match(runner, /--volume \/sys:\/sys:ro/);
+  assert.match(runner, /GITHUB_SOURCE=.*gh-proxy\.com/);
+  assert.match(runner, /-e GITHUB_SOURCE=/);
 });
 
 test('keeps CNB publication and GitHub Actions available', () => {

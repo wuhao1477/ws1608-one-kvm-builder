@@ -19,6 +19,7 @@ mkdir -p "$ROOT_DIR/.tools"
 export DEBIAN_FRONTEND=noninteractive
 apt-get update
 apt-get install -y e2fsprogs mtools xz-utils
+export GITHUB_SOURCE="${GITHUB_SOURCE:-https://gh-proxy.com/https://github.com}"
 
 curl --fail --silent --show-error --location --retry 5 "$BASE_IMAGE_URL" -o "$BASE_IMAGE_XZ"
 printf '%s  %s\n' "$BASE_IMAGE_SHA256" "$BASE_IMAGE_XZ" | sha256sum --check
@@ -30,6 +31,7 @@ docker run --rm --privileged --cap-add=SYS_ADMIN \
   --platform linux/amd64 \
   -e ALLOW_ROOT=yes -e PRE_PREPARED_HOST=yes -e ARMBIAN_INSIDE_DOCKERFILE_BUILD=yes \
   -e SKIP_LOG_ARCHIVE=yes -e KERNEL_CONFIGURE=no -e SHARE_LOG=no \
+  -e GITHUB_SOURCE="$GITHUB_SOURCE" \
   -e HCODEC_BASE_EVIDENCE=/repo/.build/hcodec/base-evidence \
   -v "$ROOT_DIR:/repo" -w /repo "$ARMBIAN_IMAGE" bash -lc '
     set -Eeuo pipefail
