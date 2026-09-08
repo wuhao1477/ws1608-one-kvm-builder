@@ -16,6 +16,9 @@ mkdir -p "$ROOT_DIR/out/hcodec/kernel" "$ROOT_DIR/out/hcodec/tools" \
 export AMLIMG_BIN="$ROOT_DIR/.tools/AmlImg"
 mkdir -p "$ROOT_DIR/.tools"
 "$ROOT_DIR/scripts/build-tools.sh" >/dev/null
+export DEBIAN_FRONTEND=noninteractive
+apt-get update
+apt-get install -y e2fsprogs mtools xz-utils
 
 curl --fail --silent --show-error --location --retry 5 "$BASE_IMAGE_URL" -o "$BASE_IMAGE_XZ"
 printf '%s  %s\n' "$BASE_IMAGE_SHA256" "$BASE_IMAGE_XZ" | sha256sum --check
