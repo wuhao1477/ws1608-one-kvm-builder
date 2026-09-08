@@ -20,6 +20,21 @@ export DEBIAN_FRONTEND=noninteractive
 apt-get update
 apt-get install -y e2fsprogs mtools xz-utils
 export GITHUB_SOURCE="${GITHUB_SOURCE:-https://gh-proxy.com/https://github.com}"
+ORAS_VERSION=1.3.3
+ORAS_NAME="oras_${ORAS_VERSION}_linux_amd64"
+ORAS_DIR="$ROOT_DIR/.build/hcodec/armbian-build/cache/tools/oras"
+ORAS_BIN="$ORAS_DIR/$ORAS_NAME"
+mkdir -p "$ORAS_DIR"
+if [[ ! -x "$ORAS_BIN" ]]; then
+  ORAS_ARCHIVE="$ORAS_DIR/$ORAS_NAME.tar.gz"
+  curl --fail --silent --show-error --location --retry 5 \
+    "$GITHUB_SOURCE/oras-project/oras/releases/download/v$ORAS_VERSION/$ORAS_NAME.tar.gz" \
+    -o "$ORAS_ARCHIVE"
+  tar -xf "$ORAS_ARCHIVE" -C "$ORAS_DIR" oras
+  mv "$ORAS_DIR/oras" "$ORAS_BIN"
+  chmod 0755 "$ORAS_BIN"
+  rm -f "$ORAS_ARCHIVE"
+fi
 
 curl --fail --silent --show-error --location --retry 5 "$BASE_IMAGE_URL" -o "$BASE_IMAGE_XZ"
 printf '%s  %s\n' "$BASE_IMAGE_SHA256" "$BASE_IMAGE_XZ" | sha256sum --check
