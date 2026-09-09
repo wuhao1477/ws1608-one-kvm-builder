@@ -73,9 +73,9 @@
 
 ## 稳定通道
 
-`.cnb.yml` 每周日 02:17 UTC 查询 One-KVM 最新稳定 Release。只有新的上游
-tag 与 armhf Deb SHA-256 组合才触发镜像构建；同一输入可通过 CNB Web Trigger
-的 `force=true` 生成新的不可变 `bRRRAAA` Release。
+`.github/workflows/build.yml` 每周日 02:17 UTC 查询 One-KVM 最新稳定 Release。只有新的上游
+tag 与 armhf Deb SHA-256 组合才触发镜像构建；同一输入可通过 GitHub Actions
+手动触发的 `force=true` 生成新的不可变 `bRRRAAA` Release。CNB 配置仅作历史参考。
 
 稳定构建只修改 rootfs 中的 One-KVM、systemd、OTG 和来源 metadata，不
 替换 boot、内核、DTB、U-Boot 或 resource。CI 验证镜像容器、分区、ext4、

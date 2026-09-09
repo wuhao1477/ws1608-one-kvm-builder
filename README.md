@@ -115,7 +115,7 @@ CI 会重新解包成品并验证 Amlogic v2 CRC、boot FAT、Linux console、12
 标准条目、分区 VERIFY、非 rootfs 分区一致性、One-KVM armhf 包、systemd、
 OTG、ext4、manifest、压缩往返和所有摘要。
 
-CNB 托管 runner 没有实体 WS1608、采集卡或被控机 USB。加入新内核或
+GitHub-hosted runner 没有实体 WS1608、采集卡或被控机 USB。加入新内核或
 设备树的 HCODEC 候选必须保持 `hardware_boot_tested=false` 和
 `hardware_encoder_tested=false`，直到对应实机验收完成。
 
@@ -128,7 +128,7 @@ pnpm test
 ```
 
 完整镜像构建需要 Linux、root、qemu-user-static、Go、Node.js、e2fsprogs、
-mtools 和固定 AmlImg 工具；macOS 上优先使用 CNB 流水线。
+mtools 和固定 AmlImg 工具；macOS 上使用 GitHub Actions 流水线。
 
 ## 文档
 

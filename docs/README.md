@@ -35,14 +35,14 @@ GitHub 是唯一受支持的 Git 托管、构建和 PR 检查入口。`.cnb.yml`
 | 内核 | `6.12.28-current-meson` |
 | 稳定 One-KVM | `0.2.6` / `v260802` |
 | 稳定 Release | `ws1608-one-kvm-0.2.6-v260802-b028001` |
-| 自动检查 | CNB 每周日 02:17 UTC |
+| 自动检查 | GitHub Actions 每周日 02:17 UTC |
 | HCODEC 候选 | CNB `run-30-1` 在稳定 One-KVM 用户空间复验通过 30 帧编码和独立解码，60 秒健康记录完整；探针后设备仍需重启恢复 SSH，稳定性验收未通过 |
 | 候选后端 | `h264_v4l2m2m` |
 
 ## 最短维护路径
 
 1. 先读 [HANDOFF.md](HANDOFF.md) 和 [ADR-0003](adr/0003-armbian-6.12-hcodec-route.md)。
-2. 稳定 One-KVM 更新使用 `.cnb.yml` 的定时、PR、API 和 Web Trigger 流程。
+2. 稳定 One-KVM 更新使用 `.github/workflows/build.yml` 的定时、PR、手动和 repository dispatch 流程。
 3. 没有新上游 tag 与 Deb 摘要时，build/release 必须跳过。
 4. HCODEC 工作先验证 ARMv7 内核、DTB、固件和独立 V4L2 码流，不修改稳定资产；当前 30 帧编码与持久化日志通过，但探针后设备稳定性仍未通过。
 5. 完成探针后的重启稳定性验收后，才以 `ONE_KVM_V4L2M2M_ALLOW=1` 临时验证 One-KVM。
@@ -58,7 +58,7 @@ GitHub 是唯一受支持的 Git 托管、构建和 PR 检查入口。`.cnb.yml`
 ## 事实来源优先级
 
 1. 当前配置、工作流和脚本。
-2. Release 的 manifest、validation report、`SHA256SUMS` 和 CNB 构建日志。
+2. Release 的 manifest、validation report、`SHA256SUMS` 和 GitHub Actions 构建日志。
 3. ADR、路线规格和本目录维护文档。
 4. 外部教程与研究资料只作候选证据，不能替代 WS1608 实测。
 
