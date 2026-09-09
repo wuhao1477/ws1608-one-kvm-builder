@@ -86,6 +86,13 @@ Annex-B H.264；`ffprobe`/`ffmpeg` 均通过，码流 SHA-256 为
 eth0/carrier 在线且无 HCODEC 错误、panic 或 oops。探针后设备仍需重启恢复 SSH，
 所以不创建 PR，也不继续 720p/1080p、DMABUF 或 One-KVM。
 
+将同一 artifact 安装到重新刷入的稳定 One-KVM 用户空间后，`results-stable-30f`
+复验返回 `0`，生成 1 个 IDR、29 个 P 帧和 44127 字节 Annex-B H.264；
+`ffprobe`/`ffmpeg` 通过，码流 SHA-256 为
+`d1daed2cda6353b1b7d2f692abcf3803ef9076b6e0dc550652bafd66b97e818a`。One-KVM 健康
+接口正常，60 条健康记录完整，内核错误筛查为 0；探针后设备仍失联并需重启恢复，
+因此不创建 PR，也不继续其他分辨率或内存模式。
+
 设备安装必须使用 `install-artifact.sh`：模块包先解到目标根分区 staging，再复制
 目标版本目录；固件从 artifact 的 `firmware/meson8b_h264.bin` 直接安装。
 构建阶段会拒绝缺少模块索引或 `zram.ko` 依赖链不完整的输出；安装时保留这些

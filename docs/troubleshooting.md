@@ -166,6 +166,13 @@ CNB `run-30-1` 已使用该包装器完成 640×480 MMAP motion 30 帧编码：�
 筛查均为 0，60 条健康记录保持 eth0/carrier 在线。探针后设备仍需重启恢复 SSH，
 因此该候选仍未完成稳定性验收，不重复 probe，也不创建 PR。
 
+将同一 CNB artifact 安装到稳定 One-KVM 用户空间后的 `results-stable-30f` 复验
+同样返回 `0`：1 个 IDR、29 个 P 帧、44127 字节码流，SHA-256 为
+`d1daed2cda6353b1b7d2f692abcf3803ef9076b6e0dc550652bafd66b97e818a`；
+`ffprobe`/`ffmpeg` 通过，60 条健康记录完整，HCODEC 错误、panic 和 oops 为 0。
+探针后 SSH 再次失联，重启后 One-KVM 服务恢复；这说明问题仍位于探针结束后的
+设备稳定性边界，不应通过重复探针或提高分辨率掩盖。
+
 ### 6. 码流
 
 当前候选只用 640×480 单会话和 MMAP；DMABUF、720p 和 1080p 在稳定性验收前

@@ -94,3 +94,10 @@ artifact SHA-256 为
 健康记录全部保持 eth0/carrier 在线，HCODEC 错误、panic 和 oops 为 0。探针后
 设备仍需重启恢复 SSH，因此该 artifact 仍是实机研究候选，不代表稳定验收或可创建
 PR。
+
+之后将同一 artifact 安装到稳定 One-KVM 用户空间进行 `results-stable-30f` 复验：
+退出码为 `0`，输出 44127 字节 Annex-B H.264，包含 1 个 IDR 和 29 个 P 帧；独立
+`ffprobe`/`ffmpeg` 通过，码流 SHA-256 为
+`d1daed2cda6353b1b7d2f692abcf3803ef9076b6e0dc550652bafd66b97e818a`。60 条健康记录
+完整，内核日志无 HCODEC 错误、panic 或 oops，但探针后设备仍需重启恢复 SSH，
+所以该 artifact 仍未达到稳定验收或 PR 条件。

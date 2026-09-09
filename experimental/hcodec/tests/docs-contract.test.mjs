@@ -86,6 +86,16 @@ test('documents the CNB run-30-1 stability probe evidence and remaining reboot g
   assert.match(text, /不创建 PR/);
 });
 
+test('documents the stable-rootfs rerun and its remaining post-probe loss', () => {
+  const text = files.map(read).join('\n');
+
+  assert.match(text, /results-stable-30f/);
+  assert.match(text, /44127/);
+  assert.match(text, /d1daed2cda6353b1b7d2f692abcf3803ef9076b6e0dc550652bafd66b97e818a/);
+  assert.match(text, /稳定 One-KVM 用户空间/);
+  assert.match(text, /探针后.*失联|仍失联/);
+});
+
 test('does not describe the disproved offset ring workaround as the active next step', () => {
   const text = files.map(read).join('\n');
   assert.doesNotMatch(text, /run-10 只调整 Meson8b offset/);

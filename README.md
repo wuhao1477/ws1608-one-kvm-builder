@@ -58,6 +58,13 @@ Linux 6.12 HCODEC 研究路线。
   健康记录保持 eth0/carrier 在线且无 HCODEC 错误、panic 或 oops。探针后设备仍需
   重启才能恢复 SSH，因此稳定性验收仍未完成，`hardware_encoder_tested` 保持
   `false`，不创建 PR。
+- 随后将同一 artifact 安装到重新刷入的稳定 One-KVM 用户空间后重跑一次
+  `results-stable-30f`：One-KVM 服务和健康接口在探针前后均正常，探针退出码为
+  `0`，生成 1 个 IDR、29 个 P 帧和 44127 字节 Annex-B H.264；`ffprobe` 与
+  `ffmpeg` 均通过，SHA-256 为
+  `d1daed2cda6353b1b7d2f692abcf3803ef9076b6e0dc550652bafd66b97e818a`。60 条健康
+  记录完整，内核日志无 HCODEC 错误、panic 或 oops，但探针后 SSH 再次失联并需
+  重启恢复；因此稳定性验收仍未完成。
 
 ## 自动更新规则
 
