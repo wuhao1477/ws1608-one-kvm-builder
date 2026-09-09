@@ -96,6 +96,18 @@ test('documents the stable-rootfs rerun and its remaining post-probe loss', () =
   assert.match(text, /探针后.*失联|仍失联/);
 });
 
+test('documents the GitHub run-32-1 evidence and remaining reboot gate', () => {
+  const text = files.map(read).join('\n');
+
+  assert.match(text, /34345081710/);
+  assert.match(text, /run-32-1/);
+  assert.match(text, /7575eff4a9eb47d4d0e558827be73deff945559719a126f320a59c1d6fb9a8d3/);
+  assert.match(text, /32 次 IRQ|32.*IRQ/);
+  assert.match(text, /power_off deferred/);
+  assert.match(text, /60.*健康记录|健康记录.*60/);
+  assert.match(text, /仍需重启恢复 SSH|探针后.*重启/);
+});
+
 test('does not describe the disproved offset ring workaround as the active next step', () => {
   const text = files.map(read).join('\n');
   assert.doesNotMatch(text, /run-10 只调整 Meson8b offset/);

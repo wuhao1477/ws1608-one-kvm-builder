@@ -8,7 +8,7 @@
 | Armbian `6.12.28-current-meson` 与 One-KVM 运行 | 已验证 |
 | H.264/H.265/VP8/VP9 软件编码路径 | 已验证 |
 | ARMv7 `meson-venc` 模块、DTB 与工具 artifact | 已刷写并完成启动检查 |
-| HCODEC V4L2 M2M H.264 | CNB `run-30-1` 在稳定 One-KVM 用户空间完成 640×480 30 帧编码、独立解码和 60 秒健康记录；探针后设备需重启，稳定性验收未通过 |
+| HCODEC V4L2 M2M H.264 | GitHub Actions `34345081710` 的 `run-32-1` 在稳定 One-KVM 用户空间完成 640×480 30 帧编码、独立解码和 60 秒健康记录；探针后设备需重启，稳定性验收未通过 |
 | One-KVM `h264_v4l2m2m` | 尚未实机验证 |
 | 1080p30、128 MiB CMA、长时间稳定性 | 尚未实机验证 |
 
@@ -150,6 +150,15 @@ One-KVM 服务和健康接口在探针前后正常，退出码 `0`，内核日�
 `ffprobe`/`ffmpeg` 通过，60 条健康记录保持 eth0/carrier 在线，HCODEC 错误、
 panic 和 oops 筛查为 0；探针后设备仍失联并需重启恢复，因此仍不能进入 DMABUF、
 720p、1080p 或 One-KVM 集成。
+
+GitHub Actions run `34345081710` 的 `run-32-1` artifact 已完成云端构建、独立复验、
+安装和重启。640×480 MMAP motion probe 退出码为 `0`，内核 trace 记录 30 次
+`device_run`、32 次 IRQ、1 个 IDR、29 个 P 帧和 1 次 `power_off deferred`；输出
+44127 字节 Annex-B H.264，码流 SHA-256 为
+`d1daed2cda6353b1b7d2f692abcf3803ef9076b6e0dc550652bafd66b97e818a`。本地
+`ffprobe` 读到 30 帧 640×480 H.264，`ffmpeg` 解码退出码为 `0`；`kernel.health.log`
+为空，60 条健康记录完整，探针后设备仍需重启恢复 SSH。因此该候选仍不能进入
+DMABUF、720p、1080p 或 One-KVM 集成。
 
 ## 6. One-KVM 显式探针
 

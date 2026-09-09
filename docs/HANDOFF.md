@@ -60,6 +60,16 @@
   `d1daed2cda6353b1b7d2f692abcf3803ef9076b6e0dc550652bafd66b97e818a`。60 条健康
   记录完整，内核日志无 HCODEC 错误、panic 或 oops，但探针后 SSH 再次失联并需
   重启恢复，`hardware_encoder_tested` 仍为 `false`。
+- GitHub Actions run `34345081710` 的 `run-32-1` artifact
+  `ws1608-hcodec-armv7-run-32-1.tar.xz` 已完成云端构建、独立复验、安装和重启，
+  artifact SHA-256 为
+  `7575eff4a9eb47d4d0e558827be73deff945559719a126f320a59c1d6fb9a8d3`。
+  640×480 MMAP motion probe 退出码为 `0`，生成 1 个 IDR、29 个 P 帧和 44127 字节
+  Annex-B H.264；独立 `ffprobe` 读到 30 帧、`ffmpeg` 解码通过，码流 SHA-256 为
+  `d1daed2cda6353b1b7d2f692abcf3803ef9076b6e0dc550652bafd66b97e818a`。内核 trace
+  记录 30 次 `device_run`、32 次 IRQ 和 1 次 `power_off deferred`，没有新增
+  HCODEC 内核事件，60 条健康记录完整；探针结束后仍需重启恢复 SSH，
+  `hardware_encoder_tested` 保持 `false`，不创建 PR。
 - `codex/hcodec-armv7-cloud-verify` 的 `run-12-1` 候选已实机启动，`cma=128M`
   生效且 `/dev/video0` 注册成功；640×480 单帧 probe 记录到
   `SEQUENCE`、`PICTURE` 成功，`IDR` 输出 7 字节后超时并返回 `-110`。
@@ -114,7 +124,7 @@ One-KVM `0.2.6` 已有 `h264_v4l2m2m` 后端，Amlogic 实验探测需要
 ## 接手后的顺序
 
 1. 保留 `33854312358`、`33874935950`、`33893613040`、`33967514846`、`33973657980` 和 `33987050987` artifact 与对应实机证据，不重复已有 probe。
-2. 保留 `run-30-1` 两次结果的码流、日志和 60 秒健康记录，定位探针结束后的设备失联；不重复编码，不继续 720p/1080p、DMABUF 或 One-KVM。
+2. 保留 `run-30-1` 和 `run-32-1` 的码流、日志和 60 秒健康记录，定位探针结束后的设备失联；不重复编码，不继续 720p/1080p、DMABUF 或 One-KVM。
 3. 只有探针完整返回、生成有效 Annex-B H.264、健康记录完整且设备在结束后无需人工重启仍可访问时才创建 PR。
 4. 独立码流和清理路径稳定后再临时接入 One-KVM，不修改稳定服务配置。
 

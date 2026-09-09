@@ -173,6 +173,13 @@ CNB `run-30-1` 已使用该包装器完成 640×480 MMAP motion 30 帧编码：�
 探针后 SSH 再次失联，重启后 One-KVM 服务恢复；这说明问题仍位于探针结束后的
 设备稳定性边界，不应通过重复探针或提高分辨率掩盖。
 
+GitHub Actions run `34345081710` 的 `run-32-1` 继续使用同一包装器完成验证：
+退出码 `0`，30 次 `device_run`、32 次 IRQ、1 个 IDR、29 个 P 帧和 1 次
+`power_off deferred` 均已记录；`kernel.health.log` 为空，60 条健康记录完整，
+码流经本地 `ffprobe`/`ffmpeg` 验证通过。探针结束后仍需重启恢复 SSH，说明
+`power_off deferred` 已被观测到，但尚未证明设备能在探针后持续可访问；不得创建
+PR 或扩大到更高分辨率、DMABUF、One-KVM 集成。
+
 ### 6. 码流
 
 当前候选只用 640×480 单会话和 MMAP；DMABUF、720p 和 1080p 在稳定性验收前

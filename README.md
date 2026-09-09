@@ -65,6 +65,17 @@ Linux 6.12 HCODEC 研究路线。
   `d1daed2cda6353b1b7d2f692abcf3803ef9076b6e0dc550652bafd66b97e818a`。60 条健康
   记录完整，内核日志无 HCODEC 错误、panic 或 oops，但探针后 SSH 再次失联并需
   重启恢复；因此稳定性验收仍未完成。
+- GitHub Actions run `34345081710` 生成并复验 `run-32-1` artifact
+  `ws1608-hcodec-armv7-run-32-1.tar.xz`，artifact SHA-256 为
+  `7575eff4a9eb47d4d0e558827be73deff945559719a126f320a59c1d6fb9a8d3`。
+  该候选已在 WS1608 安装并启动 `6.12.28-current-meson`，One-KVM 健康接口、
+  `/dev/video0` 和 H264 固件依赖均正常；640×480 MMAP motion probe 返回 `0`，
+  生成 1 个 IDR、29 个 P 帧和 44127 字节 Annex-B H.264，码流 SHA-256 为
+  `d1daed2cda6353b1b7d2f692abcf3803ef9076b6e0dc550652bafd66b97e818a`。
+  `ffprobe` 读到 30 帧且 `ffmpeg` 解码通过；内核 trace 记录 30 次 `device_run`、
+  32 次 IRQ 和 1 次 `power_off deferred`，`kernel.health.log` 为空，60 条健康记录
+  完整。探针结束后仍需重启恢复 SSH，因此 `hardware_encoder_tested` 仍为 `false`，
+  不创建 PR。
 
 ## 自动更新规则
 

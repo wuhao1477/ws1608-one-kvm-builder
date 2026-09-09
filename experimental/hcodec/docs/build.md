@@ -93,6 +93,16 @@ eth0/carrier 在线且无 HCODEC 错误、panic 或 oops。探针后设备仍需
 接口正常，60 条健康记录完整，内核错误筛查为 0；探针后设备仍失联并需重启恢复，
 因此不创建 PR，也不继续其他分辨率或内存模式。
 
+GitHub Actions run `34345081710` 的 `run-32-1` artifact
+`ws1608-hcodec-armv7-run-32-1.tar.xz` 已完成独立下载复验、刷写和重启，artifact
+SHA-256 为 `7575eff4a9eb47d4d0e558827be73deff945559719a126f320a59c1d6fb9a8d3`。
+640×480 MMAP motion probe 退出码为 `0`，生成 44127 字节 Annex-B H.264，包含
+1 个 IDR 和 29 个 P 帧；本地 `ffprobe` 读到 30 帧且 `ffmpeg` 解码通过，码流
+SHA-256 为 `d1daed2cda6353b1b7d2f692abcf3803ef9076b6e0dc550652bafd66b97e818a`。
+实时 trace 记录 30 次 `device_run`、32 次 IRQ 和 1 次 `power_off deferred`，
+`kernel.health.log` 为空，60 条健康记录完整；探针后设备仍需重启恢复 SSH，
+因此仍不创建 PR。
+
 设备安装必须使用 `install-artifact.sh`：模块包先解到目标根分区 staging，再复制
 目标版本目录；固件从 artifact 的 `firmware/meson8b_h264.bin` 直接安装。
 构建阶段会拒绝缺少模块索引或 `zram.ko` 依赖链不完整的输出；安装时保留这些
