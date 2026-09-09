@@ -159,6 +159,13 @@ gate，保留原有 CPU 停止、隔离、内存断电与时钟释放。
 因此下一构建增加 `capture-stability-probe.sh`，在复用 `capture-probe.sh` 的内核日志
 之外持续写入 60 秒的 uptime、网卡 carrier 和 IP 记录。该证据完成前不得创建 PR。
 
+CNB `run-30-1` 已使用该包装器完成 640×480 MMAP motion 30 帧编码：退出码 `0`，
+1 个 IDR、29 个 P 帧，输出 44137 字节；`ffprobe`/`ffmpeg` 通过，摘要为
+`334a7bca58cda061d28ddaf4410bfebec79c0e50d0cd09466ab2929ad288a9a2`。实时内核日志
+记录 30 帧、两个 `stop_streaming` 和 `power_off end`；HCODEC 错误、panic 和 oops
+筛查均为 0，60 条健康记录保持 eth0/carrier 在线。探针后设备仍需重启恢复 SSH，
+因此该候选仍未完成稳定性验收，不重复 probe，也不创建 PR。
+
 ### 6. 码流
 
 当前候选只用 640×480 单会话和 MMAP；DMABUF、720p 和 1080p 在稳定性验收前

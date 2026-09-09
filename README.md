@@ -47,6 +47,17 @@ Linux 6.12 HCODEC 研究路线。
   `7d50f102b6405fcc637467a61a8c5ef62ef0c90f2af88136a2f9f9ae97f6413f`。编码和
   `power_off end` 已通过，但测试后设备失联，稳定性验收未通过；下一构建加入
   `capture-stability-probe.sh` 持久化 60 秒健康记录，仍不创建 PR。
+- CNB 构建 `cnb-iso-1k218vadk`（提交
+  `11a490631aaff658b8d590c87a6576a232488d3f`）生成并复验
+  `ws1608-hcodec-armv7-run-996855724-1.tar.xz`，artifact SHA-256 为
+  `6881000c3bd150a52bd0f77e76b51c31a2f918862caa17fd2fda7cd00ff27f17`。
+  `run-30-1` 的 640×480 MMAP motion probe 返回 `0`，生成 1 个 IDR、29 个 P
+  帧和 44137 字节 Annex-B H.264；`ffprobe` 与 `ffmpeg` 均通过，SHA-256 为
+  `334a7bca58cda061d28ddaf4410bfebec79c0e50d0cd09466ab2929ad288a9a2`。
+  `kernel.live.log` 记录 30 帧、两个 `stop_streaming` 和 `power_off end`；60 条
+  健康记录保持 eth0/carrier 在线且无 HCODEC 错误、panic 或 oops。探针后设备仍需
+  重启才能恢复 SSH，因此稳定性验收仍未完成，`hardware_encoder_tested` 保持
+  `false`，不创建 PR。
 
 ## 自动更新规则
 
@@ -79,9 +90,9 @@ One-KVM 使用 `h264_v4l2m2m` 后端。
 - One-KVM 实验探测需要 `ONE_KVM_V4L2M2M_ALLOW=1`，通过独立编码测试前
   不写入稳定服务配置。
 - ARMv7 实机验证已确认 HCODEC probe 可到达 `/dev/video0`，V4L2 队列、
-  `start_streaming`、workspace 分配、`SEQUENCE/PICTURE/IDR` 命令和单帧 Annex-B
-  输出可通过；当前阻塞点是成功编码后的 `STREAMOFF` 清理路径。清理路径修复并
-  完成新的云构建、刷写和单帧验证前不创建 PR。
+  `start_streaming`、workspace 分配、`SEQUENCE/PICTURE/IDR` 命令、30 帧 Annex-B
+  输出和 `power_off end` 可通过；当前阻塞点是探针结束后设备仍可能失联。完成
+  独立重启稳定性验收前不创建 PR。
 
 Linux 3.10、Bullseye、`/dev/amvenc_avc`、`libvpcodec`、双内核和 kexec
 路线已经废弃，仅作为历史研究记录保留。正式决策见

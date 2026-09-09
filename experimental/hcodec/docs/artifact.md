@@ -81,3 +81,16 @@ run `33987050987` 的 `run-29-1` 已完成 640×480 MMAP 30 帧实机编码，�
 下一候选新增 `capture-stability-probe.sh`。该脚本先调用 `capture-probe.sh` 保存
 内核日志、命令和退出码，再持久化 60 条每秒健康记录：uptime、eth0 状态、carrier
 和 IP。它只用于一次候选测试，不能替代硬件稳定性验收。
+
+CNB 构建 `cnb-iso-1k218vadk`（提交
+`11a490631aaff658b8d590c87a6576a232488d3f`）的 `run-30-1` artifact
+`ws1608-hcodec-armv7-run-996855724-1.tar.xz` 已完成下载、独立复验、刷写和重启，
+artifact SHA-256 为
+`6881000c3bd150a52bd0f77e76b51c31a2f918862caa17fd2fda7cd00ff27f17`。
+640×480 MMAP motion probe 退出码为 `0`，生成 44137 字节 Annex-B H.264，包含
+1 个 IDR 和 29 个 P 帧；独立 `ffprobe`/`ffmpeg` 通过，码流 SHA-256 为
+`334a7bca58cda061d28ddaf4410bfebec79c0e50d0cd09466ab2929ad288a9a2`。保存的
+`kernel.live.log` 记录 30 帧、两个 `stop_streaming` 和 `power_off end`，60 条
+健康记录全部保持 eth0/carrier 在线，HCODEC 错误、panic 和 oops 为 0。探针后
+设备仍需重启恢复 SSH，因此该 artifact 仍是实机研究候选，不代表稳定验收或可创建
+PR。

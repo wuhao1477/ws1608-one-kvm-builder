@@ -8,7 +8,7 @@
 | Armbian `6.12.28-current-meson` 与 One-KVM 运行 | 已验证 |
 | H.264/H.265/VP8/VP9 软件编码路径 | 已验证 |
 | ARMv7 `meson-venc` 模块、DTB 与工具 artifact | 已刷写并完成启动检查 |
-| HCODEC V4L2 M2M H.264 | 640×480 30 帧编码和独立解码已验证；测试后设备失联，稳定性验收未通过 |
+| HCODEC V4L2 M2M H.264 | CNB `run-30-1` 的 640×480 30 帧编码、独立解码和 60 秒健康记录已验证；探针后设备需重启，稳定性验收未通过 |
 | One-KVM `h264_v4l2m2m` | 尚未实机验证 |
 | 1080p30、128 MiB CMA、长时间稳定性 | 尚未实机验证 |
 
@@ -133,6 +133,14 @@ IDR、29 个 P 帧、两个 `STREAMOFF` 和 `power_off end`；输出 6866 字节
 `ffprobe` 识别 30 帧 Baseline H.264，`ffmpeg` 解码成功。测试后设备失联，下一
 候选必须通过 `capture-stability-probe.sh` 保存编码后健康记录，仍不能进入更高
 分辨率、DMABUF 或 One-KVM。
+
+CNB `run-30-1` 的 640×480、MMAP motion 30 帧实机结果：退出码 `0`，内核日志
+记录 30 次 `device_run`、1 个 IDR、29 个 P 帧、两个 `stop_streaming` 和
+`power_off end`；输出 44137 字节，SHA-256 为
+`334a7bca58cda061d28ddaf4410bfebec79c0e50d0cd09466ab2929ad288a9a2`。
+`ffprobe` 识别 640×480 Baseline H.264，`ffmpeg` 解码成功；60 条健康记录全部
+保持 eth0/carrier 在线，HCODEC 错误、panic 和 oops 筛查为 0。探针后设备仍需
+重启恢复 SSH，因此稳定性验收未通过，不能进入 DMABUF、720p、1080p 或 One-KVM。
 
 ## 6. One-KVM 显式探针
 

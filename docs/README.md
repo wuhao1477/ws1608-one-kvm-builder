@@ -33,7 +33,7 @@ V4L2 M2M 路线。
 | 稳定 One-KVM | `0.2.6` / `v260802` |
 | 稳定 Release | `ws1608-one-kvm-0.2.6-v260802-b028001` |
 | 自动检查 | CNB 每周日 02:17 UTC |
-| HCODEC 候选 | `run-29-1` 已完成 30 帧有效码流并独立解码，但测试后设备失联，稳定性验收未通过 |
+| HCODEC 候选 | CNB `run-30-1` 已完成 30 帧有效码流并独立解码，60 秒健康记录完整；探针后设备需重启恢复 SSH，稳定性验收未通过 |
 | 候选后端 | `h264_v4l2m2m` |
 
 ## 最短维护路径
@@ -41,8 +41,8 @@ V4L2 M2M 路线。
 1. 先读 [HANDOFF.md](HANDOFF.md) 和 [ADR-0003](adr/0003-armbian-6.12-hcodec-route.md)。
 2. 稳定 One-KVM 更新使用 `.cnb.yml` 的定时、PR、API 和 Web Trigger 流程。
 3. 没有新上游 tag 与 Deb 摘要时，build/release 必须跳过。
-4. HCODEC 工作先验证 ARMv7 内核、DTB、固件和独立 V4L2 码流，不修改稳定资产；当前仅编码数据路径通过。
-5. 修复 `STREAMOFF` 清理阻塞并完成新的单帧验收后，才以 `ONE_KVM_V4L2M2M_ALLOW=1` 临时验证 One-KVM。
+4. HCODEC 工作先验证 ARMv7 内核、DTB、固件和独立 V4L2 码流，不修改稳定资产；当前 30 帧编码与持久化日志通过，但探针后设备稳定性仍未通过。
+5. 完成探针后的重启稳定性验收后，才以 `ONE_KVM_V4L2M2M_ALLOW=1` 临时验证 One-KVM。
 6. 实机结果按 [hardware-validation.md](hardware-validation.md) 记录。
 
 ## 已废弃历史

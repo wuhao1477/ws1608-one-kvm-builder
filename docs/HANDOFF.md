@@ -46,6 +46,14 @@
   `7d50f102b6405fcc637467a61a8c5ef62ef0c90f2af88136a2f9f9ae97f6413f`。编码结束
   和 `power_off end` 正常，但设备随后失联。下一候选加入
   `capture-stability-probe.sh`，复用内核 trace 并保存 60 秒健康记录，仍不创建 PR。
+- CNB 构建 `cnb-iso-1k218vadk`（提交
+  `11a490631aaff658b8d590c87a6576a232488d3f`）生成的 `run-30-1` artifact
+  `ws1608-hcodec-armv7-run-996855724-1.tar.xz` 已完成下载、独立复验、刷写和重启。
+  640×480 MMAP motion probe 返回 `0`，生成 1 个 IDR、29 个 P 帧和 44137 字节码流，
+  SHA-256 为 `334a7bca58cda061d28ddaf4410bfebec79c0e50d0cd09466ab2929ad288a9a2`；
+  `ffprobe`/`ffmpeg` 通过，实时日志记录 30 帧和 `power_off end`，60 条健康记录
+  的 eth0/carrier 均在线。探针后仍需重启恢复 SSH，因此 `hardware_encoder_tested`
+  保持 `false`，不创建 PR。
 - `codex/hcodec-armv7-cloud-verify` 的 `run-12-1` 候选已实机启动，`cma=128M`
   生效且 `/dev/video0` 注册成功；640×480 单帧 probe 记录到
   `SEQUENCE`、`PICTURE` 成功，`IDR` 输出 7 字节后超时并返回 `-110`。
@@ -100,9 +108,9 @@ One-KVM `0.2.6` 已有 `h264_v4l2m2m` 后端，Amlogic 实验探测需要
 ## 接手后的顺序
 
 1. 保留 `33854312358`、`33874935950`、`33893613040`、`33967514846`、`33973657980` 和 `33987050987` artifact 与对应实机证据，不重复已有 probe。
-2. 构建并刷写包含 `capture-stability-probe.sh` 的候选，在 640×480 MMAP motion 单会话下保存编码后 60 秒健康记录；不继续 720p/1080p、DMABUF 或 One-KVM。
-3. 只有新的 probe 完整返回、生成有效 Annex-B H.264、健康记录完整且设备保持可访问后才创建 PR。
-4. 独立码流和清理路径均通过后再临时接入 One-KVM，不修改稳定服务配置。
+2. 保留 `run-30-1` 的码流、日志和 60 秒健康记录，先定位探针结束后的设备失联；不重复编码，不继续 720p/1080p、DMABUF 或 One-KVM。
+3. 只有探针完整返回、生成有效 Annex-B H.264、健康记录完整且设备在结束后无需人工重启仍可访问时才创建 PR。
+4. 独立码流和清理路径稳定后再临时接入 One-KVM，不修改稳定服务配置。
 
 ## 维护边界
 

@@ -72,6 +72,20 @@ test('documents run-29-1 multi-frame decode evidence and stability wrapper', () 
   assert.match(text, /capture-stability-probe\.sh/);
 });
 
+test('documents the CNB run-30-1 stability probe evidence and remaining reboot gate', () => {
+  const text = files.map(read).join('\n');
+
+  assert.match(text, /cnb-iso-1k218vadk/);
+  assert.match(text, /11a490631aaff658b8d590c87a6576a232488d3f/);
+  assert.match(text, /run-30-1/);
+  assert.match(text, /996855724/);
+  assert.match(text, /44137/);
+  assert.match(text, /334a7bca58cda061d28ddaf4410bfebec79c0e50d0cd09466ab2929ad288a9a2/);
+  assert.match(text, /60.*健康记录|健康记录.*60/);
+  assert.match(text, /仍需重启恢复 SSH|探针后设备仍需重启/);
+  assert.match(text, /不创建 PR/);
+});
+
 test('does not describe the disproved offset ring workaround as the active next step', () => {
   const text = files.map(read).join('\n');
   assert.doesNotMatch(text, /run-10 只调整 Meson8b offset/);
