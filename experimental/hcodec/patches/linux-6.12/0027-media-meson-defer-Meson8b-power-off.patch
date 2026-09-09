@@ -8,11 +8,13 @@ reachability while the Meson8b power-off sequence runs after userspace exits.
 Defer that destructive transition for the Meson8b one-shot candidate and
 clean it up when the driver is removed. A second encode in the same boot is
 rejected because the hardware remains powered until reboot or removal.
+Keep the Meson8b DMA workspace allocated for the one-shot candidate so the
+still-powered hardware cannot access freed buffers after streamoff.
 
 Signed-off-by: Codex <codex@openai.com>
 ---
- drivers/media/platform/amlogic/meson-venc/meson-venc.c | 12 ++++++++++--
- 1 file changed, 10 insertions(+), 2 deletions(-)
+ drivers/media/platform/amlogic/meson-venc/meson-venc.c | 14 ++++++++++++--
+ 1 file changed, 12 insertions(+), 2 deletions(-)
 
 diff --git a/drivers/media/platform/amlogic/meson-venc/meson-venc.c b/drivers/media/platform/amlogic/meson-venc/meson-venc.c
 index 5e4a1b9..b2f6e7c 100644
@@ -43,7 +45,8 @@ index 5e4a1b9..b2f6e7c 100644
 +						"stop_streaming: power_off deferred");
 +		else
 +			meson_venc_power_off(ctx->venc);
- 		meson_venc_workspace_free(ctx);
+ 		if (!ctx->venc->variant->full_power_reset)
+ 			meson_venc_workspace_free(ctx);
  		ctx->owns_hw = false;
 @@ -2550,4 +2563,7 @@ static void meson_venc_remove(struct platform_device *pdev)
  	media_device_cleanup(&venc->mdev);
