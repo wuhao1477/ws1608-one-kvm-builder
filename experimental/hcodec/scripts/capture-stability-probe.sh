@@ -22,6 +22,22 @@ else
 fi
 printf '%s\n' "$probe_status" >"$RESULTS_DIR/exit-status"
 
+health_follower_pid=''
+cleanup_health_trace() {
+  local status=$?
+
+  trap - EXIT
+  if [[ -n "$health_follower_pid" ]]; then
+    kill "$health_follower_pid" 2>/dev/null || true
+    wait "$health_follower_pid" 2>/dev/null || true
+  fi
+  exit "$status"
+}
+trap cleanup_health_trace EXIT
+
+dmesg --follow-new --time-format iso >"$RESULTS_DIR/kernel.health.log" 2>&1 &
+health_follower_pid=$!
+
 for ((second = 1; second <= 60; second++)); do
   timestamp=$(date -u +%Y-%m-%dT%H:%M:%SZ)
   uptime=$(cut -d. -f1 /proc/uptime 2>/dev/null || printf 'unknown')
@@ -34,5 +50,8 @@ for ((second = 1; second <= 60; second++)); do
   sync
   sleep 1
 done
+
+dmesg --time-format iso >"$RESULTS_DIR/kernel.health.after.log" 2>&1 || true
+sync
 
 exit "$probe_status"

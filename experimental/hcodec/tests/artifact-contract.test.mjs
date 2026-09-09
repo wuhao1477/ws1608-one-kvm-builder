@@ -92,6 +92,8 @@ test('stability probe persists sixty post-probe health records', (t) => {
   });
   assert.equal(result.status, 0, result.stderr || result.stdout);
   assert.equal(fs.existsSync(path.join(results, 'kernel.after.log')), true);
+  assert.equal(fs.existsSync(path.join(results, 'kernel.health.log')), true);
+  assert.equal(fs.existsSync(path.join(results, 'kernel.health.after.log')), true);
   const records = fs.readFileSync(path.join(results, 'health.log'), 'utf8').trim().split('\n');
   assert.equal(records.length, 60);
   assert.match(records[0], /uptime=.* eth0=.* carrier=/);
