@@ -6,10 +6,10 @@ Subject: [PATCH] media: meson: defer Meson8b power-off after streamoff
 The WS1608 completes the H.264 streamoff sequence, then loses network
 reachability while the Meson8b power-off sequence runs after userspace exits.
 Defer that destructive transition for the Meson8b one-shot candidate and
-clean it up when the driver is removed. A second encode in the same boot is
-rejected because the hardware remains powered until reboot or removal.
-Keep the Meson8b DMA workspace allocated for the one-shot candidate so the
-still-powered hardware cannot access freed buffers after streamoff.
+clean it up when the driver is removed. Stop the Meson8b HCODEC CPU before
+releasing stream buffers, then leave only the destructive power transition
+deferred. A second encode in the same boot is rejected because the hardware
+remains powered until reboot or removal.
 
 Signed-off-by: Codex <codex@openai.com>
 ---
@@ -41,12 +41,13 @@ index 5e4a1b9..b2f6e7c 100644
  	    !ctx->streaming_capture) {
 -		meson_venc_power_off(ctx->venc);
 +		if (ctx->venc->variant->full_power_reset)
++			meson_venc_stop_cpu(ctx->venc);
++		if (ctx->venc->variant->full_power_reset)
 +			meson_venc_trace_runtime(ctx->venc,
 +						"stop_streaming: power_off deferred");
 +		else
 +			meson_venc_power_off(ctx->venc);
- 		if (!ctx->venc->variant->full_power_reset)
- 			meson_venc_workspace_free(ctx);
+ 		meson_venc_workspace_free(ctx);
  		ctx->owns_hw = false;
 @@ -2550,4 +2563,7 @@ static void meson_venc_remove(struct platform_device *pdev)
  	media_device_cleanup(&venc->mdev);
