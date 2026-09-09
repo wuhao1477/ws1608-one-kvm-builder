@@ -126,8 +126,8 @@ test('Meson8b defers streamoff power-off and cleans it at driver removal', () =>
   );
 
   for (const value of [
-    'defer_power_off',
-    '.defer_power_off = true',
+    'full_power_reset',
+    'if (ctx->venc->variant->full_power_reset)',
     'stop_streaming: power_off deferred',
     'meson_venc_power_off(venc);',
     'meson_venc_remove',

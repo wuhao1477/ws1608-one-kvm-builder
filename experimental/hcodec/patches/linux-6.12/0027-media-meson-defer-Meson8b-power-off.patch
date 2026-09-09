@@ -11,27 +11,14 @@ rejected because the hardware remains powered until reboot or removal.
 
 Signed-off-by: Codex <codex@openai.com>
 ---
- drivers/media/platform/amlogic/meson-venc/meson-venc.c | 16 +++++++++++++++-
- 1 file changed, 15 insertions(+), 1 deletion(-)
+ drivers/media/platform/amlogic/meson-venc/meson-venc.c | 12 ++++++++++--
+ 1 file changed, 10 insertions(+), 2 deletions(-)
 
 diff --git a/drivers/media/platform/amlogic/meson-venc/meson-venc.c b/drivers/media/platform/amlogic/meson-venc/meson-venc.c
 index 5e4a1b9..b2f6e7c 100644
 --- a/drivers/media/platform/amlogic/meson-venc/meson-venc.c
 +++ b/drivers/media/platform/amlogic/meson-venc/meson-venc.c
-@@ -281,5 +281,6 @@ struct meson_venc_variant {
- 	bool has_cbr_tables;
- 	bool has_gx_protocol;
- 	bool full_power_reset;
-+	bool defer_power_off;
- 	bool direct_hhi_clock;
- };
-@@ -326,4 +327,5 @@ static const struct meson_venc_variant meson_venc_meson8b_variant = {
- 	.ao_pwr_mask = 0x18,
- 	.full_power_reset = true,
-+	.defer_power_off = true,
- 	.direct_hhi_clock = true,
- 	.mfdin = {
-@@ -2101,10 +2103,15 @@ static int meson_venc_start_streaming(struct vb2_queue *vq,
+@@ -2101,10 +2101,15 @@ static int meson_venc_start_streaming(struct vb2_queue *vq,
  	if (!ctx->owns_hw) {
  		if (!mutex_trylock(ctx->venc->core->hw_lock)) {
  			while ((vbuf = V4L2_TYPE_IS_OUTPUT(vq->type) ?
@@ -40,7 +27,7 @@ index 5e4a1b9..b2f6e7c 100644
  				v4l2_m2m_buf_done(vbuf, VB2_BUF_STATE_QUEUED);
  			return -EBUSY;
  		}
-+		if (ctx->venc->variant->defer_power_off &&
++		if (ctx->venc->variant->full_power_reset &&
 +		    ctx->venc->powered) {
 +			mutex_unlock(ctx->venc->core->hw_lock);
 +			return -EBUSY;
@@ -51,7 +38,7 @@ index 5e4a1b9..b2f6e7c 100644
  	if (ctx->owns_hw && !ctx->streaming_output &&
  	    !ctx->streaming_capture) {
 -		meson_venc_power_off(ctx->venc);
-+		if (ctx->venc->variant->defer_power_off)
++		if (ctx->venc->variant->full_power_reset)
 +			meson_venc_trace_runtime(ctx->venc,
 +						"stop_streaming: power_off deferred");
 +		else
