@@ -18,6 +18,11 @@ finalize() {
   trap - EXIT
   if [[ -n "$follower_pid" ]]; then
     kill "$follower_pid" 2>/dev/null || true
+    for _ in 1 2 3 4 5; do
+      kill -0 "$follower_pid" 2>/dev/null || break
+      sleep 0.1
+    done
+    kill -KILL "$follower_pid" 2>/dev/null || true
     wait "$follower_pid" 2>/dev/null || true
   fi
   dmesg --time-format iso >"$RESULTS_DIR/kernel.after.log" 2>&1 || true

@@ -29,6 +29,11 @@ cleanup_health_trace() {
   trap - EXIT
   if [[ -n "$health_follower_pid" ]]; then
     kill "$health_follower_pid" 2>/dev/null || true
+    for _ in 1 2 3 4 5; do
+      kill -0 "$health_follower_pid" 2>/dev/null || break
+      sleep 0.1
+    done
+    kill -KILL "$health_follower_pid" 2>/dev/null || true
     wait "$health_follower_pid" 2>/dev/null || true
   fi
   exit "$status"

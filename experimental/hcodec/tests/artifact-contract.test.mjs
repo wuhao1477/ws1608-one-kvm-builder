@@ -99,6 +99,42 @@ test('stability probe persists sixty post-probe health records', (t) => {
   assert.match(records[0], /uptime=.* eth0=.* carrier=/);
 });
 
+test('stability probe exits when the dmesg follower ignores termination', (t) => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'hcodec-stability-exit-'));
+  t.after(() => fs.rmSync(root, { recursive: true, force: true }));
+  const bin = path.join(root, 'bin');
+  const results = path.join(root, 'results');
+  const smoke = path.join(root, 'smoke');
+  const output = path.join(results, 'stream.h264');
+  const pidFile = path.join(root, 'dmesg.pid');
+  fs.mkdirSync(bin);
+  fs.writeFileSync(path.join(bin, 'dmesg'), `#!/bin/sh
+if [ "$1" = "--follow-new" ]; then
+  printf '%s' "$$" > "${pidFile}"
+  trap '' TERM INT
+  while :; do :; done
+fi
+exit 0
+`);
+  fs.writeFileSync(path.join(bin, 'sleep'), '#!/bin/sh\nexit 0\n');
+  fs.writeFileSync(path.join(bin, 'sync'), '#!/bin/sh\nexit 0\n');
+  for (const command of ['dmesg', 'sleep', 'sync']) fs.chmodSync(path.join(bin, command), 0o755);
+  fs.writeFileSync(smoke, '#!/bin/sh\nprintf annexb > "$2"\n');
+  fs.chmodSync(smoke, 0o755);
+
+  const command = [
+    'timeout', '10', 'bash', stabilityProbeScript, results, smoke, '/dev/video0', output,
+  ];
+  const result = spawnSync(command[0], command.slice(1), {
+    encoding: 'utf8',
+    env: { ...process.env, PATH: `${bin}:${process.env.PATH}` },
+  });
+  if (fs.existsSync(pidFile)) {
+    try { process.kill(Number(fs.readFileSync(pidFile, 'utf8')), 'SIGKILL'); } catch {}
+  }
+  assert.equal(result.status, 0, result.stderr || result.stdout);
+});
+
 test('workflow only runs on pull requests or manual dispatch and keeps artifact isolated', () => {
   const text = fs.readFileSync(workflow, 'utf8');
   assert.match(text, /"codex\/hcodec-\*":/);
