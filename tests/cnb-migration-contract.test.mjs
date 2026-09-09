@@ -148,3 +148,19 @@ test('keeps CNB publication and GitHub Actions available', () => {
     assert.match(workflow, /actions\/download-artifact@/);
   }
 });
+
+test('marks GitHub as canonical and keeps CNB only as archived configuration', () => {
+  const docs = [
+    read('README.md'),
+    read('docs/README.md'),
+    read('docs/build-pipeline.md'),
+    read('docs/maintenance.md'),
+  ].join('\n');
+  const security = read('.github/workflows/security.yml');
+
+  assert.match(docs, /GitHub.*唯一受支持|唯一受支持.*GitHub/);
+  assert.match(docs, /CNB.*停用|停用.*CNB/);
+  assert.match(security, /verify-secrets\.mjs/);
+  assert.match(security, /permissions:\s*\n\s+contents: read/);
+  assert.doesNotMatch(security, /CNB_TOKEN|CNB_API_ENDPOINT/);
+});

@@ -6,6 +6,9 @@ V4L2 M2M 路线。
 
 ## 当前入口
 
+GitHub 是唯一受支持的 Git 托管、构建和 PR 检查入口。`.cnb.yml`、`.cnb/` 与
+`scripts/cnb-*` 仍保留用于历史追溯，但 CNB 已停用，不再作为构建或制品服务。
+
 - [HANDOFF.md](HANDOFF.md)：当前 Release、路线状态、证据边界和下一步。
 - [architecture.md](architecture.md)：稳定构建与 HCODEC 候选的架构关系。
 - [build-pipeline.md](build-pipeline.md)：现有稳定工作流和候选流程边界。

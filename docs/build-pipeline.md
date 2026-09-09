@@ -2,7 +2,10 @@
 
 ## 稳定工作流
 
-现有稳定流程定义在 [.cnb.yml](../.cnb.yml)。它负责 One-KVM rootfs 自动更新，
+当前 Git 托管和受支持的 CI 入口是 GitHub。CNB 配置与脚本仍在仓库中保留，
+但已停用，不再执行 CNB 构建、附件上传或 Release 发布。
+
+历史稳定流程定义在 [.cnb.yml](../.cnb.yml)。它负责 One-KVM rootfs 自动更新，
 不负责 HCODEC 内核研发。
 
 | 触发器 | 行为 |
@@ -14,9 +17,12 @@
 | `web_trigger_stable force=true` | 为同一输入创建新 `bRRRAAA` 构建 |
 | `web_trigger_stable publish=false` | 上传 14 天 commit asset，不创建 Release |
 
-稳定 Release 和可信候选构建使用 CNB 官方附件插件保存临时制品；CNB PR 事件的令牌
-只有只读权限，因此跳过远端附件写入并执行本地独立复验。GitHub Actions 工作流保留，
-GitHub PR 继续使用原有 artifact 上传和下载流程。
+历史 CNB Release 和候选制品流程仅用于追溯。当前 GitHub Actions 使用原有 artifact
+上传和下载流程，仓库不注入 CNB token。
+
+### 历史 CNB 流程（停用）
+
+以下步骤只描述历史实现，不是当前受支持的执行入口。
 
 ### 1. 发现输入
 

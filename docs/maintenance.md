@@ -2,14 +2,15 @@
 
 ## 稳定周检
 
-在 [CNB 仓库](https://cnb.cool/wuhao1477/ws1608-one-kvm-builder) 的流水线页查看：
+在 GitHub 仓库的 Actions 页查看当前流水线。CNB 页面和配置仅用于历史追溯，
+不再执行以下 CNB 操作：
 
 - 新 One-KVM tag 或 Deb digest 出现时，必须运行 build 和 release；
 - 输入未变化时，必须进入 `No new One-KVM input`，build/release 为 skipped；
 - Release 必须包含五项资产，且 manifest、报告、`SHA256SUMS` 与远端 digest
   一致。
 
-稳定手动构建：
+历史 CNB 手动构建命令（停用）：
 
 ```sh
 cnb build start-build --repo wuhao1477/ws1608-one-kvm-builder \
@@ -68,9 +69,12 @@ HCODEC 工作遵循 [ADR-0003](adr/0003-armbian-6.12-hcodec-route.md)：
 
 ## AmlImg 与 CNB 依赖
 
+CNB 依赖已停用；以下文件仅保留历史实现，不应在 GitHub Actions 中注入
+`CNB_TOKEN`、CNB API 地址或附件上传凭据：`.cnb.yml`、`.cnb/`、`scripts/cnb-*`。
+
 - AmlImg 仓库和提交固定在 `config/tool-versions.env`；升级时验证 v2 CRC、
   item table、pack/unpack 和分区 VERIFY。
-- CNB 可信事件使用官方附件插件保存候选制品，再通过只读下载接口复验；CNB PR 因令牌权限限制只做本地独立复验。GitHub Actions 工作流与原 artifact 流程保留。
+- GitHub Actions 使用仓库内 artifact 流程；历史 CNB 附件插件和只读下载接口不再运行。
 - 稳定 Release 使用不可覆盖的 tag，并在上传后重新校验每个附件摘要。
 - qemu、Go、Node、交叉编译器和预编译模块不提交仓库。
 

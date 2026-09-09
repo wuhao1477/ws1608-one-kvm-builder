@@ -107,6 +107,10 @@ Linux 3.10、Bullseye、`/dev/amvenc_avc`、`libvpcodec`、双内核和 kexec
 
 ## CI 与实机边界
 
+GitHub 现为唯一受支持的 Git 托管和 CI 入口。`.cnb.yml`、`.cnb/` 与
+`scripts/cnb-*` 仅保留为停用的历史配置，不再承诺 CNB 构建、附件或 Release
+服务；仓库不包含 CNB token 或其他运行时凭据。
+
 CI 会重新解包成品并验证 Amlogic v2 CRC、boot FAT、Linux console、12 个
 标准条目、分区 VERIFY、非 rootfs 分区一致性、One-KVM armhf 包、systemd、
 OTG、ext4、manifest、压缩往返和所有摘要。
