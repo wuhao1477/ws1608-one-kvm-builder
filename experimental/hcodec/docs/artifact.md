@@ -111,3 +111,12 @@ SHA-256 为 `d1daed2cda6353b1b7d2f692abcf3803ef9076b6e0dc550652bafd66b97e818a`�
 保存的 trace 记录 30 次 `device_run`、32 次 IRQ 和 1 次 `power_off deferred`，
 `kernel.health.log` 为空，60 条健康记录完整；探针后设备仍需重启恢复 SSH，
 因此该 artifact 仍未达到稳定验收或 PR 条件。
+
+GitHub Actions run `34441199008` 的 `run-39-1` artifact 已完成独立复验、安装、重启和
+新模块 hash 核验。artifact SHA-256 为
+`e24d98e9db07307db7ca22a9c5e62be635273066f17040f9cb4c180fa010a163`；640×480 MMAP
+motion probe 退出码为 `0`，输出 44137 字节 Annex-B H.264，包含 1 个 IDR 和 29 个
+P 帧，码流 SHA-256 为 `334a7bca58cda061d28ddaf4410bfebec79c0e50d0cd09466ab2929ad288a9a2`。
+`ffprobe` 读到 30 帧、`ffmpeg` 解码通过；trace 记录 30 次 `device_run`、32 次 IRQ
+和 1 次 `power_off deferred`，60 条健康记录完整且探针后设备保持可访问。该 artifact
+通过 640×480 独立稳定性门槛，但尚未验证更高分辨率、DMABUF 或 One-KVM。

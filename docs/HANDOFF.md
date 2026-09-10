@@ -1,6 +1,6 @@
 # WS1608 One-KVM 构建器交接
 
-更新时间：2026-09-09
+更新时间：2026-09-10
 
 ## 当前结论
 
@@ -13,8 +13,8 @@
 - 稳定底座已有实体启动、HDMI、网络、SSH、eMMC 和 One-KVM 运行证据。
 - H.264 硬件编码改走 Linux 6.12 `meson-venc` HCODEC V4L2 M2M。
 - Linux 3.10、私有 AMLENC ABI、双内核和 kexec 已废弃，不再构建或刷写。
-- HCODEC `run-29-1` 已生成并离线验证有效的 30 帧硬件码流，但测试后设备失联，
-  当前仍不能发布完整硬件验收结论。
+- HCODEC `run-29-1` 的早期候选曾在测试后失联；后续 Run-39 已完成正确模块加载、
+  独立硬件探针和 60 秒健康记录，640×480 单会话稳定性门槛已通过。
 - `codex/hcodec-meson8b-ucode` 的 GitHub Actions run `33854312358` 已完成
   contract、ARMv7 构建、artifact 上传/下载和复验；`run-13-1` 已安装并成功启动。
   启动证据包含 `6.12.28-current-meson`、`cma=128M`、`/dev/video0`、正确的
@@ -77,6 +77,16 @@
 - ARMv7 静态候选构建已完成，分支为 `codex/hcodec-armv7`，实现提交为
   `1b87398e5393bf465a36cef7388f684a718c7fc7` 与 `6215ec6`；artifact 仅由独立 workflow
   生成并保留 14 天，不创建 Release。
+- GitHub Actions run `34441199008` 的 `run-39-1` artifact
+  `ws1608-hcodec-armv7-run-39-1.tar.xz` 已完成独立复验、安装、重启和模块 hash 核验；
+  artifact SHA-256 为
+  `e24d98e9db07307db7ca22a9c5e62be635273066f17040f9cb4c180fa010a163`。
+  640×480 MMAP motion probe 退出码为 `0`，生成 1 个 IDR、29 个 P 帧和 44137 字节
+  Annex-B H.264；本地 `ffprobe` 读到 30 帧、`ffmpeg` 解码通过，码流 SHA-256 为
+  `334a7bca58cda061d28ddaf4410bfebec79c0e50d0cd09466ab2929ad288a9a2`。内核 trace
+  记录 30 次 `device_run`、32 次 IRQ 和 1 次 `power_off deferred`，60 条健康记录
+  全部保持 eth0/carrier/IP 在线，探针结束后无需重启即可继续访问；640×480 独立稳定性
+  门槛已通过，尚未扩展到 DMABUF、720p、1080p 或 One-KVM 集成。
 
 正式决策见 [ADR-0003](adr/0003-armbian-6.12-hcodec-route.md)，技术边界见
 [路线设计](superpowers/specs/2026-09-01-armbian-hcodec-route-design.md)。
@@ -123,9 +133,9 @@ One-KVM `0.2.6` 已有 `h264_v4l2m2m` 后端，Amlogic 实验探测需要
 
 ## 接手后的顺序
 
-1. 保留 `33854312358`、`33874935950`、`33893613040`、`33967514846`、`33973657980` 和 `33987050987` artifact 与对应实机证据，不重复已有 probe。
-2. 保留 `run-30-1` 和 `run-32-1` 的码流、日志和 60 秒健康记录，定位探针结束后的设备失联；不重复编码，不继续 720p/1080p、DMABUF 或 One-KVM。
-3. 只有探针完整返回、生成有效 Annex-B H.264、健康记录完整且设备在结束后无需人工重启仍可访问时才创建 PR。
+1. 保留历史 artifact 与对应实机证据，并保留 Run-39 的码流、日志和 60 秒健康记录；不重复已完成的 Run-39 probe。
+2. Run-39 已通过 640×480 独立稳定性门槛；在评审前不继续 720p/1080p、DMABUF 或 One-KVM。
+3. PR 仍需独立代码评审和明确决策；硬件证据已满足“探针完整返回、码流有效、健康记录完整、探针后可访问”的门槛。
 4. 独立码流和清理路径稳定后再临时接入 One-KVM，不修改稳定服务配置。
 
 ## 维护边界

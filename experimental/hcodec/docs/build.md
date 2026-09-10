@@ -103,6 +103,15 @@ SHA-256 为 `d1daed2cda6353b1b7d2f692abcf3803ef9076b6e0dc550652bafd66b97e818a`�
 `kernel.health.log` 为空，60 条健康记录完整；探针后设备仍需重启恢复 SSH，
 因此仍不创建 PR。
 
+GitHub Actions run `34441199008` 的 `run-39-1` artifact 已完成独立下载复验、刷写、
+重启和模块 hash 核验。artifact SHA-256 为
+`e24d98e9db07307db7ca22a9c5e62be635273066f17040f9cb4c180fa010a163`；640×480 MMAP
+motion probe 返回 `0`，生成 44137 字节 Annex-B H.264（1 个 IDR、29 个 P 帧），码流
+SHA-256 为 `334a7bca58cda061d28ddaf4410bfebec79c0e50d0cd09466ab2929ad288a9a2`，
+`ffprobe`/`ffmpeg` 均通过。实时 trace 记录 30 次 `device_run`、32 次 IRQ 和 1 次
+`power_off deferred`，60 条健康记录全部在线，探针结束后 SSH 保持可访问；640×480
+独立稳定性门槛已通过，暂不扩展其他分辨率、DMABUF 或 One-KVM。
+
 设备安装必须使用 `install-artifact.sh`：模块包先解到目标根分区 staging，再复制
 目标版本目录；固件从 artifact 的 `firmware/meson8b_h264.bin` 直接安装。
 构建阶段会拒绝缺少模块索引或 `zram.ko` 依赖链不完整的输出；安装时保留这些

@@ -180,6 +180,13 @@ GitHub Actions run `34345081710` 的 `run-32-1` 继续使用同一包装器完�
 `power_off deferred` 已被观测到，但尚未证明设备能在探针后持续可访问；不得创建
 PR 或扩大到更高分辨率、DMABUF、One-KVM 集成。
 
+GitHub Actions run `34441199008` 的 `run-39-1` 在确认新 `meson-venc.ko` 已加载后完成
+唯一一次正式探针：退出码 `0`，30 次 `device_run`、32 次 IRQ、1 个 IDR、29 个 P 帧，
+并记录 1 次 `power_off deferred`。码流为 44137 字节，`ffprobe`/`ffmpeg` 通过；60 条
+健康记录的 eth0/carrier/IP 全部在线，探针结束后 SSH 未失联。该结果说明延迟关电路径
+通过 640×480 独立稳定性验证，后续仍不得在未单独验证前扩大到 DMABUF、720p、1080p
+或 One-KVM 集成。
+
 ### 6. 码流
 
 当前候选只用 640×480 单会话和 MMAP；DMABUF、720p 和 1080p 在稳定性验收前

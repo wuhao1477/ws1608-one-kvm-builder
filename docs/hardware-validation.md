@@ -160,6 +160,15 @@ GitHub Actions run `34345081710` 的 `run-32-1` artifact 已完成云端构建�
 为空，60 条健康记录完整，探针后设备仍需重启恢复 SSH。因此该候选仍不能进入
 DMABUF、720p、1080p 或 One-KVM 集成。
 
+GitHub Actions run `34441199008` 的 `run-39-1` artifact 已完成云端构建、独立复验、
+正确模块安装、重启和 hash 核验。640×480 MMAP motion probe 退出码为 `0`，输出
+44137 字节 Annex-B H.264，包含 1 个 IDR 和 29 个 P 帧；码流 SHA-256 为
+`334a7bca58cda061d28ddaf4410bfebec79c0e50d0cd09466ab2929ad288a9a2`，本地
+`ffprobe` 读到 30 帧 640×480 Baseline H.264，`ffmpeg` 解码退出码为 `0`。内核
+trace 记录 30 次 `device_run`、32 次 IRQ 和 1 次 `stop_streaming: power_off deferred`；
+60 条健康记录全部保持 eth0/carrier/IP 在线，探针结束后 SSH 仍可访问。该结果通过
+640×480 独立稳定性门槛，但不代表 DMABUF、720p、1080p 或 One-KVM 集成已验证。
+
 ## 6. One-KVM 显式探针
 
 只有独立 V4L2 测试通过后才执行：
