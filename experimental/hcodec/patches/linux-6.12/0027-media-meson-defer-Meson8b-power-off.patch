@@ -13,8 +13,8 @@ remains powered until reboot or removal.
 
 Signed-off-by: Codex <codex@openai.com>
 ---
- drivers/media/platform/amlogic/meson-venc/meson-venc.c | 14 ++++++++++++--
- 1 file changed, 12 insertions(+), 2 deletions(-)
+ drivers/media/platform/amlogic/meson-venc/meson-venc.c | 21 ++++++++++++++++++---
+ 1 file changed, 18 insertions(+), 3 deletions(-)
 
 diff --git a/drivers/media/platform/amlogic/meson-venc/meson-venc.c b/drivers/media/platform/amlogic/meson-venc/meson-venc.c
 index 5e4a1b9..b2f6e7c 100644
@@ -36,17 +36,19 @@ index 5e4a1b9..b2f6e7c 100644
 +		}
  		ctx->owns_hw = true;
  		meson_venc_reset_stream_state(ctx);
-@@ -2167,5 +2175,9 @@ static void meson_venc_stop_streaming(struct vb2_queue *vq)
+@@ -2167,5 +2175,15 @@ static void meson_venc_stop_streaming(struct vb2_queue *vq)
  	if (ctx->owns_hw && !ctx->streaming_output &&
  	    !ctx->streaming_capture) {
 -		meson_venc_power_off(ctx->venc);
-+		if (ctx->venc->variant->full_power_reset)
++		if (ctx->venc->variant->full_power_reset) {
 +			meson_venc_stop_cpu(ctx->venc);
-+		if (ctx->venc->variant->full_power_reset)
 +			meson_venc_trace_runtime(ctx->venc,
 +						"stop_streaming: power_off deferred");
-+		else
++		} else {
++			meson_venc_trace_runtime(ctx->venc, "stop_streaming: power_off begin");
 +			meson_venc_power_off(ctx->venc);
++			meson_venc_trace_runtime(ctx->venc, "stop_streaming: power_off end");
++		}
  		meson_venc_workspace_free(ctx);
  		ctx->owns_hw = false;
 @@ -2550,4 +2563,7 @@ static void meson_venc_remove(struct platform_device *pdev)
