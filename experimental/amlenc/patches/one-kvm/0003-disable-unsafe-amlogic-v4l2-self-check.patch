@@ -1,0 +1,130 @@
+From 4d8f5b9e2c4a6f708192a3b4c5d6e7f8091a2b3c Mon Sep 17 00:00:00 2001
+From: Codex <codex@openai.com>
+Date: Thu, 10 Sep 2026 08:30:00 +0800
+Subject: [PATCH] video: disable unsafe Amlogic V4L2 self-check
+
+The standalone Meson8b HCODEC probe is validated separately. One-KVM's
+generic FFmpeg V4L2 self-check can leave detached encoder threads running
+after its timeout and repeatedly exercise an unvalidated streamoff path.
+Keep the backend disabled for this self-check on Meson8b unless an explicit
+second opt-in is provided.
+
+Signed-off-by: Codex <codex@openai.com>
+---
+ src/video/codec/self_check.rs | 57 +++++++++++++++++++++++++++++++++++++++++---
+ 1 file changed, 52 insertions(+), 5 deletions(-)
+diff --git a/src/video/codec/self_check.rs b/src/video/codec/self_check.rs
+index 8325e95..fc509d2 100644
+--- a/src/video/codec/self_check.rs
++++ b/src/video/codec/self_check.rs
+@@ -3,8 +3,9 @@ use std::sync::mpsc;
+ use std::time::{Duration, Instant};
+ 
+ use super::{
+-    AmlencCodec, AmlencConfig, AmlencEncoder, EncoderRegistry, H264Config, H264Encoder, H265Config,
+-    H265Encoder, VP8Config, VP8Encoder, VP9Config, VP9Encoder, VideoEncoderType,
++    amlenc, AmlencCodec, AmlencConfig, AmlencEncoder, AmlencPlatform, EncoderBackend,
++    EncoderRegistry, H264Config, H264Encoder, H265Config, H265Encoder, VP8Config, VP8Encoder,
++    VP9Config, VP9Encoder, VideoEncoderType,
+ };
+ use crate::error::{AppError, Result};
+ use crate::video::format::{PixelFormat, Resolution};
+@@ -12,6 +13,19 @@ use crate::video::format::{PixelFormat, Resolution};
+ const SELF_CHECK_TIMEOUT: Duration = Duration::from_secs(5);
+ const SELF_CHECK_FRAME_ATTEMPTS: u64 = 3;
+ 
++fn v4l2m2m_self_check_blocked(platform: Option<AmlencPlatform>, allow: bool) -> bool {
++    platform.is_some_and(|platform| !allow && matches!(platform, AmlencPlatform::Meson8bS805))
++}
++
++fn v4l2m2m_self_check_allowed() -> bool {
++    let allow = std::env::var("ONE_KVM_V4L2M2M_SELF_CHECK_ALLOW")
++        .map(|value| value != "0")
++        .unwrap_or(false);
++    let platform = amlenc::system_amlenc_platform().ok().flatten();
++
++    !v4l2m2m_self_check_blocked(platform, allow)
++}
++
+ #[derive(Serialize)]
+ pub struct VideoEncoderSelfCheckCodec {
+     pub id: &'static str,
+@@ -44,6 +58,12 @@ pub struct VideoEncoderSelfCheckResponse {
+ 
+ pub fn run_hardware_self_check() -> VideoEncoderSelfCheckResponse {
+     let registry = EncoderRegistry::global();
++    let allow_v4l2m2m = v4l2m2m_self_check_allowed();
++    if !allow_v4l2m2m {
++        tracing::warn!(
++            "V4L2 M2M self-check disabled on Meson8b; use the independent HCODEC probe"
++        );
++    }
+     let codecs = codec_columns();
+     let mut rows = Vec::new();
+ 
+@@ -52,6 +72,11 @@ pub fn run_hardware_self_check() -> VideoEncoderSelfCheckResponse {
+ 
+         for codec in test_codecs() {
+             let cell = match registry.best_encoder(codec, true) {
++                Some(encoder)
++                    if encoder.backend == EncoderBackend::V4l2m2m && !allow_v4l2m2m =>
++                {
++                    unsupported_cell(codec)
++                }
+                 Some(encoder) => run_single_check(codec, resolution, encoder.codec_name.clone()),
+                 None => unsupported_cell(codec),
+             };
+@@ -69,7 +94,7 @@ pub fn run_hardware_self_check() -> VideoEncoderSelfCheckResponse {
+     }
+ 
+     VideoEncoderSelfCheckResponse {
+-        current_hardware_encoder: current_hardware_encoder(registry),
++        current_hardware_encoder: current_hardware_encoder(registry, allow_v4l2m2m),
+         codecs,
+         rows,
+     }
+@@ -206,11 +231,14 @@ fn run_single_check(
+     }
+ }
+ 
+-fn current_hardware_encoder(registry: &EncoderRegistry) -> String {
++fn current_hardware_encoder(registry: &EncoderRegistry, allow_v4l2m2m: bool) -> String {
+     let backends = registry
+         .available_backends()
+         .into_iter()
+-        .filter(|backend| backend.is_hardware())
++        .filter(|backend| {
++            backend.is_hardware()
++                && (allow_v4l2m2m || *backend != EncoderBackend::V4l2m2m)
++        })
+         .map(|backend| backend.display_name().to_string())
+         .collect::<Vec<_>>();
+ 
+@@ -221,6 +249,25 @@ fn current_hardware_encoder(registry: &EncoderRegistry) -> String {
+     }
+ }
+ 
++#[cfg(test)]
++mod tests {
++    use super::v4l2m2m_self_check_blocked;
++    use crate::video::codec::AmlencPlatform;
++
++    #[test]
++    fn blocks_meson8b_v4l2_self_check_by_default() {
++        assert!(v4l2m2m_self_check_blocked(
++            Some(AmlencPlatform::Meson8bS805),
++            false
++        ));
++        assert!(!v4l2m2m_self_check_blocked(
++            Some(AmlencPlatform::Meson8bS805),
++            true
++        ));
++        assert!(!v4l2m2m_self_check_blocked(None, false));
++    }
++}
++
+ fn run_smoke_test(
+     codec: VideoEncoderType,
+     resolution: Resolution,
+-- 
+2.50.0

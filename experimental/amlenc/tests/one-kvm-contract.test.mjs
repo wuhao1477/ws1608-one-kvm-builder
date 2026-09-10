@@ -8,6 +8,7 @@ import test from 'node:test';
 const files = {
   patch: 'experimental/amlenc/patches/one-kvm/0001-detect-meson8b-armv7.patch',
   buildEnvPatch: 'experimental/amlenc/patches/one-kvm/0002-pin-armv7-build-inputs.patch',
+  selfCheckPatch: 'experimental/amlenc/patches/one-kvm/0003-disable-unsafe-amlogic-v4l2-self-check.patch',
   cargoLock: 'experimental/amlenc/locks/one-kvm/Cargo.lock',
   frontendLock: 'experimental/amlenc/locks/one-kvm/pnpm-lock.yaml',
   build: 'experimental/amlenc/scripts/build-one-kvm.sh',
@@ -76,6 +77,16 @@ test('does not expose H.265 AMLENC on Meson8b', () => {
     /(?:Self::)?Meson8bS805\s*=>\s*codec\s*==\s*AmlencCodec::H264/,
   );
   assert.match(patch, /(?:Self::)?S912Gxm\s*=>\s*true/);
+});
+
+test('disables the unsafe Amlogic V4L2 self-check by default', () => {
+  const patch = readRequired(files.selfCheckPatch);
+
+  assert.match(patch, /ONE_KVM_V4L2M2M_SELF_CHECK_ALLOW/);
+  assert.match(patch, /Meson8bS805/);
+  assert.match(patch, /EncoderBackend::V4l2m2m/);
+  assert.match(patch, /independent HCODEC probe/);
+  assert.match(patch, /blocks_meson8b_v4l2_self_check_by_default/);
 });
 
 test('builds a pinned and traceable armhf Debian package', () => {
