@@ -29,7 +29,8 @@ index 63ab64b..855e1c8 100644
              /etc/apt/sources.list; \
 -    fi
 +    fi \
-+    && sed -i 's|deb.debian.org/debian-security|snapshot.debian.org/archive/debian-security/20250701T000000Z|g' /etc/apt/sources.list \
++    && sed -i -e 's|deb.debian.org/debian-security|snapshot.debian.org/archive/debian-security/20250701T000000Z|g' \
++        -e 's|deb.debian.org/debian|snapshot.debian.org/archive/debian/20250701T000000Z|g' /etc/apt/sources.list \
 +    && printf '%s\n' 'Acquire::Retries "5";' 'Acquire::http::Timeout "30";' \
 +        'Acquire::https::Timeout "30";' 'Acquire::Check-Valid-Until "false";' \
 +        >/etc/apt/apt.conf.d/80-ws1608-retries
