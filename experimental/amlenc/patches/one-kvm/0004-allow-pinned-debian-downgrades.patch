@@ -1,0 +1,46 @@
+From 8b2d5f4a6c7e8f90123456789abcdef012345678 Mon Sep 17 00:00:00 2001
+From: Codex <codex@openai.com>
+Date: Thu, 10 Sep 2026 12:00:00 +0800
+Subject: [PATCH] build: allow pinned Debian package downgrades
+
+The digest-pinned Debian 11 image may contain newer security packages than
+the reproducible snapshot. Allow apt to select the snapshot-consistent
+versions required by the cross-build toolchain.
+
+Signed-off-by: Codex <codex@openai.com>
+---
+ build/cross/Dockerfile.armv7 | 6 +++---
+ 1 file changed, 3 insertions(+), 3 deletions(-)
+diff --git a/build/cross/Dockerfile.armv7 b/build/cross/Dockerfile.armv7
+index 855e1c8..9a8b7c6 100644
+--- a/build/cross/Dockerfile.armv7
++++ b/build/cross/Dockerfile.armv7
+@@ -37,7 +37,7 @@
+         >/etc/apt/apt.conf.d/80-ws1608-retries
+ 
+ # Install Rust toolchain
+-RUN apt-get update && apt-get install -y --no-install-recommends \
++RUN apt-get update && apt-get install -y --allow-downgrades --no-install-recommends \
+     curl \
+     ca-certificates \
+     && if [ "$CHINAMIRRO" = "1" ]; then \
+@@ -68,7 +68,7 @@
+ RUN dpkg --add-architecture armhf
+ 
+ # Install cross-compiler and native build tools
+-RUN apt-get update && apt-get install -y --no-install-recommends \
++RUN apt-get update && apt-get install -y --allow-downgrades --no-install-recommends \
+     build-essential \
+     pkg-config \
+     cmake \
+@@ -92,7 +92,7 @@
+     && rm -rf /var/lib/apt/lists/*
+ 
+ # Install ARMv7 development libraries (without VAAPI/X11 for ARM)
+-RUN apt-get update && apt-get install -y --no-install-recommends \
++RUN apt-get update && apt-get install -y --allow-downgrades --no-install-recommends \
+     libssl1.1 \
+     libssl1.1:armhf \
+     libasound2-dev:armhf \
+-- 
+2.50.0
