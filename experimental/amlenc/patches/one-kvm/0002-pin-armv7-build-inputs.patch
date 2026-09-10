@@ -49,7 +49,7 @@ index 63ab64b..855e1c8 100644
      && if [ "$CHINAMIRRO" = "1" ]; then \
          mkdir -p /root/.cargo; \
          printf '%s\n' \
-@@ -163,8 +167,11 @@ RUN github_prefix="" \
+@@ -163,8 +163,11 @@ RUN github_prefix="" \
  # Build static libx264 from source (cross-compile for ARMv7)
  RUN github_prefix="" \
      && if [ "$CHINAMIRRO" = "1" ]; then github_prefix="${GH_PROXY%/}/"; fi \
