@@ -13,17 +13,13 @@ remains powered until reboot or removal.
 
 Signed-off-by: Codex <codex@openai.com>
 ---
- drivers/media/platform/amlogic/meson-venc/meson-venc.c | 21 ++++++++++++++++++---
- 1 file changed, 18 insertions(+), 3 deletions(-)
-
+ drivers/media/platform/amlogic/meson-venc/meson-venc.c | 20 +++++++++++++++++---
+ 1 file changed, 17 insertions(+), 3 deletions(-)
 diff --git a/drivers/media/platform/amlogic/meson-venc/meson-venc.c b/drivers/media/platform/amlogic/meson-venc/meson-venc.c
 index 5e4a1b9..b2f6e7c 100644
 --- a/drivers/media/platform/amlogic/meson-venc/meson-venc.c
 +++ b/drivers/media/platform/amlogic/meson-venc/meson-venc.c
-@@ -2101,10 +2101,15 @@ static int meson_venc_start_streaming(struct vb2_queue *vq,
- 	if (!ctx->owns_hw) {
- 		if (!mutex_trylock(ctx->venc->core->hw_lock)) {
- 			while ((vbuf = V4L2_TYPE_IS_OUTPUT(vq->type) ?
+@@ -2202,6 +2202,11 @@
  				v4l2_m2m_src_buf_remove(ctx->fh.m2m_ctx) :
  				v4l2_m2m_dst_buf_remove(ctx->fh.m2m_ctx)))
  				v4l2_m2m_buf_done(vbuf, VB2_BUF_STATE_QUEUED);
@@ -35,11 +31,12 @@ index 5e4a1b9..b2f6e7c 100644
 +			return -EBUSY;
 +		}
  		ctx->owns_hw = true;
- 		meson_venc_reset_stream_state(ctx);
-@@ -2167,5 +2175,15 @@ static void meson_venc_stop_streaming(struct vb2_queue *vq)
+@@ -2279,8 +2284,14 @@
  	if (ctx->owns_hw && !ctx->streaming_output &&
  	    !ctx->streaming_capture) {
+-		meson_venc_trace_runtime(ctx->venc, "stop_streaming: power_off begin");
 -		meson_venc_power_off(ctx->venc);
+-		meson_venc_trace_runtime(ctx->venc, "stop_streaming: power_off end");
 +		if (ctx->venc->variant->full_power_reset) {
 +			meson_venc_stop_cpu(ctx->venc);
 +			meson_venc_trace_runtime(ctx->venc,
@@ -51,7 +48,9 @@ index 5e4a1b9..b2f6e7c 100644
 +		}
  		meson_venc_workspace_free(ctx);
  		ctx->owns_hw = false;
-@@ -2550,4 +2563,7 @@ static void meson_venc_remove(struct platform_device *pdev)
+ 		mutex_unlock(ctx->venc->core->hw_lock);
+@@ -2659,6 +2670,9 @@ static void meson_venc_remove(struct platform_device *pdev)
+ 	v4l2_m2m_unregister_media_controller(venc->m2m_dev);
  	media_device_cleanup(&venc->mdev);
  	video_unregister_device(&venc->vdev);
 +	mutex_lock(venc->core->hw_lock);
@@ -59,5 +58,6 @@ index 5e4a1b9..b2f6e7c 100644
 +	mutex_unlock(venc->core->hw_lock);
  	v4l2_m2m_release(venc->m2m_dev);
  	v4l2_device_unregister(&venc->v4l2_dev);
+ 	mutex_destroy(&venc->dev_lock);
 -- 
 2.50.0
