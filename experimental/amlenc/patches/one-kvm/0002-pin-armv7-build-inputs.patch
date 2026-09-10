@@ -23,15 +23,17 @@ index 63ab64b..855e1c8 100644
  ARG FFMPEG_ROCKCHIP_REV=40c412daccf08164493da0de990eb99a8948116b
  
  # Optionally use China mirrors for builds in China.
-@@ -24,7 +26,13 @@ RUN if [ "$CHINAMIRRO" = "1" ]; then \
+@@ -24,7 +26,15 @@ RUN if [ "$CHINAMIRRO" = "1" ]; then \
          sed -i -E \
              -e 's|http://deb.debian.org/debian([[:space:]])|http://mirrors.tuna.tsinghua.edu.cn/debian\1|g' \
              /etc/apt/sources.list; \
 -    fi
 +    fi \
-+    && sed -i -e 's|deb.debian.org/debian-security|snapshot.debian.org/archive/debian-security/20250601T000000Z|g' \
-+        -e 's|deb.debian.org/debian|snapshot.debian.org/archive/debian/20250601T000000Z|g' \
-+        -e '/bullseye-security/d' /etc/apt/sources.list \
++    && rm -f /etc/apt/sources.list.d/*.list /etc/apt/sources.list.d/*.sources \
++    && printf '%s\n' \
++        'deb http://snapshot.debian.org/archive/debian/20250601T000000Z bullseye main' \
++        'deb http://snapshot.debian.org/archive/debian/20250601T000000Z bullseye-updates main' \
++        >/etc/apt/sources.list \
 +    && printf '%s\n' 'Acquire::Retries "5";' 'Acquire::http::Timeout "30";' \
 +        'Acquire::https::Timeout "30";' 'Acquire::Check-Valid-Until "false";' \
 +        >/etc/apt/apt.conf.d/80-ws1608-retries
