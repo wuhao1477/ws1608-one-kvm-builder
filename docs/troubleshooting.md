@@ -20,6 +20,8 @@
 | 编码完成但 STREAMOFF 阻塞 | V4L2 队列清理、硬件电源关闭或停止 CPU 路径未完成 | 保留已生成码流和上一启动日志；不重试 probe，先修复清理路径 |
 | probe 返回 `0` 后设备失联 | HCODEC 关电后的异步系统影响，且 zram 上的 journal 不持久 | 用 artifact 的 `capture-stability-probe.sh` 保存根文件系统 dmesg 和 60 秒健康记录，再进行唯一一次候选 probe |
 | One-KVM 不发现硬件后端 | 环境开关、设备权限或 V4L2 格式不匹配 | 独立探针通过后再显式启用 |
+| 日志只有软件编码器且无 v4l2m2m 警告 | hwcodec 对 Amlogic 平台默认跳过 v4l2m2m 探测 | 预期行为；见下方“One-KVM”一节，稳定验收前不写入 service |
+| 首次编码成功、之后每次 STREAMON 返回 `-EBUSY` | `0027` 把 Meson8b 关电永久推迟，同时用 `venc->powered` 拒绝后续 `start_streaming`，编码器每次启动只能用一次 | 已由 `0028` 修复：`hw_prepare` 对仍带电的 HCODEC 重新停 CPU、清 mailbox 并重载固件，破坏性 AO 断电仍留到驱动卸载 |
 | Web UI 升级报取清单失败 | 镜像故意关闭了在线升级 | 预期行为；改为重刷本仓库 Release 镜像，不要清除 `no-online-update.conf` |
 | 设备上 `/usr/bin/one-kvm` 与 manifest 摘要不符 | 曾执行过上游在线升级，二进制被 `rename()` 覆盖且 dpkg 无记录 | 重刷镜像；升级会静默丢掉 Meson8b 补丁 |
 | 安装候选报空间不足 | 目标根分区可用空间低于本候选实际需要 | 门槛按解包后模块树与备份计算；清理 `/root/hcodec/backups` 下旧备份，不要删解包目录 |
@@ -213,6 +215,34 @@ ONE_KVM_V4L2M2M_ALLOW=1 /usr/bin/one-kvm
 
 未发现 `h264_v4l2m2m` 时检查：V4L2 capability、H.264 capture format、
 NV12/YUYV output format、设备权限和环境变量。不要先修改稳定 service。
+
+不设该变量时不会有任何 v4l2m2m 相关报错，只会看到每种格式
+`1 encoders (0 hardware, 1 software)`：`libs/hwcodec` 的
+`linux_support_v4l2m2m()`（`cpp/common/platform/linux/linux.cpp`）先按
+`/proc/device-tree/compatible` 等匹配 `amlogic`/`meson` 等平台关键字，命中后
+在没有 `ONE_KVM_V4L2M2M_ALLOW` 时直接返回 `-1`，`h264_v4l2m2m` 因此从未进入
+候选表，`registry.rs` 的探测也就不会尝试。ws1608 的 compatible 为
+`xunlei,onecloud` + `amlogic,meson8b`，必然命中该判断。日志中的
+`V4L2 M2M self-check disabled on Meson8b` 来自
+`experimental/amlenc/patches/one-kvm/0003-disable-unsafe-amlogic-v4l2-self-check.patch`，
+只影响 Web UI 自检页，与编码器注册无关，不要混为一谈。
+
+设置该变量后设备仍可能在探针触发编码时立刻失联（ping 100% 丢包、SSH 超时且
+不自动恢复，需要断电重启）。这与 `run-39-1` 记录的 640×480 通过结果并不矛盾：
+数据路径可用，未关闭的是探针后的稳定性边界。因此该变量在独立编码稳定性验收
+通过前不写入镜像的 service drop-in。
+
+即使打开该变量并且驱动可用，One-KVM 仍会在**第二次**取流时失败：补丁 0027
+为 Meson8b 永久推迟关电以换取探针后的可达性，同时在 `start_streaming` 里对
+「仍带电」的硬件直接返回 `-EBUSY`，等于每次开机只能编码一次。One-KVM 的
+共享流水线在最后一个订阅者离开 3 秒后自动停流（`AUTO_STOP_GRACE_PERIOD_SECS`），
+下一个订阅者又会重新 `STREAMON`，因此只有开机后第一路视频成功，之后全部
+失败——单次独立探针无法暴露这个边界。补丁
+`0028-media-meson-rearm-deferred-Meson8b-power.patch` 改为在 `hw_prepare` 里
+就地重整仍带电的 HCODEC（停 CPU、清 mailbox，再走既有固件重载与 core reset），
+删除那个 `-EBUSY` 分支，并保留把破坏性 AO sleep/isolation 转换推迟到驱动卸载，
+不回退可达性修复。该补丁仍需实机验收：候选必须先完成 640×480 连续多会话
+（至少两次完整 STREAMON/STREAMOFF）稳定性探针，再谈 One-KVM 集成，不创建 PR。
 
 ## 已知基础限制
 

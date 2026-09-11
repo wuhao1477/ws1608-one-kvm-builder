@@ -1,0 +1,70 @@
+From 7c1e4d6b3a9f5e2c8d0b1a4f6e3c7d9b2a5f8e1c Mon Sep 17 00:00:00 2001
+From: Codex <codex@openai.com>
+Date: Thu, 11 Sep 2026 22:40:00 +0800
+Subject: [PATCH] media: meson: re-arm the deferred Meson8b HCODEC power state
+
+Commit "media: meson: defer Meson8b power-off after streamoff" keeps the
+HCODEC powered after streamoff so the WS1608 stays reachable, and rejects
+every later start_streaming with -EBUSY because the hardware is still
+powered.  That makes the encoder single-shot per boot.
+
+One-KVM cannot use a single-shot encoder.  Its shared pipeline auto-stops
+three seconds after the last subscriber goes away and re-opens the encoder
+on the next one, so only the first encode of a boot succeeds and every
+later one fails at STREAMON.
+
+Re-arm the still-powered HCODEC instead of refusing it: stop the encoder
+CPU, re-initialize the mailbox, and let the existing firmware reload and
+core reset put the block back into a known state.  The destructive AO
+sleep/isolation transition stays deferred to driver removal, so the
+reachability fix is preserved.
+
+Signed-off-by: Codex <codex@openai.com>
+---
+ drivers/media/platform/amlogic/meson-venc/meson-venc.c | 24 ++++++++++++++----
+ 1 file changed, 19 insertions(+), 5 deletions(-)
+
+diff --git a/drivers/media/platform/amlogic/meson-venc/meson-venc.c b/drivers/media/platform/amlogic/meson-venc/meson-venc.c
+index b2f6e7c..c3a7f8d 100644
+--- a/drivers/media/platform/amlogic/meson-venc/meson-venc.c
++++ b/drivers/media/platform/amlogic/meson-venc/meson-venc.c
+@@ -1226,9 +1226,22 @@ static int meson_venc_hw_prepare(struct meson_venc_ctx *ctx)
+ {
+ 	struct meson_venc_dev *venc = ctx->venc;
+ 	int ret;
+
+-	ret = meson_venc_power_on(venc);
+-	if (ret)
+-		return ret;
++	if (venc->variant->full_power_reset && READ_ONCE(venc->powered)) {
++		/* Power-off was deferred by streamoff to keep the WS1608
++		 * reachable.  Re-arm the still-powered HCODEC instead of
++		 * refusing every encode after the first one.
++		 */
++		ret = meson_venc_stop_cpu(venc);
++		if (ret)
++			dev_warn(venc->dev,
++				 "HCODEC DMA did not become idle\n");
++		meson_venc_write(venc, HCODEC_ASSIST_MBOX2_MASK, 0);
++		meson_venc_write(venc, HCODEC_ASSIST_MBOX2_CLR_REG, 1);
++	} else {
++		ret = meson_venc_power_on(venc);
++		if (ret)
++			return ret;
++	}
+
+ 	ret = meson_venc_load_firmware(venc);
+@@ -2204,11 +2217,6 @@ static int meson_venc_start_streaming(struct vb2_queue *vq,
+ 				v4l2_m2m_buf_done(vbuf, VB2_BUF_STATE_QUEUED);
+ 			return -EBUSY;
+ 		}
+-		if (ctx->venc->variant->full_power_reset &&
+-		    ctx->venc->powered) {
+-			mutex_unlock(ctx->venc->core->hw_lock);
+-			return -EBUSY;
+-		}
+ 		ctx->owns_hw = true;
+ 		meson_venc_trace_runtime(ctx->venc,
+ 					 "start_streaming: hardware lock acquired");
+--
+2.50.0

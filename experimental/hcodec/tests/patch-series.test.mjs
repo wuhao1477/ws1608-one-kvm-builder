@@ -15,7 +15,7 @@ test('ships the ordered 18 reference patches plus Meson8b correction and diagnos
   const files = fs.readdirSync(patchDir).filter((file) => file.endsWith('.patch')).sort();
 
   assert.equal(reference.length, 18);
-  assert.equal(files.length, 26);
+  assert.equal(files.length, 27);
   assert.deepEqual(files.slice(0, 18), reference);
   assert.match(files[0], /^0001-/);
   assert.match(files[17], /^0018-/);
@@ -27,6 +27,7 @@ test('ships the ordered 18 reference patches plus Meson8b correction and diagnos
   assert.equal(files[23], '0025-media-meson-trace-streamoff-cleanup.patch');
   assert.equal(files[24], '0026-media-meson-retain-Meson8b-internal-gates.patch');
   assert.equal(files[25], '0027-media-meson-defer-Meson8b-power-off.patch');
+  assert.equal(files[26], '0028-media-meson-rearm-deferred-Meson8b-power.patch');
 });
 
 test('runtime diagnostics patch traces the first encode command path', () => {
@@ -136,6 +137,26 @@ test('Meson8b defers streamoff power-off and cleans it at driver removal', () =>
     assert.match(patch, new RegExp(value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')));
   }
   assert.match(patch, /return -EBUSY/);
+});
+
+test('Meson8b re-arms the deferred power state instead of refusing later encodes', () => {
+  const patch = fs.readFileSync(
+    `${patchDir}/0028-media-meson-rearm-deferred-Meson8b-power.patch`,
+    'utf8',
+  );
+
+  for (const value of [
+    'if (venc->variant->full_power_reset && READ_ONCE(venc->powered)) {',
+    'meson_venc_stop_cpu(venc)',
+    'HCODEC_ASSIST_MBOX2_MASK',
+    'HCODEC_ASSIST_MBOX2_CLR_REG',
+    'meson_venc_load_firmware(venc)',
+  ]) {
+    assert.match(patch, new RegExp(value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')));
+  }
+  // The single-shot gate in start_streaming must be removed, not kept.
+  assert.match(patch, /-\t\tif \(ctx->venc->variant->full_power_reset &&\n-\t\t {4}ctx->venc->powered\) \{/);
+  assert.match(patch, /-\t\t\treturn -EBUSY;/);
 });
 
 test('computes a path-independent patch digest', (t) => {
