@@ -58,7 +58,9 @@ test('installer source uses a staging tree and never extracts modules at filesys
   assert.match(source, /TARGET_ROOT.*hcodec-modules-stage/);
   assert.match(source, /modules\/\$KERNEL_RELEASE/);
   assert.doesNotMatch(source, /tar -xJf [^\n]+ -C \/(?:\s|$)/);
-  assert.match(source, /4000000/);
+  assert.match(source, /xz --robot --list "\$KERNEL_DIR\/modules\.tar\.xz"/);
+  assert.match(source, /required_kib=\$\(\(modules_uncompressed_kib \* 2 \+ artifact_kib \* 2 \+ 65536\)\)/);
+  assert.doesNotMatch(source, /-ge 4000000/);
   assert.match(source, /cma=128M/);
   assert.match(source, /meson8b_h264\.bin/);
   assert.match(source, /backups\/install-/);

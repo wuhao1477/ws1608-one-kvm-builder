@@ -161,6 +161,7 @@ metadata=$(resolve_rootfs_path /etc/ws1608-one-kvm-release)
 otg_helper=$(resolve_rootfs_path /usr/sbin/one-kvm-enable-otg)
 otg_unit=$(resolve_rootfs_path /usr/lib/systemd/system/one-kvm-otg.service)
 otg_dropin=$(resolve_rootfs_path /etc/systemd/system/one-kvm.service.d/otg.conf)
+update_dropin=$(resolve_rootfs_path /etc/systemd/system/one-kvm.service.d/no-online-update.conf)
 modules_conf=$(resolve_rootfs_path /etc/modules-load.d/one-kvm.conf)
 
 package_state=$(dpkg-query --admindir="$dpkg_admin" -W -f='${Status} ${Version} ${Architecture}' one-kvm)
@@ -191,6 +192,8 @@ verify 'one-kvm service user' grep -Fqx 'User=root' "$service_unit"
 verify 'OTG helper content' cmp "$ROOT_DIR/config/one-kvm-enable-otg" "$otg_helper"
 verify 'OTG systemd unit' cmp "$ROOT_DIR/config/one-kvm-otg.service" "$otg_unit"
 verify 'OTG drop-in' cmp "$ROOT_DIR/config/one-kvm.service.d-otg.conf" "$otg_dropin"
+verify 'online update drop-in' cmp "$ROOT_DIR/config/one-kvm.service.d-no-online-update.conf" "$update_dropin"
+verify 'online update base URL' grep -Fqx 'Environment=ONE_KVM_UPDATE_BASE_URL=http://127.0.0.1:1' "$update_dropin"
 verify 'module configuration' cmp "$ROOT_DIR/config/one-kvm-modules.conf" "$modules_conf"
 verify 'OTG Wants dependency' grep -Fqx 'Wants=one-kvm-otg.service' "$otg_dropin"
 verify 'OTG ordering dependency' grep -Fqx 'After=one-kvm-otg.service' "$otg_dropin"

@@ -20,6 +20,9 @@
 | 编码完成但 STREAMOFF 阻塞 | V4L2 队列清理、硬件电源关闭或停止 CPU 路径未完成 | 保留已生成码流和上一启动日志；不重试 probe，先修复清理路径 |
 | probe 返回 `0` 后设备失联 | HCODEC 关电后的异步系统影响，且 zram 上的 journal 不持久 | 用 artifact 的 `capture-stability-probe.sh` 保存根文件系统 dmesg 和 60 秒健康记录，再进行唯一一次候选 probe |
 | One-KVM 不发现硬件后端 | 环境开关、设备权限或 V4L2 格式不匹配 | 独立探针通过后再显式启用 |
+| Web UI 升级报取清单失败 | 镜像故意关闭了在线升级 | 预期行为；改为重刷本仓库 Release 镜像，不要清除 `no-online-update.conf` |
+| 设备上 `/usr/bin/one-kvm` 与 manifest 摘要不符 | 曾执行过上游在线升级，二进制被 `rename()` 覆盖且 dpkg 无记录 | 重刷镜像；升级会静默丢掉 Meson8b 补丁 |
+| 安装候选报空间不足 | 目标根分区可用空间低于本候选实际需要 | 门槛按解包后模块树与备份计算；清理 `/root/hcodec/backups` 下旧备份，不要删解包目录 |
 | `/dev/video*` 缺失 | 驱动未 probe 或采集卡未接 | 先用 `v4l2-ctl --list-devices` 区分设备 |
 
 ## 稳定构建排障

@@ -229,6 +229,7 @@ for guest in \
   /usr/sbin/one-kvm-enable-otg \
   /usr/lib/systemd/system/one-kvm-otg.service \
   /etc/systemd/system/one-kvm.service.d/otg.conf \
+  /etc/systemd/system/one-kvm.service.d/no-online-update.conf \
   /etc/ws1608-one-kvm-release; do
   assert_rootfs_path "$guest"
 done
@@ -236,6 +237,7 @@ as_root install -D -m 0644 "$ROOT_DIR/config/one-kvm-modules.conf" "$MOUNT_DIR/e
 as_root install -D -m 0755 "$ROOT_DIR/config/one-kvm-enable-otg" "$MOUNT_DIR/usr/sbin/one-kvm-enable-otg"
 as_root install -D -m 0644 "$ROOT_DIR/config/one-kvm-otg.service" "$MOUNT_DIR/usr/lib/systemd/system/one-kvm-otg.service"
 as_root install -D -m 0644 "$ROOT_DIR/config/one-kvm.service.d-otg.conf" "$MOUNT_DIR/etc/systemd/system/one-kvm.service.d/otg.conf"
+as_root install -D -m 0644 "$ROOT_DIR/config/one-kvm.service.d-no-online-update.conf" "$MOUNT_DIR/etc/systemd/system/one-kvm.service.d/no-online-update.conf"
 node "$ROOT_DIR/scripts/write-image-metadata.mjs" "$METADATA_FILE"
 as_root install -D -m 0644 "$METADATA_FILE" "$MOUNT_DIR/etc/ws1608-one-kvm-release"
 

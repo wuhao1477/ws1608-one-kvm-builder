@@ -61,6 +61,10 @@ test('the independent verifier checks exact identity and installed files', () =>
   assert.match(verifyScript, /cmp "\$ROOT_DIR\/config\/one-kvm-enable-otg"/);
   assert.match(verifyScript, /cmp "\$ROOT_DIR\/config\/one-kvm-otg\.service"/);
   assert.match(verifyScript, /cmp "\$ROOT_DIR\/config\/one-kvm\.service\.d-otg\.conf"/);
+  assert.match(
+    verifyScript,
+    /cmp "\$ROOT_DIR\/config\/one-kvm\.service\.d-no-online-update\.conf"/,
+  );
   assert.match(verifyScript, /test ! -e "\$tmp_dir\/one-kvm\.deb"/);
   assert.match(verifyScript, /test ! -e "\$usr_bin_dir\/qemu-arm-static"/);
   assert.match(verifyScript, /write-validation-report\.mjs/);
@@ -84,4 +88,21 @@ test('the verifier parses GNU readelf interpreter output', () => {
   });
   assert.equal(result.status, 0, result.stderr);
   assert.equal(result.stdout.trim(), '/lib/ld-linux-armhf.so.3');
+});
+
+test('the image disables One-KVM online updates', () => {
+  const dropIn = fs.readFileSync('config/one-kvm.service.d-no-online-update.conf', 'utf8');
+  assert.match(dropIn, /^\[Service\]$/m);
+  assert.match(dropIn, /^Environment=ONE_KVM_UPDATE_BASE_URL=http:\/\/127\.0\.0\.1:1$/m);
+  assert.doesNotMatch(dropIn, /update\.one-kvm\.cn/);
+
+  assert.match(
+    buildScript,
+    /install -D -m 0644 "\$ROOT_DIR\/config\/one-kvm\.service\.d-no-online-update\.conf"/,
+  );
+  assert.match(buildScript, /one-kvm\.service\.d\/no-online-update\.conf/);
+  assert.match(
+    verifyScript,
+    /grep -Fqx 'Environment=ONE_KVM_UPDATE_BASE_URL=http:\/\/127\.0\.0\.1:1'/,
+  );
 });

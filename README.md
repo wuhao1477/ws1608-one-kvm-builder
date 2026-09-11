@@ -91,6 +91,22 @@ Linux 6.12 HCODEC 研究路线。
 稳定通道只更新 One-KVM rootfs 内容，不自动替换内核、DTB、U-Boot 或
 Armbian 基础。完整流程见[构建与发布流程](docs/build-pipeline.md)。
 
+镜像内 One-KVM 的**在线升级已关闭**。上游的在线升级会下载通用二进制并直接
+`rename()` 覆盖 `/usr/bin/one-kvm`，既不经过 dpkg 也不留备份，会让设备实际
+运行的二进制与 `manifest.json` 的 `package_sha256` 不再一致，在带 Meson8b
+补丁的构建上还会静默丢掉补丁。镜像通过
+`/etc/systemd/system/one-kvm.service.d/no-online-update.conf` 把
+`ONE_KVM_UPDATE_BASE_URL` 指向本机保留端口，使升级在取清单这一步即失败关闭；
+升级方式改为重刷本仓库发布的镜像。
+
+镜像内 One-KVM 的**在线升级已关闭**。上游的在线升级会下载通用二进制并直接
+`rename()` 覆盖 `/usr/bin/one-kvm`，既不经过 dpkg 也不留备份，会让设备实际
+运行的二进制与 `manifest.json` 的 `package_sha256` 不再一致，在带 Meson8b
+补丁的构建上还会静默丢掉补丁。镜像通过
+`/etc/systemd/system/one-kvm.service.d/no-online-update.conf` 把
+`ONE_KVM_UPDATE_BASE_URL` 指向本机保留端口，使升级在取清单这一步即失败关闭；
+升级方式改为重刷本仓库发布的镜像。
+
 ## 硬件编码研发路线
 
 当前唯一有效方向是在已验证 Armbian/Linux 6.12 基础上移植

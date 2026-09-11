@@ -10,9 +10,25 @@ FIRMWARE_DIR="$ARTIFACT_DIR/firmware"
 [[ -d "$ARTIFACT_DIR" && ! -L "$ARTIFACT_DIR" ]] || { echo 'invalid artifact directory' >&2; exit 1; }
 [[ -d "$TARGET_ROOT" && ! -L "$TARGET_ROOT" ]] || { echo 'invalid target root' >&2; exit 1; }
 [[ -s "$MANIFEST" && -s "$KERNEL_DIR/modules.tar.xz" && -s "$FIRMWARE_DIR/meson8b_h264.bin" ]] || { echo 'artifact payload is incomplete' >&2; exit 1; }
-target_avail=$(df -Pk "$TARGET_ROOT" | awk 'NR==2 {print $4}')
-[[ "$target_avail" =~ ^[0-9]+$ && "$target_avail" -ge 4000000 ]] || {
-  echo 'target root requires at least 4 GiB available' >&2
+# 空间门槛按本候选真实需要计算，不用固定 4 GiB：原来的固定值在 8 GB eMMC 上
+# 会随候选数量增长而必然误报（实测可用 3,670,940 KiB 时被拦下，而该候选实际只
+# 需要约 250 MiB），迫使人工删除旧备份，反而更危险。
+#
+# 实际占用：解包出的模块树（staging）+ cp 到 /lib/modules 的第二份副本
+# （staging 要到 trap 退出才删，两份同时存在）+ 内核与固件文件 + 旧内核文件备份。
+modules_uncompressed_kib=$(
+  xz --robot --list "$KERNEL_DIR/modules.tar.xz" | awk '$1 == "file" { print int($5 / 1024) + 1 }'
+)
+artifact_kib=$(du -sk "$ARTIFACT_DIR" | awk '{ print $1 }')
+[[ "$modules_uncompressed_kib" =~ ^[0-9]+$ && "$modules_uncompressed_kib" -gt 0 ]] \
+  || { echo 'cannot read uncompressed module tree size' >&2; exit 1; }
+[[ "$artifact_kib" =~ ^[0-9]+$ && "$artifact_kib" -gt 0 ]] \
+  || { echo 'cannot size artifact payload' >&2; exit 1; }
+# 两份模块树 + 内核/固件写入 + 同等大小的备份，再留 64 MiB 余量给 ext4 元数据。
+required_kib=$((modules_uncompressed_kib * 2 + artifact_kib * 2 + 65536))
+target_avail=$(df -Pk "$TARGET_ROOT" | awk 'NR==2 { print $4 }')
+[[ "$target_avail" =~ ^[0-9]+$ && "$target_avail" -ge "$required_kib" ]] || {
+  echo "target root requires ${required_kib} KiB available, has ${target_avail:-0} KiB" >&2
   exit 1
 }
 

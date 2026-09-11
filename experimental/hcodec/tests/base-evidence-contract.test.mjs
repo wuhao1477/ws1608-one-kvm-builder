@@ -75,7 +75,7 @@ test('protects the exact stable workflow, config, scripts, and tests', () => {
   const result = spawnSync('bash', [stableVerifier, '.', protectedManifest], { encoding: 'utf8' });
 
   assert.equal(result.status, 0, result.stderr || result.stdout);
-  assert.match(result.stdout, /verified 57 stable-chain files/);
+  assert.match(result.stdout, /verified 58 stable-chain files/);
 });
 
 test('collect mode rejects a missing immutable base image input', (t) => {
