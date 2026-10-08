@@ -9,6 +9,7 @@ export BASE_IMAGE_NAME BASE_IMAGE_URL BASE_IMAGE_SHA256 AMLIMG_REPOSITORY AMLIMG
 
 BASE_IMAGE_XZ=${BASE_IMAGE_XZ:?BASE_IMAGE_XZ is required}
 ONE_KVM_DEB=${ONE_KVM_DEB:?ONE_KVM_DEB is required}
+TTYD_BIN=${TTYD_BIN:?TTYD_BIN is required}
 AMLIMG_BIN=${AMLIMG_BIN:?AMLIMG_BIN is required}
 ONE_KVM_VERSION=${ONE_KVM_VERSION:?ONE_KVM_VERSION is required}
 UPSTREAM_TAG=${UPSTREAM_TAG:?UPSTREAM_TAG is required}
@@ -80,11 +81,11 @@ assert_rootfs_path() {
   local guest=$1 root resolved
   [[ "$guest" == /* && "$guest" != *".."* ]] || { echo "invalid rootfs path: $guest" >&2; exit 1; }
   root=$(realpath -e -- "$MOUNT_DIR")
-  resolved=$(realpath -m -- "$MOUNT_DIR$guest")
+  resolved=$(as_root realpath -m -- "$MOUNT_DIR$guest")
   [[ "$resolved" == "$root"/* ]] || { echo "rootfs path escapes mount: $guest -> $resolved" >&2; exit 1; }
 }
 
-for command in awk chroot cmp e2fsck findmnt jq mknod mount mountpoint node realpath sha1sum umount unshare xz; do
+for command in awk chroot cmp e2fsck findmnt jq mknod mount mountpoint node realpath sha1sum sha256sum umount unshare xz; do
   require_command "$command"
 done
 require_private_dir "$WORK_DIR" WORK_DIR
@@ -105,6 +106,8 @@ require_basename "$IMAGE_NAME" IMAGE_NAME
 [[ -x "$AMLIMG_BIN" ]] || { echo "AmlImg binary is not executable: $AMLIMG_BIN" >&2; exit 1; }
 [[ -f "$BASE_IMAGE_XZ" && ! -L "$BASE_IMAGE_XZ" ]] || { echo "invalid base image: $BASE_IMAGE_XZ" >&2; exit 1; }
 [[ -f "$ONE_KVM_DEB" && ! -L "$ONE_KVM_DEB" ]] || { echo "invalid One-KVM package: $ONE_KVM_DEB" >&2; exit 1; }
+[[ -f "$TTYD_BIN" && ! -L "$TTYD_BIN" ]] || { echo "invalid ttyd binary: $TTYD_BIN" >&2; exit 1; }
+echo "$TTYD_SHA256  $TTYD_BIN" | sha256sum --check --quiet
 [[ -x /usr/bin/qemu-arm-static ]] || { echo 'qemu-arm-static is required' >&2; exit 1; }
 
 assert_no_mounts_under "$MOUNT_DIR"
@@ -209,13 +212,21 @@ for guest in \
   /usr/sbin/one-kvm-enable-otg \
   /usr/lib/systemd/system/one-kvm-otg.service \
   /etc/systemd/system/one-kvm.service.d/otg.conf \
-  /etc/ws1608-one-kvm-release; do
+  /etc/ws1608-one-kvm-release \
+  /usr/bin/ttyd \
+  /root/one-kvm-extensions.sh \
+  /root/.bashrc; do
   assert_rootfs_path "$guest"
 done
 as_root install -D -m 0644 "$ROOT_DIR/config/one-kvm-modules.conf" "$MOUNT_DIR/etc/modules-load.d/one-kvm.conf"
 as_root install -D -m 0755 "$ROOT_DIR/config/one-kvm-enable-otg" "$MOUNT_DIR/usr/sbin/one-kvm-enable-otg"
 as_root install -D -m 0644 "$ROOT_DIR/config/one-kvm-otg.service" "$MOUNT_DIR/usr/lib/systemd/system/one-kvm-otg.service"
 as_root install -D -m 0644 "$ROOT_DIR/config/one-kvm.service.d-otg.conf" "$MOUNT_DIR/etc/systemd/system/one-kvm.service.d/otg.conf"
+as_root install -D -m 0755 "$TTYD_BIN" "$MOUNT_DIR/usr/bin/ttyd"
+as_root install -D -m 0755 "$ROOT_DIR/config/one-kvm-extensions.sh" "$MOUNT_DIR/root/one-kvm-extensions.sh"
+# SSH 登录 shell 和 ttyd 的非登录 bash 都会读 ~/.bashrc；扩展全部装好后提示自动消失。
+printf '\n%s\n' '[[ $- == *i* && -x ~/one-kvm-extensions.sh ]] && ~/one-kvm-extensions.sh --hint' |
+  as_root tee -a "$MOUNT_DIR/root/.bashrc" >/dev/null
 node "$ROOT_DIR/scripts/write-image-metadata.mjs" "$METADATA_FILE"
 as_root install -D -m 0644 "$METADATA_FILE" "$MOUNT_DIR/etc/ws1608-one-kvm-release"
 

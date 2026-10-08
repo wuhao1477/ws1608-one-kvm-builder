@@ -26,7 +26,7 @@ VERIFY_ROOT=${VERIFY_DIR:-$ROOT_DIR/.verify}
 export ONE_KVM_VERSION UPSTREAM_TAG PACKAGE_NAME PACKAGE_URL PACKAGE_DIGEST
 export BUILD_TAG BUILD_NUMBER BUILD_REVISION BUILDER_COMMIT GITHUB_RUN_ID GITHUB_RUN_ATTEMPT GITHUB_RUN_NUMBER
 
-for command in awk cmp diff dpkg-query e2fsck file find grep mcopy mount mountpoint node readlink readelf realpath sed sha1sum umount; do
+for command in awk cmp diff dpkg-query e2fsck file find grep mcopy mount mountpoint node readlink readelf realpath sed sha1sum sha256sum umount; do
   command -v "$command" >/dev/null || { echo "missing command: $command" >&2; exit 1; }
 done
 [[ -x "$AMLIMG_BIN" ]] || { echo "AmlImg binary is not executable: $AMLIMG_BIN" >&2; exit 1; }
@@ -81,7 +81,7 @@ resolve_rootfs_path() {
   local guest=$1 root resolved
   [[ "$guest" == /* && "$guest" != *".."* ]] || { echo "invalid rootfs path: $guest" >&2; return 1; }
   root=$(realpath -e -- "$MOUNT_DIR")
-  resolved=$(realpath -e -- "$MOUNT_DIR$guest") || return 1
+  resolved=$(as_root realpath -e -- "$MOUNT_DIR$guest") || return 1
   [[ "$resolved" == "$root"/* ]] || { echo "rootfs path escapes mount: $guest -> $resolved" >&2; return 1; }
   printf '%s\n' "$resolved"
 }
@@ -144,6 +144,9 @@ otg_helper=$(resolve_rootfs_path /usr/sbin/one-kvm-enable-otg)
 otg_unit=$(resolve_rootfs_path /usr/lib/systemd/system/one-kvm-otg.service)
 otg_dropin=$(resolve_rootfs_path /etc/systemd/system/one-kvm.service.d/otg.conf)
 modules_conf=$(resolve_rootfs_path /etc/modules-load.d/one-kvm.conf)
+ttyd_binary=$(resolve_rootfs_path /usr/bin/ttyd)
+extensions_script=$(resolve_rootfs_path /root/one-kvm-extensions.sh)
+root_bashrc=$(resolve_rootfs_path /root/.bashrc)
 
 package_state=$(dpkg-query --admindir="$dpkg_admin" -W -f='${Status} ${Version} ${Architecture}' one-kvm)
 for package in libdrm2 libc6 libgcc-s1 libstdc++6; do
@@ -182,6 +185,11 @@ verify 'OTG helper executable' test -x "$otg_helper"
 verify 'Deb removed after install' test ! -e "$tmp_dir/one-kvm.deb"
 verify 'qemu removed after install' test ! -e "$usr_bin_dir/qemu-arm-static"
 verify 'systemctl stub removed after install' test ! -e "$usr_local_sbin_dir/systemctl"
+verify 'ttyd binary digest' bash -c 'echo "$1  $2" | sha256sum --check --quiet' _ "$TTYD_SHA256" "$ttyd_binary"
+verify 'ttyd executable' test -x "$ttyd_binary"
+verify 'extensions installer content' as_root cmp "$ROOT_DIR/config/one-kvm-extensions.sh" "$extensions_script"
+verify 'extensions installer executable' as_root test -x "$extensions_script"
+verify 'extensions login hint' as_root grep -Fq 'one-kvm-extensions.sh --hint' "$root_bashrc"
 
 while IFS= read -r library; do
   [[ -n "$library" ]] || continue

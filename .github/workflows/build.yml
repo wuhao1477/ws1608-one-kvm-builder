@@ -133,6 +133,10 @@ jobs:
           test "$(dpkg-deb -f "$RUNNER_TEMP/$PACKAGE_NAME" Version)" = "$ONE_KVM_VERSION"
           test "$(dpkg-deb -f "$RUNNER_TEMP/$PACKAGE_NAME" Architecture)" = armhf
           echo "ONE_KVM_DEB=$RUNNER_TEMP/$PACKAGE_NAME" >> "$GITHUB_ENV"
+          source config/tool-versions.env
+          curl --fail --location --retry 5 "$TTYD_URL" -o "$RUNNER_TEMP/ttyd.armhf"
+          echo "$TTYD_SHA256  $RUNNER_TEMP/ttyd.armhf" | sha256sum --check
+          echo "TTYD_BIN=$RUNNER_TEMP/ttyd.armhf" >> "$GITHUB_ENV"
       - name: Build burn image
         run: ./scripts/build-image.sh
       - name: Verify burn image independently

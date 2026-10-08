@@ -87,6 +87,8 @@ Amlogic v2 的头部是无填充的二进制布局，`itemCount` 位于偏移 24
 - 安装 `/etc/systemd/system/one-kvm.service.d/otg.conf`，通过 `Wants=` 和 `After=` 让 One-KVM 启动前先尝试 OTG。
 - 安装 `/etc/modules-load.d/one-kvm.conf`，内容为 `libcomposite`。
 - 安装 `/usr/sbin/one-kvm-enable-otg`，在 `/sys/devices/platform/soc/c9040000.usb/usb_role/*/role` 出现后将角色设为 `device`，最多重试 30 秒。
+- 安装 `config/tool-versions.env` 固定摘要的静态 `ttyd.armhf` 到 `/usr/bin/ttyd`，与上游 One-KVM Docker 镜像同版本；Debian trixie 没有 ttyd 包。
+- 安装 `/root/one-kvm-extensions.sh`，并在 `/root/.bashrc` 末尾追加一行交互式 shell 提示。SSH 登录 shell 和 One-KVM 启动的 ttyd 非登录 bash 都读 `~/.bashrc`；`/etc/motd` 对 ttyd 不生效，`/etc/bash.bashrc` 是 bash 包 conffile，改它会让升级时出现冲突提示。
 - 写入 `/etc/ws1608-one-kvm-release`，便于实机识别构建来源。
 - metadata 同时记录 One-KVM Deb 摘要、上游 tag、构建 tag/序号和 builder commit。
 

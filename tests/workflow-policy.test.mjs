@@ -43,6 +43,12 @@ test('runs every image and release-asset gate before artifact upload', () => {
   assert.match(workflow, /Re-verify uploaded burn image/);
 });
 
+test('downloads the pinned ttyd binary and checks its sha256', () => {
+  assert.match(buildJob, /curl --fail --location --retry 5 "\$TTYD_URL"/);
+  assert.match(buildJob, /echo "\$TTYD_SHA256  \$RUNNER_TEMP\/ttyd\.armhf" \| sha256sum --check/);
+  assert.match(buildJob, /TTYD_BIN=\$RUNNER_TEMP\/ttyd\.armhf/);
+});
+
 test('installs the FAT image tooling required for boot-console validation', () => {
   assert.match(workflow, /e2fsprogs file jq mtools qemu-user-static/);
 });

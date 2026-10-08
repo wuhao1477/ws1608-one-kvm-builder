@@ -29,6 +29,11 @@ test('the image builder requires and embeds immutable build provenance', () => {
   assert.match(buildScript, /findmnt/);
   assert.match(buildScript, /verify-boot-console\.sh/);
   assert.match(buildScript, /cleanup_mounts\(\) \(/);
+  assert.match(buildScript, /TTYD_BIN=\$\{TTYD_BIN:\?/);
+  assert.match(buildScript, /\$TTYD_SHA256  \$TTYD_BIN" \| sha256sum --check/);
+  assert.match(buildScript, /"\$TTYD_BIN" "\$MOUNT_DIR\/usr\/bin\/ttyd"/);
+  assert.match(buildScript, /one-kvm-extensions\.sh" "\$MOUNT_DIR\/root\/one-kvm-extensions\.sh"/);
+  assert.match(buildScript, /one-kvm-extensions\.sh --hint' \|\n\s+as_root tee -a "\$MOUNT_DIR\/root\/\.bashrc"/);
   assert.match(manifestScript, /build_tag: env\('BUILD_TAG'\)/);
   assert.match(manifestScript, /build_number: Number\(env\('BUILD_NUMBER'\)\)/);
 });
@@ -56,6 +61,9 @@ test('the independent verifier checks exact identity and installed files', () =>
   assert.match(verifyScript, /cmp "\$ROOT_DIR\/config\/one-kvm\.service\.d-otg\.conf"/);
   assert.match(verifyScript, /test ! -e "\$tmp_dir\/one-kvm\.deb"/);
   assert.match(verifyScript, /test ! -e "\$usr_bin_dir\/qemu-arm-static"/);
+  assert.match(verifyScript, /'ttyd binary digest'.*\$TTYD_SHA256" "\$ttyd_binary"/);
+  assert.match(verifyScript, /as_root cmp "\$ROOT_DIR\/config\/one-kvm-extensions\.sh"/);
+  assert.match(verifyScript, /one-kvm-extensions\.sh --hint' "\$root_bashrc"/);
   assert.match(verifyScript, /write-validation-report\.mjs/);
   assert.match(verifyScript, /verify-boot-console\.sh/);
   assert.match(verifyScript, /mcopy/);
