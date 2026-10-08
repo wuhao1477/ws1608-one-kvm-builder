@@ -13,7 +13,7 @@
 - Pull request 会执行完整构建，但不会获得发布权限。
 - 预留 `repository_dispatch` 的 `one-kvm-release` 事件，但上游仓库目前不会向本仓库发送该事件，所以每周检查是实际触发方式。
 
-当前稳定 Release 是 [`ws1608-one-kvm-0.2.6-v260802-b028001`](https://github.com/wuhao1477/ws1608-one-kvm-builder/releases/tag/ws1608-one-kvm-0.2.6-v260802-b028001)，由 [run 30917486241](https://github.com/wuhao1477/ws1608-one-kvm-builder/actions/runs/30917486241) 构建并发布。构建证据和摘要见 [HANDOFF.md](docs/HANDOFF.md)。
+当前稳定 Release 是 [`ws1608-one-kvm-0.2.8-v261001-b040001`](https://github.com/wuhao1477/ws1608-one-kvm-builder/releases/tag/ws1608-one-kvm-0.2.8-v261001-b040001)，由 [run 37755784971](https://github.com/wuhao1477/ws1608-one-kvm-builder/actions/runs/37755784971) 构建并发布，首个内置 ttyd 和扩展安装脚本的版本。构建证据和摘要见 [HANDOFF.md](docs/HANDOFF.md)。
 
 ## 基础镜像
 

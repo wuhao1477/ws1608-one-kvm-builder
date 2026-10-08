@@ -7,15 +7,15 @@
 仓库只维护一条稳定固件链，硬件编码已放弃（[ADR-0004](adr/0004-drop-hardware-h264.md)）：
 
 - 仓库：[wuhao1477/ws1608-one-kvm-builder](https://github.com/wuhao1477/ws1608-one-kvm-builder)
-- 当前 Release：[ws1608-one-kvm-0.2.6-v260802-b028001](https://github.com/wuhao1477/ws1608-one-kvm-builder/releases/tag/ws1608-one-kvm-0.2.6-v260802-b028001)
-- 完整构建与发布：[Actions run 30917486241](https://github.com/wuhao1477/ws1608-one-kvm-builder/actions/runs/30917486241)，结论 `success`，builder commit `8447674df6536f7b4fd2c58031d00de039169273`
+- 当前 Release：[ws1608-one-kvm-0.2.8-v261001-b040001](https://github.com/wuhao1477/ws1608-one-kvm-builder/releases/tag/ws1608-one-kvm-0.2.8-v261001-b040001)
+- 完整构建与发布：[Actions run 37755784971](https://github.com/wuhao1477/ws1608-one-kvm-builder/actions/runs/37755784971)，结论 `success`，builder commit `00bdb2cbc4231e174300b546d7669246410be07b`
 - 最近一次无更新检查：[Actions run 34745400800](https://github.com/wuhao1477/ws1608-one-kvm-builder/actions/runs/34745400800)（2026-09-13），build 和 release job 均为 skipped
-- 上游版本：One-KVM `0.2.6`，tag `v260802`
+- 上游版本：One-KVM `0.2.8`，tag `v261001`
 - 基础：`base-20260804-consolefix`，Armbian 26.8 Trixie，`6.12.28-current-meson`
 - 实机：consolefix 底座已验证启动、HDMI、网络、SSH、eMMC；One-KVM 服务和 health API 正常，视频使用软件编码
 - 触发：每周日 02:17 UTC；无新的上游 tag + Deb digest 时只检查、不构建
 
-稳定构建链（workflow、`config/`、`scripts/`、`tests/`）与发布 `b028001` 的 builder commit 一致，只额外增加了 `Repository security` 密钥扫描。
+稳定构建链（workflow、`config/`、`scripts/`、`tests/`）与发布 `b040001` 的 builder commit 一致。`b040001` 是首个内置 ttyd 1.7.7 和 `/root/one-kvm-extensions.sh` 扩展安装脚本的版本，只通过 CI 结构验证，尚未实机验收。
 
 ## 已实现的范围
 

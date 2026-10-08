@@ -22,11 +22,11 @@
 | --- | --- |
 | 板卡 | OneCloud / WS1608，Amlogic S805，armhf |
 | 稳定基础 | `base-20260804-consolefix`：Armbian 26.8 Trixie，`6.12.28-current-meson` |
-| One-KVM | `0.2.6`，上游 Release `v260802`，软件视频编码 |
-| 当前 Release | [`ws1608-one-kvm-0.2.6-v260802-b028001`](https://github.com/wuhao1477/ws1608-one-kvm-builder/releases/tag/ws1608-one-kvm-0.2.6-v260802-b028001) |
+| One-KVM | `0.2.8`，上游 Release `v261001`，软件视频编码；内置 ttyd 1.7.7 |
+| 当前 Release | [`ws1608-one-kvm-0.2.8-v261001-b040001`](https://github.com/wuhao1477/ws1608-one-kvm-builder/releases/tag/ws1608-one-kvm-0.2.8-v261001-b040001) |
 | 成品 SHA-256 | 见 Release 的 `SHA256SUMS`，不要从聊天记录复制 |
 | 自动检查 | 每周日 02:17 UTC，即北京时间周日 10:17 |
-| 完整云构建与发布 | [run 30917486241](https://github.com/wuhao1477/ws1608-one-kvm-builder/actions/runs/30917486241)，成功 |
+| 完整云构建与发布 | [run 37755784971](https://github.com/wuhao1477/ws1608-one-kvm-builder/actions/runs/37755784971)，成功 |
 | 最近一次无更新检查 | [run 34745400800](https://github.com/wuhao1477/ws1608-one-kvm-builder/actions/runs/34745400800)，成功且 build/release skipped |
 | 当前实机状态 | consolefix 底座与 One-KVM 已在 WS1608 实机运行 |
 
