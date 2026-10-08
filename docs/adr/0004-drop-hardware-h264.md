@@ -18,11 +18,11 @@ S805 H.264 硬件编码先后尝试了 Linux 3.10 AMLENC 与 Linux 6.12 HCODEC �
 1. 放弃 H.264 硬件编码目标；One-KVM 使用软件编码。
 2. 仓库只保留稳定固件构建链：`.github/workflows/build.yml`、`config/`、
    `scripts/`、`tests/` 和安全扫描。
-3. 删除 `experimental/amlenc`、`experimental/hcodec`、对应 workflow，以及已停用的
-   CNB 配置与脚本。
+3. 删除 `experimental/amlenc`、`experimental/hcodec` 和对应 workflow；GitHub
+   是唯一的托管与 CI 平台。
 4. 稳定构建链恢复到发布 `ws1608-one-kvm-0.2.6-v260802-b028001` 的提交
-   `8447674`：去掉 CNB 迁移带入的 FUSE/loop 分支，基础镜像改回 GitHub Release
-   下载（SHA-256 不变）。
+   `8447674`：镜像脚本只使用 GitHub runner 已安装的 loop 挂载，基础镜像从
+   GitHub Release 下载（SHA-256 不变）。
 5. 硬件编码研究只以 git tag 保留：`archive/hcodec-meson8b-rearm`、
    `archive/amlenc-mainline`、`archive/amlenc-legacy-bringup`、
    `archive/amlenc-kexec-2.0.18-fix`。
