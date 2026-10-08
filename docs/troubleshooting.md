@@ -1,38 +1,33 @@
-# 排障手册与已知问题
+# 排障手册与已知坑
 
 ## 快速判断
 
 | 症状 | 常见原因 | 处理 |
 | --- | --- | --- |
-| 稳定 build skipped | 相同上游 tag 与 Deb digest 已发布 | 正常；脚本修复需要重建时使用 `force=true` |
-| 找到 0 或多个 armhf Deb | 上游资产策略变化 | 检查 Release JSON，修改精确选择规则 |
-| 基础 SHA-256 不匹配 | 资产替换或下载损坏 | 创建新基础 tag，不覆盖历史资产 |
-| e2fsck journal/orphan | rootfs 未严格卸载 | 停止构建，检查所有嵌套挂载 |
-| Amlogic CRC/VERIFY 失败 | 容器、sparse 或摘要计算错误 | 使用固定 AmlImg 和独立 verifier |
-| HCODEC 模块无法加载 | 架构、vermagic、配置或符号不匹配 | 重新为目标 ARMv7 内核构建 |
-| `armbian-zram-config.service` 报 `Unknown symbol` | 设备上的 `depmod` 覆盖了制品依赖索引 | 重新安装包含完整 `modules.*` 索引的候选 artifact；不要在设备上重跑无参数 `depmod` |
-| HCODEC probe 失败 | DT 时钟、HHI、DOS、IRQ 或 Canvas 不完整 | 核对 Meson8b 资源和冲突 owner |
-| 固件加载失败 | 文件缺失、路径或摘要错误 | 核对 `meson8b_h264.bin` 来源与 manifest |
-| CMA 分配失败 | CMA 太小或碎片化 | 检查 cmdline、CmaTotal/CmaFree 和缓冲数量 |
-| 编码 timeout | 微码、HCODEC 时钟、电源、复位或 mailbox IRQ | 先核对 Hardkernel Meson8b dblk 微码来源/摘要，再检查命令和中断 |
-| probe 超时后 SSH 失联 | HCODEC 访问可能触发系统级挂起或复位 | 停止所有后续编码测试；等待一次网络恢复窗口，保存结果后再分析，不重复刷写或延长 timeout |
-| H.264 损坏 | Canvas/MFDIN、DMA、capture ring 或 header 状态错误 | 用独立工具缩小到首个失败帧 |
-| 编码完成但 STREAMOFF 阻塞 | V4L2 队列清理、硬件电源关闭或停止 CPU 路径未完成 | 保留已生成码流和上一启动日志；不重试 probe，先修复清理路径 |
-| probe 返回 `0` 后设备失联 | HCODEC 关电后的异步系统影响，且 zram 上的 journal 不持久 | 用 artifact 的 `capture-stability-probe.sh` 保存根文件系统 dmesg 和 60 秒健康记录，再进行唯一一次候选 probe |
-| One-KVM 不发现硬件后端 | 环境开关、设备权限或 V4L2 格式不匹配 | 独立探针通过后再显式启用 |
-| `/dev/video*` 缺失 | 驱动未 probe 或采集卡未接 | 先用 `v4l2-ctl --list-devices` 区分设备 |
+| build job skipped | 同一上游 tag 和 Deb digest 已有公开 Release | 这是正常行为；修复代码或资产被上游替换时用 `force=true` |
+| discover 失败，找到 0 或多个 armhf 包 | 上游资产命名或发布策略改变 | 先查看上游 Release JSON，再修改选择规则；不要静默选第一个 |
+| 基础包 SHA-256 不匹配 | URL 指向了被替换的资产、下载损坏或 `base.env` 未更新 | 比较 GitHub asset digest，创建新基础 tag，不覆盖旧 tag |
+| Deb 架构不是 armhf | 误选 arm64/amd64 包 | 检查 `dpkg-deb -f`，保持 WS1608 的 armhf 约束 |
+| `qemu-arm-static` 缺失 | runner 依赖未安装 | 检查 workflow 的 apt 安装步骤；不要把宿主 qemu 二进制提交到仓库 |
+| apt update 失败 | Armbian/Debian 镜像短时不可用、网络或日期问题 | 重试并查看源；必要时为 apt 源增加稳定备用方案，不能跳过依赖校验 |
+| `systemctl` 在 chroot 报 running in chroot | One-KVM postinst 尝试 start 服务 | 这是预期现象；构建脚本随后手工保证 enable link，不能在 chroot 启动真实服务 |
+| e2fsck 报 journal recovery/orphan | rootfs 仍处于挂载状态就运行 e2fsck，或嵌套 mount 未卸载 | 先检查 `cleanup_mounts`；必须确认 `mountpoint "$MOUNT_DIR"` 为 false 后再 e2fsck |
+| OTG 文件在挂载时存在、成品中消失 | 旧版递归 `/dev` bind 卸载失败，脚本忽略错误 | 使用当前临时 `/dev`、残留挂载检查和严格卸载逻辑；不要恢复 `umount -R` 后忽略返回值的实现 |
+| OTG unit 找不到 | 检查了错误目录或基础文件没有持久化 | 当前 unit 在 `/usr/lib/systemd/system`，drop-in 在 `/etc/systemd/system/one-kvm.service.d/otg.conf` |
+| rootfs VERIFY mismatch | 对 raw ext4 而不是 sparse 文件计算 SHA1，或 VERIFY 有换行 | 重新用 `sha1sum` 计算 sparse 文件，写入固定 48 字节格式 |
+| Amlogic CRC/条目失败 | 手工改了容器布局、使用错误版本工具或截断文件 | 用固定 AmlImg commit，先 `unpack` 再独立 `verify-image.sh` |
+| 刷写工具拒绝 sparse | RAW chunk 过大或总块数变化 | 使用仓库的 `raw-to-sparse.mjs`，不要替换成未验证的 `img2simg` |
+| `SHA256SUMS` 含 `/home/runner/...` | 在输出目录外调用 sha256sum | 使用 `(cd "$OUTPUT_DIR" && sha256sum --check SHA256SUMS)`；当前 asset verifier 会拒绝路径 |
+| force 构建在发布阶段 tag 冲突 | tag 被预先创建或同一构建身份已占用 | 检查 tag 指向；修复后重新 dispatch，新的 run number 会产生新身份 |
+| Release 没有公开 | draft 上传、远端摘要验证或发布 API 失败 | 先修复失败步骤；重新 dispatch `force=true` 会使用新的 `bRRRAAA`，失败运行创建的资源会按 ID 清理 |
+| GitHub Release 资产超过 2 GiB | 未压缩镜像或 rootfs 持续变大 | 保留 xz 资产并评估拆分/外部存储；不要静默省略直刷 `.img` |
+| OrbStack Docker daemon `unexpected EOF` | macOS 特权 loop mount 在本次测试中不稳定 | 使用 GitHub Actions 云 runner 或原生 Linux；不要删除用户 Docker 卷来解决 |
+| HDMI 有画面但没有音频 | 基础内核的 `gx-sound-card` 注册错误，已观测到 error -22 | 记录为已知基础镜像限制；One-KVM 的 USB 视频/HID 功能不以 HDMI 音频为前置条件 |
+| `/dev/video0` 或 HID 不存在 | 测试机没有接 HDMI 采集卡/USB 控制线，或 OTG 角色未切到 device | 按硬件验收文档接线、检查 sysfs role、`libcomposite` 和采集卡驱动 |
 
-## 稳定构建排障
+## 挂载排障命令
 
-### 上游发现
-
-先检查 `Check One-KVM release` 输出中的 tag、Deb 名称、版本、URL、digest、
-`changed` 和构建身份。上游资产不唯一或没有 SHA-256 时必须失败，不能静默
-选择近似包。
-
-### rootfs 挂载
-
-只在临时 Linux 构建目录执行：
+这些命令只应在受控 Linux runner/临时工作目录执行，不能对正在使用的设备分区执行：
 
 ```sh
 findmnt -R "$WORK_DIR/rootfs.mnt"
@@ -40,10 +35,11 @@ mountpoint "$WORK_DIR/rootfs.mnt"
 ps -ef | grep -E 'chroot|qemu-arm|apt-get' | grep -v grep
 ```
 
-rootfs 仍挂载时不得运行 `e2fsck`。不要恢复忽略 `umount` 返回值或递归暴露
-宿主 `/dev` 的旧实现。
+如果 rootfs 仍挂载，先停止当前构建并卸载所有子挂载；不要直接对设备节点运行 `e2fsck -fy`。
 
-### Amlogic 容器
+## Amlogic 数据排查
+
+先看容器条目，不要先改脚本：
 
 ```sh
 "$AMLIMG_BIN" unpack image.burn.img verify-dir
@@ -52,156 +48,26 @@ sha1sum verify-dir/10.rootfs.PARTITION.sparse
 cat verify-dir/11.rootfs.VERIFY
 ```
 
-非 rootfs 条目变化表示构建越界。不能删除 VERIFY 或只检查外层 SHA-256。
+如果非 rootfs 分区有差异，优先检查是否误修改了 boot、bootloader、resource 或 `commands.txt` 顺序。若只有 rootfs 差异，继续检查 ext4 和包安装；不要通过删掉 VERIFY 项来绕过检查。
 
-### 发布资产
+## Actions 排障顺序
 
-`SHA256SUMS` 只包含 basename。build 上传后、release 下载后和远端公开后都
-必须复验 raw/xz 往返、manifest、报告和 GitHub asset digest。tag 冲突时
-使用新 run 身份，不覆盖旧 Release。
+1. 先看 `Check One-KVM release` 的输出，确认 `changed`、上游 tag、Deb 版本、构建序号、资产 URL 和 digest。
+2. 再看 `Download and verify inputs`，确认基础包、Deb metadata 和 SHA-256。
+3. `Build burn image` 失败时看 mount、chroot、apt 和 e2fsck；这时不应有公开 Release。
+4. `Verify burn image`、`Package release assets` 或 `Reverify downloaded release assets` 失败时，先看 validation report、manifest 和 checksum 输出。
+5. 发布失败时先下载 workflow artifact，不要立即重复 force；检查是否只是 Release API/权限问题。
+6. 修复后提交到 `main`，再用 `force=true` 创建新的序号，并保存新的 manifest/hash。
 
-## HCODEC 分层排障
+## 历史故障记录
 
-### 1. 模块身份
+首次镜像封装经历了多次云端验证失败；迁移前修复结果见 [29692576405](https://github.com/wuhao1477/ws1608-one-kvm-builder/actions/runs/29692576405)，当前不可变发布流程的最终证据以 [29703507602](https://github.com/wuhao1477/ws1608-one-kvm-builder/actions/runs/29703507602) 为准：
 
-```sh
-file meson-venc.ko
-modinfo meson-venc.ko
-uname -m
-uname -r
-```
+- 初版验证没有打印具体断言，无法定位失败项。
+- 包状态、ARM ELF 和主服务链接先后被证明正确；OTG 独立 wants link 并非必要依赖。
+- 改成 vendor unit 后仍发现 unit 消失，随后 `e2fsck` 日志显示 journal recovery、orphan inode 和 free block/inode 计数错误。
+- 根因是嵌套 bind mount 未严格卸载，脚本却继续对仍挂载的 raw 文件执行 e2fsck。
+- 当前实现进一步改为临时 `/dev`、隔离 mount/PID namespace、DNS 文件复制/恢复、残留挂载检查和严格卸载。
+- 新流程随后增加 Actions artifact 重新下载、完整镜像复验、draft Release 远端 digest 比较和不可变 tag；这些步骤均在 `29703507602` 通过，且 `29703930315` 证明相同输入不会再次触发构建或发布。
 
-目标必须是 ARM 32-bit 并匹配候选内核 vermagic。资料中的 AArch64
-`6.12.98-ipkvm-release` 模块不能用于当前系统。
-
-### 2. 设备树和资源
-
-```sh
-tr '\0' '\n' </proc/device-tree/compatible
-dmesg | grep -Ei 'meson-venc|hcodec|clock|syscon|canvas|irq|resource|probe'
-```
-
-重点检查：
-
-- `amlogic,meson8b-hcodec` 节点已在 OneCloud 板级启用；
-- `amlogic,hhi-sysctrl` 与实际 HHI syscon 一致；
-- DOS 地址没有被其他节点重复占用；
-- DOS/hcodec 时钟 ID 存在于 Meson8b provider；
-- IRQ、AO syscon 和 Canvas phandle 有效。
-
-补丁系列与最终驱动对这些属性要求不同，不能混合文件后判断 probe 失败。
-
-### 3. 固件
-
-```sh
-find /lib/firmware/meson/venc -maxdepth 1 -type f -print
-sha256sum /lib/firmware/meson/venc/meson8b_h264.bin
-dmesg | grep -Ei 'firmware|imem|dma|hcodec'
-```
-
-候选固件必须来自固定 Hardkernel commit `5aed95d35d252cafc75ce613a3a0052285662de2`，
-输入为 `drivers/amlogic/amports/m8/ucode/encoder/h264_enc_mix_dump_dblk.h`，
-输出 9536 字节，SHA-256 为
-`2a5b578c4cbfe2f9b80c110825d61bc94eba97667639fc5bf5639f1b7eec4368`。
-
-### 4. CMA 与 DMA
-
-```sh
-cat /proc/cmdline
-grep -E 'CmaTotal|CmaFree' /proc/meminfo
-dmesg | grep -Ei 'cma|dma|allocation|contiguous|out of memory'
-```
-
-1080p 的编码工作区约 15.44 MiB，One-KVM 4 输入/4 输出缓冲使编码部分接近
-64 MiB。64 MiB CMA 紧张时先验证实际分配；`cma=128M` 仍需重新启动候选并
-记录结果。
-
-### 5. 电源、时钟与 IRQ
-
-`run-12-1` 的首帧记录为：`SEQUENCE`、`PICTURE` 成功，IDR 输出 7 字节后
-返回 `-110`；按顺序确认 dblk 微码、AO power、隔离、DOS bus clock、HCODEC
-内部 clock、reset、固件 DMA、mailbox mask/clear、命令完成 IRQ。
-不能通过无限延长 timeout 隐藏硬件没有运行。
-
-`run-13-1` 已确认安装和启动路径正确：内核为 `6.12.28-current-meson`，
-`/dev/video0` 已注册，Meson8b 微码为 9536 字节且摘要正确，`cma=128M` 生效。
-唯一一次 640×480、MMAP、1 帧 probe 在 120 秒内超时，之后设备 SSH 返回
-`Host is down`。没有有效码流时必须停止测试，不创建 PR，不继续更高分辨率或
-One-KVM 集成。
-
-`run-15-1` 在补齐 Meson8b Assist `INT1=0x19` 后重复了同一最小边界：安装、重启、
-固件、CMA 和 `/dev/video0` 均正常，唯一一次 640×480、MMAP、1 帧 probe 超过
-120 秒未完成，输出为 0 字节，设备随后失联；重启后的 `pstore` 为空。该修复
-未解决 IDR 阶段的硬件挂起，必须停止测试并继续完整协议对照，不得重复 probe、
-延长 timeout 或创建 PR。
-
-`run-16-1` 在修复 Meson8b 微码长度门槛后完成了同一最小边界的硬件工作：内核日志
-记录 `SEQUENCE`、`PICTURE`、`IDR` 完成，生成 6547 字节码流；离线校验确认
-Annex-B、SPS/PPS/IDR、640×480、1 帧和完整 FFmpeg 解码均通过，输出 SHA-256
-为 `af392c6132fb1b349c62a0609164a5d92fb5dbda0805709614e00dfa636f407a`。但工具在
-完成数据读取后的 `STREAMOFF` 清理阶段未返回，SSH 随后超时，重启后的 `pstore`
-为空。该候选证明编码数据路径可用，但清理路径仍失败；不得把它标为完整验收通过，
-不得重试 probe、延长 timeout、测试更高分辨率或创建 PR。
-
-`run-24-1` 修复了候选模块安装重跑 `depmod` 导致 zram 依赖为空的问题，
-`armbian-zram-config.service` 已正常启动。相同最小 probe 返回 `0` 并写出经
-FFmpeg 解码的 6547 字节码流，但设备仍在工具退出后失联；zram 上的 journal 随重启
-丢失，`pstore` 为空。下个候选必须通过 `capture-probe.sh` 把实时和结束后的 dmesg
-写入 `/root/hcodec/.../results`，且仍只执行一次最小 probe。
-
-`run-25-1` 的持久化 trace 已确认两个 `STREAMOFF` 以及 `power_off end` 在工具
-退出前完成，且无 DMA idle timeout；失联发生在其后。Hardkernel Meson8b 参考驱动
-在相同阶段保留 HCODEC `DOS_GCLK_EN0` 内部门控，下一候选只对 Meson8b 保留这些
-gate，保留原有 CPU 停止、隔离、内存断电与时钟释放。
-
-`run-29-1` 已完成 640×480 MMAP 30 帧编码，生成 1 个 IDR、29 个 P 帧和 6866 字节
-码流；`ffprobe` 识别 30 帧 Baseline H.264，`ffmpeg` 解码成功。测试后的设备仍失联，
-因此下一构建增加 `capture-stability-probe.sh`，在复用 `capture-probe.sh` 的内核日志
-之外持续写入 60 秒的 uptime、网卡 carrier 和 IP 记录。该证据完成前不得创建 PR。
-
-CNB `run-30-1` 已使用该包装器完成 640×480 MMAP motion 30 帧编码：退出码 `0`，
-1 个 IDR、29 个 P 帧，输出 44137 字节；`ffprobe`/`ffmpeg` 通过，摘要为
-`334a7bca58cda061d28ddaf4410bfebec79c0e50d0cd09466ab2929ad288a9a2`。实时内核日志
-记录 30 帧、两个 `stop_streaming` 和 `power_off end`；HCODEC 错误、panic 和 oops
-筛查均为 0，60 条健康记录保持 eth0/carrier 在线。探针后设备仍需重启恢复 SSH，
-因此该候选仍未完成稳定性验收，不重复 probe，也不创建 PR。
-
-将同一 CNB artifact 安装到稳定 One-KVM 用户空间后的 `results-stable-30f` 复验
-同样返回 `0`：1 个 IDR、29 个 P 帧、44127 字节码流，SHA-256 为
-`d1daed2cda6353b1b7d2f692abcf3803ef9076b6e0dc550652bafd66b97e818a`；
-`ffprobe`/`ffmpeg` 通过，60 条健康记录完整，HCODEC 错误、panic 和 oops 为 0。
-探针后 SSH 再次失联，重启后 One-KVM 服务恢复；这说明问题仍位于探针结束后的
-设备稳定性边界，不应通过重复探针或提高分辨率掩盖。
-
-### 6. 码流
-
-当前候选只用 640×480 单会话和 MMAP；DMABUF、720p 和 1080p 在稳定性验收前
-不测试。每次保存完整参数、输出摘要和筛选后的 dmesg：
-
-```sh
-ffprobe -v error -show_streams candidate.h264
-ffmpeg -v error -i candidate.h264 -f null -
-```
-
-缺少 SPS/PPS/IDR、分辨率或帧数错误、解码失败都表示探针失败。驱动没有 B
-帧，软件 QP 反馈也不能描述为硬件 VBV。
-
-### 7. One-KVM
-
-独立码流通过后，临时执行：
-
-```sh
-ONE_KVM_V4L2M2M_ALLOW=1 /usr/bin/one-kvm
-```
-
-未发现 `h264_v4l2m2m` 时检查：V4L2 capability、H.264 capture format、
-NV12/YUYV output format、设备权限和环境变量。不要先修改稳定 service。
-
-## 已知基础限制
-
-- HDMI 音频曾出现 `gx-sound-card` error -22；不影响视频/HID目标。
-- GitHub runner 不能验证实体 HCODEC、HDMI、USB 采集或 HID。
-- macOS 容器的特权 loop mount 可能不稳定，完整镜像构建使用 Linux runner。
-
-历史 Linux 3.10 AMLENC 排障路线已废弃，原因和决策见
-[ADR-0003](adr/0003-armbian-6.12-hcodec-route.md)。
+这些修复不是可有可无的风格调整。修改 mount、chroot、e2fsck 或 sparse 转换时，必须保留同等级别的门禁和独立验证。

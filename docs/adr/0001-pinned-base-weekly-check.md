@@ -1,6 +1,6 @@
 # ADR-0001：固定已验证基础镜像并每周检查 One-KVM
 
-- 状态：Accepted；发布身份由 ADR-0002 修订，硬件编码路线由 ADR-0003 补充
+- 状态：Accepted；发布身份由 ADR-0002 修订
 - 日期：2026-07-19
 - 范围：WS1608 稳定直刷镜像
 
@@ -21,10 +21,6 @@ WS1608 的启动可靠性同时依赖 DDR、U-Boot、bootloader、内核、DTB�
 
 成品的 tag、多次 force 构建和发布验证规则由 [ADR-0002](0002-immutable-versioned-rebuilds.md) 补充；本 ADR 的固定基础与周检决策保持有效。
 
-H.264 硬件编码不改变该决策。[ADR-0003](0003-armbian-6.12-hcodec-route.md)
-规定继续使用已验证 Armbian/Linux 6.12 基础，并在独立候选链中研究 HCODEC
-V4L2 M2M；候选通过实体测试前不得替换稳定基础。
-
 ## 结果
 
 优点：
@@ -40,9 +36,7 @@ V4L2 M2M；候选通过实体测试前不得替换稳定基础。
 - GitHub runner 不能完成实体硬件验收。
 - apt 和 ext4 时间戳使 force 重建不保证字节级相同。
 
-当前基础已提升为 `base-20260804-consolefix`，稳定 Release 已包含 One-KVM
-`0.2.6`。基础身份以 `config/base.env` 为准；实体板卡验收仍不由 Actions
-代替。
+当前证据：基础已提升为 `base-20260804-consolefix`，稳定 Release `ws1608-one-kvm-0.2.6-v260802-b028001` 由 [run 30917486241](https://github.com/wuhao1477/ws1608-one-kvm-builder/actions/runs/30917486241) 构建并发布。基础身份以 `config/base.env` 为准；实体板卡验收仍不由 Actions 代替。
 
 ## 后续变更条件
 
