@@ -1,6 +1,6 @@
 # ADR-0003：放弃 Linux 3.10，采用 Armbian Linux 6.12 HCODEC
 
-- 状态：Accepted
+- 状态：Superseded by [ADR-0004](0004-drop-hardware-h264.md)
 - 日期：2026-09-01
 - 范围：WS1608/S805 H.264 硬件编码研发
 

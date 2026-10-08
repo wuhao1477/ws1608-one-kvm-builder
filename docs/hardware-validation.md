@@ -1,202 +1,130 @@
-# WS1608 Armbian HCODEC 实机验收
+# WS1608 实机验收
 
 ## 当前证据边界
 
-| 项目 | 状态 |
-| --- | --- |
-| `base-20260804-consolefix` 启动、HDMI、网络、SSH、eMMC | 已验证 |
-| Armbian `6.12.28-current-meson` 与 One-KVM 运行 | 已验证 |
-| H.264/H.265/VP8/VP9 软件编码路径 | 已验证 |
-| ARMv7 `meson-venc` 模块、DTB 与工具 artifact | 已刷写并完成启动检查 |
-| HCODEC V4L2 M2M H.264 | CNB `run-30-1` 在稳定 One-KVM 用户空间完成 640×480 30 帧编码、独立解码和 60 秒健康记录；探针后设备需重启，稳定性验收未通过 |
-| One-KVM `h264_v4l2m2m` | 尚未实机验证 |
-| 1080p30、128 MiB CMA、长时间稳定性 | 尚未实机验证 |
+| 项目 | 状态 | 证据/备注 |
+| --- | --- | --- |
+| `base-20260719` 基础镜像启动 | 失败复现 | U-Boot 后无 Linux console；`armbianEnv.txt` 的引号阻止了 console 参数生成 |
+| `base-20260804-consolefix` 静态启动参数 | 已验证 | boot FAT 检查确认 `console=tty1` 与 `console=ttyAML0,115200n8` |
+| `base-20260804-consolefix` 实体启动/HDMI/网络/SSH/eMMC | 已验证 | 目标板刷写后启动、显示、联网、SSH 和 eMMC 均正常 |
+| 四核 60 秒负载 | 已验证 | 基础镜像现场测试通过 |
+| HDMI 音频 | 已知问题 | `gx-sound-card` 注册出现 error -22，当前不影响 One-KVM 的 USB 视频/HID目标 |
+| One-KVM `0.2.6` 运行 | 已验证 | consolefix 底座上 One-KVM 服务和 health API 正常；视频使用 One-KVM 软件编码 |
+| H.264 硬件编码 | 不支持 | 已放弃，见 [ADR-0004](adr/0004-drop-hardware-h264.md) |
+| USB HDMI 采集卡 | 未验证 | 之前测试时未连接实际采集卡 |
+| 被控机 USB HID | 未验证 | 之前测试时未连接被控机 USB 线 |
 
-稳定基础的已有证据不能自动继承给改变内核或 DTB 的 HCODEC 候选。每个新
-候选从 `hardware_boot_tested=false` 和 `hardware_encoder_tested=false` 开始。
-`run-29-1` 的硬件编码结果已生成并独立解码，但测试后设备失联，仍因稳定性探针
-未完整退出而保持未验收状态。
+因此，CI 的“通过”只表示镜像容器和 rootfs 内容通过检查，不能写成“这个 Release 已在 WS1608 启动”。
 
-## 测试准备
+## 测试前准备
 
-- 保留当前已验证 `.burn.img` 和 USB Burning Tool 恢复路径；
-- 使用与候选 manifest 完全一致的内核、模块、DTB、固件和测试工具；
-- 准备 HDMI 显示器、网络、USB HDMI 采集卡和被控机 USB；
-- 保存所有输入 SHA-256，连接信息和原始日志不进入公开仓库；
-- 确认供电和散热后再进行 1080p 或长时间测试。
+- 一台可恢复的 WS1608/OneCloud，建议保留已知可启动基础包。
+- Amlogic USB Burning Tool 和对应 USB 数据线。
+- HDMI 显示器，用于确认启动和分辨率。
+- 网络线或已知 DHCP 环境。
+- USB HDMI 采集卡和被控机 USB 连接线，用于 One-KVM 功能测试。
+- 测试主机上的 SSH、浏览器和 `curl`；连接地址、密码和设备序列号只保存在本地，不写入仓库。
 
-## 1. 稳定基础回归
+## 刷写与启动
 
-刷入候选后先验证系统，没有通过时不运行编码测试：
+1. 从 Release 下载 `.burn.img` 或解压 `.burn.img.xz`。
+2. 用 `SHA256SUMS` 核对文件；GitHub API 的 asset digest 也应与 manifest 一致。
+3. 使用 Amlogic USB Burning Tool 刷写，确认工具报告完成后断电重启。
+4. 记录 HDMI 是否有画面、首次启动耗时和是否自动取得网络地址。
+5. 通过 SSH 登录后立即检查版本文件和服务状态。
+
+建议命令：
 
 ```sh
 cat /etc/ws1608-one-kvm-release
 uname -a
-cat /proc/cmdline
+systemctl is-enabled one-kvm.service
 systemctl is-active one-kvm.service
 systemctl status one-kvm-otg.service --no-pager
 curl -fsS http://127.0.0.1:8080/api/health
-findmnt -no SOURCE,FSTYPE,OPTIONS /
-ip -brief address
 ```
 
-必须确认 HDMI、网络、SSH、eMMC 和 One-KVM 软件编码仍正常。候选内核必须
-属于 Linux 6.12 系列，并能从 manifest 追溯到固定源码和配置。
+预期：版本文件包含 `one_kvm_version=0.2.6`、`one_kvm_release=v260802`、对应 `build_tag=...-bRRRAAA` 和 package SHA-256；health API 返回状态 ok；One-KVM 服务为 enabled/active。具体版本应以实际 Release manifest 为准。
 
-## 2. 内核、设备树与 CMA
+## OTG、视频和 HID
 
 ```sh
-uname -r
-zgrep -E 'CONFIG_VIDEO_MESON_VENC|CONFIG_V4L2_MEM2MEM_DEV|CONFIG_VIDEOBUF2_DMA_CONTIG|CONFIG_MESON_CANVAS' /proc/config.gz
-tr '\0' '\n' </proc/device-tree/compatible
-cat /proc/cmdline
-grep -E 'CmaTotal|CmaFree' /proc/meminfo
-dmesg | grep -Ei 'meson-venc|hcodec|firmware|cma|dma|canvas|timeout|oops|panic'
+cat /sys/devices/platform/soc/c9040000.usb/usb_role/*/role
+lsmod | grep -E 'libcomposite|configfs' || true
+find /dev -maxdepth 1 -type c -name 'video*' -print
+systemctl status one-kvm-otg.service --no-pager
+journalctl -u one-kvm-otg.service -b --no-pager
 ```
 
 检查点：
 
-- 模块、内核和 DTB 都是 ARMv7 目标，vermagic 一致；
-- OneCloud HCODEC 节点没有与其他 DOS owner 重叠；
-- HHI syscon、DOS/hcodec 时钟、Canvas、IRQ 和固件探测成功；
-- `meson8b_h264.bin` 摘要与 manifest 一致；
-- `CmaTotal` 与本次候选配置一致。
+- USB role 最终为 `device`，而不是 `host`。
+- `libcomposite` 已加载，OTG unit 没有 timeout 或 sysfs path 错误。
+- 接入 HDMI 采集卡后出现 `/dev/video*`，One-KVM Web 页面能看到视频流。
+- 接入被控机 USB 后，键盘、鼠标和必要的存储/虚拟介质操作能在 BIOS 和操作系统阶段工作。
+- 断开并重新接入采集卡/USB 线后服务能恢复，不需要手动重启。
 
-`cma=128M` 只作为 1080p 候选。64 MiB 是否足够由实际缓冲分配结果判断，
-不得仅根据启动成功下结论。
+如果设备树或内核更新了 USB role 路径，`config/one-kvm-enable-otg` 的固定路径可能失效；这属于基础镜像候选升级的硬件验收项。
 
-## 3. V4L2 设备和媒体拓扑
-
-```sh
-v4l2-ctl --list-devices
-media-ctl -p
-printf 'Encoder device path: '
-read -r encoder
-test -c "$encoder"
-v4l2-ctl -d "$encoder" --all
-v4l2-ctl -d "$encoder" --list-formats-out
-v4l2-ctl -d "$encoder" --list-formats
-```
-
-不能假定编码器永久是 `/dev/video0`；采集卡和编码器可能使用不同编号。目标
-节点必须同时提供 V4L2 OUTPUT 原始格式和 CAPTURE H.264 格式。
-
-## 4. 独立 H.264 探针
-
-测试工具必须由候选 manifest 固定的 ARMv7 源码构建。当前候选仅运行一个
-640×480 MMAP 会话，并使用 artifact 的稳定性包装器：
+## 重启和稳定性
 
 ```sh
-./capture-stability-probe.sh results ./tools/meson-venc-smoke \
-  "$encoder" results/stream.h264 640 480 30 30 4294967295 motion
+systemctl reboot
 ```
 
-该脚本会先保存命令、探针输出和 dmesg，再写入 60 秒健康记录。当前不运行
-DMABUF、720p、1080p 或 One-KVM 集成。每次记录测试前后的：
+重启后重复检查：
+
+- HDMI 仍有画面。
+- 网络和 SSH 可用。
+- One-KVM service enabled/active。
+- health API 可访问。
+- OTG role、视频设备和 HID 仍可用。
+
+有 `stress-ng` 时可进行短时四核负载测试：
 
 ```sh
-grep -E 'CmaTotal|CmaFree' /proc/meminfo
-dmesg >candidate-kernel.log
+stress-ng --cpu 4 --timeout 60s --metrics-brief
 ```
 
-每次只运行一个编码会话；第二并发会话应被驱动拒绝，而不是破坏当前码流。
+记录温度、重启、服务崩溃和 USB 断连；不要在没有散热和供电条件确认时长时间满载。
 
-## 5. 码流验证
+## 验收记录模板
 
-```sh
-ffprobe -v error -show_streams -show_format candidate.h264
-ffmpeg -v error -i candidate.h264 -f null -
-```
-
-每项探针必须满足：
-
-- H.264 Annex-B；
-- 目标分辨率和精确帧数；
-- SPS、PPS、首个 IDR 和后续 P 帧；
-- FFmpeg 完整解码零错误；
-- 无 firmware failure、CMA failure、DMA fault、timeout、oops 或 panic；
-- 输出非空且码率、GOP、QP 控制结果与测试参数一致。
-
-驱动不支持 B 帧，当前 CBR/VBR 是软件 QP 反馈；验收记录不得描述为硬件
-VBV 码率控制。
-
-`run-16-1` 的唯一一次 640×480、MMAP、1 帧实机结果：内核日志记录
-`SEQUENCE`、`PICTURE`、`IDR` 完成，输出 6547 字节；码流含 SPS/PPS/IDR，
-`ffprobe` 识别为 640×480 Baseline 并读到 1 帧，`ffmpeg` 解码退出码为 0，输出
-SHA-256 为 `af392c6132fb1b349c62a0609164a5d92fb5dbda0805709614e00dfa636f407a`。
-但工具在随后 `STREAMOFF` 清理阶段未返回并导致 SSH 超时；因此该候选只证明
-编码数据路径，不能标为完整验收通过，也不得进入 DMABUF、720p、1080p 或 One-KVM。
-
-`run-29-1` 的 640×480、MMAP、30 帧实机结果：退出码 `0`，内核日志记录 1 个
-IDR、29 个 P 帧、两个 `STREAMOFF` 和 `power_off end`；输出 6866 字节，SHA-256
-为 `7d50f102b6405fcc637467a61a8c5ef62ef0c90f2af88136a2f9f9ae97f6413f`。
-`ffprobe` 识别 30 帧 Baseline H.264，`ffmpeg` 解码成功。测试后设备失联，下一
-候选必须通过 `capture-stability-probe.sh` 保存编码后健康记录，仍不能进入更高
-分辨率、DMABUF 或 One-KVM。
-
-CNB `run-30-1` 的 640×480、MMAP motion 30 帧实机结果：退出码 `0`，内核日志
-记录 30 次 `device_run`、1 个 IDR、29 个 P 帧、两个 `stop_streaming` 和
-`power_off end`；输出 44137 字节，SHA-256 为
-`334a7bca58cda061d28ddaf4410bfebec79c0e50d0cd09466ab2929ad288a9a2`。
-`ffprobe` 识别 640×480 Baseline H.264，`ffmpeg` 解码成功；60 条健康记录全部
-保持 eth0/carrier 在线，HCODEC 错误、panic 和 oops 筛查为 0。探针后设备仍需
-重启恢复 SSH，因此稳定性验收未通过，不能进入 DMABUF、720p、1080p 或 One-KVM。
-
-将同一 artifact 安装到稳定 One-KVM 用户空间后进行的 `results-stable-30f` 复验：
-One-KVM 服务和健康接口在探针前后正常，退出码 `0`，内核日志记录 30 次
-`device_run`、1 个 IDR、29 个 P 帧、两个队列停止和完整 `power_off begin/end`；
-输出 44127 字节，SHA-256 为
-`d1daed2cda6353b1b7d2f692abcf3803ef9076b6e0dc550652bafd66b97e818a`。
-`ffprobe`/`ffmpeg` 通过，60 条健康记录保持 eth0/carrier 在线，HCODEC 错误、
-panic 和 oops 筛查为 0；探针后设备仍失联并需重启恢复，因此仍不能进入 DMABUF、
-720p、1080p 或 One-KVM 集成。
-
-## 6. One-KVM 显式探针
-
-只有独立 V4L2 测试通过后才执行：
-
-```sh
-ONE_KVM_V4L2M2M_ALLOW=1 /usr/bin/one-kvm
-```
-
-这是临时实验命令，不写入稳定 systemd 环境。验证 API 注册
-`h264_v4l2m2m`、实际视频流可解码、硬件失败时软件编码仍可选择。
-
-## 7. OTG、视频和 HID
-
-```sh
-cat /sys/devices/platform/soc/c9040000.usb/usb_role/*/role
-lsmod | grep -E 'libcomposite|configfs'
-find /dev -maxdepth 1 -type c -name 'video*' -print
-systemctl status one-kvm-otg.service --no-pager
-```
-
-接入采集卡和被控机后验证视频、键盘、鼠标、虚拟介质、断开重连及 BIOS
-阶段操作。候选内核不得破坏现有 OTG 路径。
-
-## 8. 重启和稳定性
-
-至少完成一次冷启动和一次系统重启。720p 持续测试通过后再进行 1080p 和
-长时间测试，记录分辨率、帧率、码率、CMA 峰值、温度、丢帧、超时、USB
-断连和服务退出。
-
-## 验收记录
+把每次实体测试复制到维护者的私有记录中，公开仓库只提交不含地址、密码和序列号的结论：
 
 ```text
-候选 tag / builder commit:
-内核源码、配置、驱动、补丁、DTB、固件 SHA-256:
-内核版本与 vermagic:
-CMA 配置与峰值:
-V4L2 设备和拓扑:
-输入格式、分辨率、帧率、码率、GOP、QP、缓冲模式:
-输出 H.264 SHA-256:
-ffprobe / 完整解码:
-内核错误扫描:
-One-KVM h264_v4l2m2m:
-HDMI / 网络 / eMMC / OTG / 视频 / HID / 虚拟介质:
-冷启动 / 重启 / 温度 / 运行时长:
+Release tag:
+Build tag:
+One-KVM Deb version:
+Upstream One-KVM tag:
+burn.img SHA-256:
+burn.img.xz SHA-256:
+manifest.json / SHA256SUMS:
+测试日期:
+板卡/硬件版本（不含序列号）:
+刷写结果:
+HDMI 启动与分辨率:
+网络/SSH:
+one-kvm service:
+health API:
+OTG role/libcomposite:
+视频采集:
+键盘 HID:
+鼠标 HID:
+重启后复测:
+负载/温度:
 结论: pass / fail / blocked
+失败日志位置（私有）:
 ```
 
-只有全部核心项通过，才能把候选标为硬件已验证。提升稳定基础仍需要独立
-ADR 和新的完整刷写验收。
+## 稳定发布门槛
+
+只有以下条件都满足，才可以把新的基础镜像或内核标为稳定输入：
+
+- 至少一次完整刷写和断电重启。
+- HDMI、网络、eMMC 和 One-KVM Web/health 正常。
+- OTG role、视频采集和 HID 通过，或明确记录为该硬件变体不支持。
+- 至少一次重启后复测。
+- 失败日志和 SHA-256 已保存。
+
+未通过实体测试的基础更新只能作为候选，不得替换 `config/base.env` 指向的稳定资产。

@@ -41,8 +41,8 @@ test('rejects a GitHub token in a tracked file', (t) => {
 
 test('accepts runtime variables and public digests', (t) => {
   const root = repository([
-    'CNB_TOKEN=${CNB_TOKEN:?required}',
-    'Authorization: Bearer $CNB_TOKEN',
+    'GH_TOKEN=${GH_TOKEN:?required}',
+    'Authorization: Bearer $GH_TOKEN',
     'sha256=6881000c3bd150a52bd0f77e76b51c31a2f918862caa17fd2fda7cd00ff27f17',
   ].join('\n'));
   t.after(() => fs.rmSync(root, { recursive: true, force: true }));
