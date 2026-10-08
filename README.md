@@ -19,9 +19,21 @@
 
 构建固定使用 `config/base.env` 指向的基础资产 `base-20260804-consolefix`：Armbian 26.8 Trixie、`6.12.28-current-meson`、OneCloud HDMI 设备树和启动链，只在 `base-20260719` 上修复了 U-Boot 文本环境中的 console 引号。该底座已在 WS1608 实机验证启动、HDMI、网络、SSH、eMMC 和 One-KVM 运行。
 
+## 扩展程序
+
+镜像内置 ttyd 1.7.7，One-KVM 网页里的终端扩展开箱可用。frpc、EasyTier、gostc 不预装，按需在设备上以 root 执行：
+
+```sh
+~/one-kvm-extensions.sh            # 安装全部未安装的扩展
+~/one-kvm-extensions.sh frpc       # 只装指定扩展
+GHPROXY_PREFIX=https://ghfast.top/ ~/one-kvm-extensions.sh   # GitHub 访问慢时走代理
+```
+
+脚本按固定 SHA-256 校验下载，装到 One-KVM 查找的 `/usr/bin` 路径，然后重启 `one-kvm` 使网页识别新扩展。SSH 和 ttyd 打开 shell 时，只要还有扩展没装，就会提示这条命令。
+
 ## CI 验证
 
-构建任务会重新解包成品并检查：Amlogic v2 CRC、boot FAT 与有效 Linux console 参数、12 个标准条目、非 rootfs 分区字节一致性、每个分区 VERIFY SHA1、`one-kvm` armhf 包和依赖、systemd 开机链接、OneCloud OTG 配置、ext4 文件系统一致性、构建来源 metadata 和临时文件清理。
+构建任务会重新解包成品并检查：Amlogic v2 CRC、boot FAT 与有效 Linux console 参数、12 个标准条目、非 rootfs 分区字节一致性、每个分区 VERIFY SHA1、`one-kvm` armhf 包和依赖、ttyd 摘要、扩展安装脚本、systemd 开机链接、OneCloud OTG 配置、ext4 文件系统一致性、构建来源 metadata 和临时文件清理。
 
 GitHub 托管 runner 没有连接实体 WS1608，因此 CI 不把结构验证写成硬件启动结论。发布前会验证 xz 解压后与原始镜像摘要一致、manifest、`SHA256SUMS` 和 validation report。Release 提供未压缩 `.burn.img`、`.burn.img.xz`、`SHA256SUMS`、`manifest.json` 和 `validation-report.json`。
 
@@ -31,7 +43,7 @@ GitHub 托管 runner 没有连接实体 WS1608，因此 CI 不把结构验证写
 
 推荐直接使用 GitHub Actions 云构建，不需要在本地保存解压后的大镜像。云 runner 会安装 root 权限所需的 `qemu-user-static`、Go、Node.js、`binutils` 和 `e2fsprogs`，完成构建与验证后只保留 Release 资产。
 
-本地复现需要 Linux 主机、root 权限、`qemu-user-static`、Go、Node.js、`e2fsprogs`、`mtools` 和 Amlogic 基础镜像。准备 `BASE_IMAGE_XZ`、`ONE_KVM_DEB`、`AMLIMG_BIN`、`ONE_KVM_VERSION`、`UPSTREAM_TAG`、`PACKAGE_NAME`、`PACKAGE_DIGEST`、`PACKAGE_URL`、`BUILD_TAG`、`BUILD_NUMBER`、`BUILD_REVISION`、`BUILDER_COMMIT`、`GITHUB_RUN_ID`、`GITHUB_RUN_ATTEMPT`、`GITHUB_RUN_NUMBER`、`OUTPUT_DIR`、`WORK_DIR`、`IMAGE_NAME` 和 `VALIDATION_REPORT` 后执行：
+本地复现需要 Linux 主机、root 权限、`qemu-user-static`、Go、Node.js、`e2fsprogs`、`mtools` 和 Amlogic 基础镜像。准备 `BASE_IMAGE_XZ`、`ONE_KVM_DEB`、`TTYD_BIN`（`config/tool-versions.env` 固定的 ttyd）、`AMLIMG_BIN`、`ONE_KVM_VERSION`、`UPSTREAM_TAG`、`PACKAGE_NAME`、`PACKAGE_DIGEST`、`PACKAGE_URL`、`BUILD_TAG`、`BUILD_NUMBER`、`BUILD_REVISION`、`BUILDER_COMMIT`、`GITHUB_RUN_ID`、`GITHUB_RUN_ATTEMPT`、`GITHUB_RUN_NUMBER`、`OUTPUT_DIR`、`WORK_DIR`、`IMAGE_NAME` 和 `VALIDATION_REPORT` 后执行：
 
 ```sh
 ./scripts/build-image.sh
