@@ -38,8 +38,9 @@ test('verifies selected extensions inside a build root without restarting One-KV
     const source = fs.readFileSync(script, 'utf8');
     assert.match(source, /ONE_KVM_EXTENSIONS_ROOT/);
     assert.match(source, /--verify-root/);
-    assert.match(source, /read -r path url sha member <<<"\$\(spec "\$name"\)"/);
+    assert.match(source, /binary_sha/);
     assert.match(source, /sha256sum --check/);
+    assert.match(source, /0308f2f32d885ed8414a220120a61dac717be2d666ba7314fee0bdd7a6dbdc90/);
 
     fs.mkdirSync(path.join(root, 'usr/bin'), { recursive: true });
     fs.writeFileSync(path.join(root, 'usr/bin/frpc'), 'wrong');
