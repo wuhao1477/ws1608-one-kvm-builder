@@ -1,0 +1,12 @@
+USB:DDR:normal:0.DDR.USB
+USB:UBOOT_COMP:normal:1.UBOOT_COMP.USB
+ini:aml_sdc_burn:normal:2.aml_sdc_burn.ini
+conf:platform:normal:3.platform.conf
+PARTITION:bootloader:normal:4.bootloader.PARTITION
+VERIFY:bootloader:normal:5.bootloader.VERIFY
+PARTITION:resource:normal:6.resource.PARTITION
+VERIFY:resource:normal:7.resource.VERIFY
+PARTITION:boot:sparse:boot.simg
+VERIFY:boot:normal:boot.VERIFY
+PARTITION:rootfs:sparse:rootfs.simg
+VERIFY:rootfs:normal:rootfs.VERIFY

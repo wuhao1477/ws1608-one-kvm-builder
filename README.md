@@ -101,6 +101,12 @@ GitHub 托管 runner 没有连接实体 WS1608，因此 CI 不把结构验证写
 npm test
 ```
 
+## 从 Armbian 源码生成基础 burn.img
+
+仓库另外提供手动 workflow `Build OneCloud Armbian base burn image`，只构建一个固定输入：OneCloud、Linux current、Debian Trixie。它固定 `rmoyulong/build` 提交、OneCloud U-Boot、板卡配置和 HDMI/DTS 补丁，最终上传一个候选基础 `.burn.img` artifact，不会修改 `config/base.env` 或当前稳定 Release。
+
+该 workflow 只用于需要重新生成基础系统时；日常 One-KVM 更新仍使用当前固定基础镜像的稳定 workflow。候选镜像必须完成 [WS1608 实机验收](docs/hardware-validation.md) 后，才能人工替换稳定基础。
+
 ## 文档与交接
 
 - [维护文档索引](docs/README.md)：按构建、排障、实机验收等任务导航。

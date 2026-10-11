@@ -1,0 +1,70 @@
+name: Build OneCloud Armbian base burn image
+
+on:
+  pull_request:
+    paths:
+      - ".github/workflows/build-base.yml"
+      - "config/armbian-build.env"
+      - "config/armbian-burn-commands.expected"
+      - "scripts/build-armbian-base.sh"
+      - "tests/**"
+      - "package.json"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: Build one Trixie OneCloud burn image
+    runs-on: ubuntu-24.04
+    timeout-minutes: 180
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7
+        with:
+          persist-credentials: false
+      - name: Test repository scripts
+        run: |
+          npm test
+          for script in scripts/*.sh; do bash -n "$script"; done
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7
+        with:
+          go-version: "1.24.x"
+          cache: false
+      - name: Install image build tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y android-sdk-libsparse-utils e2fsprogs file jq mtools qemu-user-static util-linux xz-utils
+      - name: Build pinned AmlImg
+        env:
+          TOOLS_DIR: ${{ runner.temp }}/ws1608-amlimg-tools
+        run: echo "AMLIMG_BIN=$(./scripts/build-tools.sh)" >> "$GITHUB_ENV"
+      - name: Download pinned U-Boot container
+        run: |
+          source config/armbian-build.env
+          curl --fail --location --retry 5 "$UBOOT_URL" -o "$RUNNER_TEMP/eMMC.burn.img"
+          echo "$UBOOT_SHA256  $RUNNER_TEMP/eMMC.burn.img" | sha256sum --check
+          echo "UBOOT_IMAGE=$RUNNER_TEMP/eMMC.burn.img" >> "$GITHUB_ENV"
+      - name: Checkout pinned Armbian builder
+        run: |
+          source config/armbian-build.env
+          git init -q "$RUNNER_TEMP/armbian-build"
+          git -C "$RUNNER_TEMP/armbian-build" remote add origin "$ARMBIAN_REPOSITORY"
+          git -C "$RUNNER_TEMP/armbian-build" fetch -q --depth=1 origin "$ARMBIAN_COMMIT"
+          git -C "$RUNNER_TEMP/armbian-build" checkout -q --detach FETCH_HEAD
+          echo "ARMBIAN_DIR=$RUNNER_TEMP/armbian-build" >> "$GITHUB_ENV"
+      - name: Build and verify burn image
+        env:
+          OUTPUT_DIR: ${{ runner.temp }}/ws1608-armbian-output
+          WORK_DIR: ${{ runner.temp }}/ws1608-armbian-work
+        run: ./scripts/build-armbian-base.sh
+      - name: Check output digest
+        env:
+          OUTPUT_DIR: ${{ runner.temp }}/ws1608-armbian-output
+        run: sha256sum "$OUTPUT_DIR"/*.burn.img
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: onecloud-armbian-base-burn-image
+          path: ${{ runner.temp }}/ws1608-armbian-output/*.burn.img
+          if-no-files-found: error
+          retention-days: 14
