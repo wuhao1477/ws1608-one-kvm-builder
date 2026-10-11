@@ -1,13 +1,14 @@
 #!/bin/bash
 # 一键安装 One-KVM 可选扩展到 One-KVM 固定查找的 /usr/bin 路径（ttyd 已内置在镜像里）。
-#   ~/one-kvm-extensions.sh              安装全部未安装的扩展
+#   ~/one-kvm-extensions.sh              交互选择扩展和下载源
 #   ~/one-kvm-extensions.sh frpc gostc   只安装（或重装）指定扩展
-# 访问 GitHub 慢时可加代理前缀：GHPROXY_PREFIX=https://ghfast.top/ ~/one-kvm-extensions.sh
+# 非交互调用可通过 MIRROR_PREFIX 或兼容的 GHPROXY_PREFIX 指定镜像前缀。
 # 下载内容一律按固定 sha256 校验；gostc/easytier 与上游 One-KVM Docker 镜像使用的版本一致。
 set -Eeuo pipefail
 
 NAMES=(frpc easytier gostc)
 ONE_KVM_EXTENSIONS_ROOT=${ONE_KVM_EXTENSIONS_ROOT:-}
+MIRROR_PREFIX=${MIRROR_PREFIX:-${GHPROXY_PREFIX:-}}
 
 root_path() { printf '%s%s' "$ONE_KVM_EXTENSIONS_ROOT" "$1"; }
 
@@ -36,6 +37,58 @@ missing() {
   done
 }
 
+interactive_enabled() {
+  [[ ${ONE_KVM_EXTENSIONS_INTERACTIVE:-} == 1 || ( -t 0 && -t 1 ) ]]
+}
+
+select_targets() {
+  local choice item index name path status
+  printf '\n选择要安装的扩展（可输入多个编号，如 1,3）：\n'
+  for index in "${!NAMES[@]}"; do
+    name=${NAMES[index]}
+    read -r path _ <<<"$(spec "$name")"
+    path=$(root_path "$path")
+    status=未安装
+    [[ -x $path ]] && status=已安装
+    printf '  %s) %s（%s）\n' "$((index + 1))" "$name" "$status"
+  done
+  printf '  4) 全部未安装\n  0) 取消\n选择：'
+  read -r choice || return 1
+  choice=${choice//[[:space:]]/}
+  [[ $choice == 0 ]] && { echo '已取消安装'; exit 0; }
+  [[ $choice == 4 ]] && { mapfile -t targets < <(missing); return; }
+  [[ -n $choice ]] || { echo '选择无效' >&2; return 1; }
+  IFS=',' read -r -a choices <<<"$choice"
+  for item in "${choices[@]}"; do
+    [[ $item =~ ^[1-3]$ ]] || { echo "选择无效：$item" >&2; return 1; }
+    targets+=("${NAMES[$((item - 1))]}")
+  done
+}
+
+select_mirror() {
+  local choice custom
+  printf '\n选择下载源：\n'
+  printf '  1) GitHub 直连\n  2) GitHub 镜像（ghfast.top）\n'
+  printf '  3) GitHub 镜像（ghproxy.net）\n  4) 自定义镜像前缀\n  0) 取消\n选择：'
+  read -r choice || return 1
+  case $choice in
+    0) echo '已取消安装'; exit 0 ;;
+    1) MIRROR_PREFIX= ;;
+    2) MIRROR_PREFIX=https://ghfast.top/ ;;
+    3) MIRROR_PREFIX=https://ghproxy.net/ ;;
+    4)
+      printf '请输入镜像前缀（例如 https://ghfast.top）：'
+      read -r custom || return 1
+      [[ -n $custom ]] || { echo '镜像前缀不能为空' >&2; return 1; }
+      MIRROR_PREFIX=$custom
+      ;;
+    *) echo "选择无效：$choice" >&2; return 1 ;;
+  esac
+  [[ -n $MIRROR_PREFIX ]] && MIRROR_PREFIX=${MIRROR_PREFIX%/}/
+}
+
+[[ -n $MIRROR_PREFIX ]] && MIRROR_PREFIX=${MIRROR_PREFIX%/}/
+
 if [[ ${1:-} == --hint ]]; then
   todo=$(missing)
   [[ -z $todo ]] || printf '\nOne-KVM 可选扩展未安装：%s\n运行 ~/one-kvm-extensions.sh 一键安装，或只装其中一个，如 ~/one-kvm-extensions.sh frpc\n\n' "${todo//$'\n'/ }"
@@ -54,9 +107,18 @@ if [[ ${1:-} == --verify-root ]]; then
   exit 0
 fi
 
-[[ $(id -u) == 0 ]] || { echo '请用 root 运行' >&2; exit 1; }
-if (($#)); then targets=("$@"); else mapfile -t targets < <(missing); fi
+targets=()
+if (($#)); then
+  targets=("$@")
+elif interactive_enabled; then
+  select_targets
+  ((${#targets[@]})) || { echo '所有扩展均已安装'; exit 0; }
+  select_mirror
+else
+  mapfile -t targets < <(missing)
+fi
 ((${#targets[@]})) || { echo '所有扩展均已安装'; exit 0; }
+[[ $(id -u) == 0 ]] || { echo '请用 root 运行' >&2; exit 1; }
 for name in "${targets[@]}"; do spec "$name" >/dev/null; done
 
 need() { command -v "$1" >/dev/null || { apt-get update && apt-get install -y --no-install-recommends "$@"; }; }
@@ -67,12 +129,13 @@ trap 'rm -rf "$work"' EXIT
 for name in "${targets[@]}"; do
   read -r path url sha member <<<"$(spec "$name")"
   path=$(root_path "$path")
-  echo "下载 $name：$url"
-  curl -fL --retry 3 -o "$work/pkg" "${GHPROXY_PREFIX:-}$url"
+  download_url="${MIRROR_PREFIX}${url}"
+  echo "下载 ${name}：$download_url"
+  curl -fL --retry 3 -o "$work/pkg" "$download_url"
   echo "$sha  $work/pkg" | sha256sum --check
   if [[ $url == *.zip ]]; then need unzip; unzip -p "$work/pkg" "$member" >"$work/bin"; else tar -xzOf "$work/pkg" "$member" >"$work/bin"; fi
   install -m 0755 "$work/bin" "$path"
-  echo "已安装 $name -> $path"
+  echo "已安装 ${name} -> $path"
 done
 
 [[ -n "$ONE_KVM_EXTENSIONS_ROOT" ]] && exit 0
