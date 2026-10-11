@@ -50,3 +50,58 @@ test('verifies selected extensions inside a build root without restarting One-KV
     fs.rmSync(root, { recursive: true, force: true });
   }
 });
+
+test('offers interactive extension and mirror selection before root validation', () => {
+  const result = spawnSync('bash', [script], {
+    input: '1\n2\n',
+    encoding: 'utf8',
+    env: { ...process.env, ONE_KVM_EXTENSIONS_INTERACTIVE: '1' },
+  });
+
+  assert.equal(result.status, 1);
+  assert.match(result.stdout, /选择要安装的扩展/);
+  assert.match(result.stdout, /选择下载源/);
+  assert.match(result.stdout, /GitHub 镜像（ghfast\.top）/);
+  assert.match(result.stdout, /GitHub 镜像（ghproxy\.net）/);
+  assert.match(result.stdout, /自定义镜像前缀/);
+  assert.match(result.stderr, /请用 root 运行/);
+});
+
+test('cancels interactive installation without requiring root', () => {
+  const result = spawnSync('bash', [script], {
+    input: '0\n',
+    encoding: 'utf8',
+    env: { ...process.env, ONE_KVM_EXTENSIONS_INTERACTIVE: '1' },
+  });
+
+  assert.equal(result.status, 0);
+  assert.match(result.stdout, /已取消安装/);
+  assert.equal(result.stderr, '');
+});
+
+test('supports mirror prefixes for non-interactive downloads', () => {
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'one-kvm-extensions-bin-'));
+  const id = path.join(directory, 'id');
+  const curl = path.join(directory, 'curl');
+  const log = path.join(directory, 'curl.log');
+  try {
+    fs.writeFileSync(id, '#!/bin/sh\n[ "$1" = -u ] && { echo 0; exit; }\nexec /usr/bin/id "$@"\n');
+    fs.chmodSync(id, 0o755);
+    fs.writeFileSync(curl, '#!/bin/sh\nprintf "%s\\n" "$*" > "$CURL_LOG"\nexit 1\n');
+    fs.chmodSync(curl, 0o755);
+    const result = spawnSync('bash', [script, 'frpc'], {
+      encoding: 'utf8',
+      env: {
+        ...process.env,
+        PATH: `${directory}:/usr/bin:/bin`,
+        CURL_LOG: log,
+        MIRROR_PREFIX: 'https://mirror.example',
+      },
+    });
+
+    assert.equal(result.status, 1);
+    assert.match(fs.readFileSync(log, 'utf8'), /https:\/\/mirror\.example\/https:\/\/github\.com\/fatedier\/frp/);
+  } finally {
+    fs.rmSync(directory, { recursive: true, force: true });
+  }
+});
