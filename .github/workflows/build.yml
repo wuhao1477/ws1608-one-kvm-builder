@@ -27,6 +27,11 @@ on:
         required: false
         default: false
         type: boolean
+      extensions:
+        description: Preinstall extensions, comma-separated: frpc,easytier,gostc
+        required: false
+        default: ''
+        type: string
   repository_dispatch:
     types: [one-kvm-release]
 
@@ -34,7 +39,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: ws1608-one-kvm-${{ github.event_name == 'pull_request' && format('pr-{0}', github.event.pull_request.number) || (github.event_name == 'workflow_dispatch' && inputs.force && format('force-{0}', github.run_id) || 'release') }}
+  group: ws1608-one-kvm-${{ github.event_name == 'pull_request' && format('pr-{0}', github.event.pull_request.number) || (github.event_name == 'workflow_dispatch' && (inputs.force || inputs.extensions != '') && format('force-{0}', github.run_id) || 'release') }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
@@ -64,7 +69,7 @@ jobs:
         name: Resolve upstream input and build identity
         env:
           GH_TOKEN: ${{ github.token }}
-          FORCE_BUILD: ${{ github.event_name == 'pull_request' || (github.event_name == 'workflow_dispatch' && inputs.force) }}
+          FORCE_BUILD: ${{ github.event_name == 'pull_request' || (github.event_name == 'workflow_dispatch' && (inputs.force || inputs.extensions != '')) }}
         run: ./scripts/discover-release.sh
 
   build:
@@ -84,6 +89,7 @@ jobs:
       BUILD_REVISION: ${{ needs.discover.outputs.build_revision }}
       IMAGE_STEM: ${{ needs.discover.outputs.image_stem }}
       BUILDER_COMMIT: ${{ github.sha }}
+      PREINSTALL_EXTENSIONS: ${{ github.event_name == 'workflow_dispatch' && inputs.extensions || '' }}
     steps:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7
         with:
@@ -117,7 +123,7 @@ jobs:
         run: |
           df -h "$RUNNER_TEMP"
           sudo apt-get update
-          sudo apt-get install -y binutils e2fsprogs file jq mtools qemu-user-static util-linux xz-utils
+          sudo apt-get install -y binutils e2fsprogs file jq mtools qemu-user-static unzip util-linux xz-utils
       - name: Build pinned AmlImg tool
         env:
           TOOLS_DIR: ${{ runner.temp }}/ws1608-tools

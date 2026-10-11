@@ -11,13 +11,15 @@ test('checks upstream once every seven days and validates pull requests', () => 
   assert.match(workflow, /^  pull_request:/m);
   assert.match(workflow, /^      publish:/m);
   assert.match(workflow, /^      prerelease:/m);
+  assert.match(workflow, /^      extensions:/m);
+  assert.match(workflow, /PREINSTALL_EXTENSIONS:/);
   assert.match(workflow, /github\.event_name == 'pull_request'/);
 });
 
 test('preserves every forced rebuild without racing its build identity', () => {
   assert.match(
     workflow,
-    /github\.event_name == 'workflow_dispatch' && inputs\.force && format\('force-\{0\}', github\.run_id\)/,
+    /github\.event_name == 'workflow_dispatch' && \(inputs\.force \|\| inputs\.extensions != ''\) && format\('force-\{0\}', github\.run_id\)/,
   );
 });
 
