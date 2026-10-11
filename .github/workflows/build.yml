@@ -28,7 +28,7 @@ on:
         default: false
         type: boolean
       extensions:
-        description: Preinstall extensions, comma-separated: frpc,easytier,gostc
+        description: "Preinstall extensions, comma-separated: frpc,easytier,gostc"
         required: false
         default: ''
         type: string
