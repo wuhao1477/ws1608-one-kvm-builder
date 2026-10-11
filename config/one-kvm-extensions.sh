@@ -12,7 +12,7 @@ MIRROR_PREFIX=${MIRROR_PREFIX:-${GHPROXY_PREFIX:-}}
 
 root_path() { printf '%s%s' "$ONE_KVM_EXTENSIONS_ROOT" "$1"; }
 
-# 输出：安装路径 下载地址 sha256 包内文件
+# 输出：安装路径 下载地址 压缩包 sha256 包内文件
 spec() {
   case $1 in
     frpc) echo /usr/bin/frpc \
@@ -25,6 +25,15 @@ spec() {
       https://github.com/SianHH/gostc-open/releases/download/v2.0.9/gostc_linux_arm_7.tar.gz \
       abca04c0503245ad5238d4482111b4a0ca2959daf460cd2abba47f3fce292a6b gostc ;;
     *) echo "未知扩展：$1（可选：${NAMES[*]}）" >&2; return 1 ;;
+  esac
+}
+
+binary_sha() {
+  case $1 in
+    frpc) echo d92fcc4e62232bae6d58030d2a73f3d2caf49e19742800c9a861a621c2ad1d1a ;;
+    easytier) echo 0308f2f32d885ed8414a220120a61dac717be2d666ba7314fee0bdd7a6dbdc90 ;;
+    gostc) echo 25f9ac9c5183e5f03516132fd6bbed954744babc555d38d8552aff82b3cf8eea ;;
+    *) return 1 ;;
   esac
 }
 
@@ -99,10 +108,11 @@ if [[ ${1:-} == --verify-root ]]; then
   ONE_KVM_EXTENSIONS_ROOT=$2
   shift 2
   for name in "$@"; do
-    read -r path url sha member <<<"$(spec "$name")"
+    read -r path _ <<<"$(spec "$name")"
+    binary_digest=$(binary_sha "$name")
     path=$(root_path "$path")
     [[ -x $path ]] || { echo "扩展未预装：$name" >&2; exit 1; }
-    echo "$sha  $path" | sha256sum --check --quiet
+    echo "$binary_digest  $path" | sha256sum --check --quiet
   done
   exit 0
 fi
@@ -128,12 +138,14 @@ trap 'rm -rf "$work"' EXIT
 
 for name in "${targets[@]}"; do
   read -r path url sha member <<<"$(spec "$name")"
+  binary_digest=$(binary_sha "$name")
   path=$(root_path "$path")
   download_url="${MIRROR_PREFIX}${url}"
   echo "下载 ${name}：$download_url"
   curl -fL --retry 3 -o "$work/pkg" "$download_url"
   echo "$sha  $work/pkg" | sha256sum --check
   if [[ $url == *.zip ]]; then need unzip; unzip -p "$work/pkg" "$member" >"$work/bin"; else tar -xzOf "$work/pkg" "$member" >"$work/bin"; fi
+  echo "$binary_digest  $work/bin" | sha256sum --check
   install -m 0755 "$work/bin" "$path"
   echo "已安装 ${name} -> $path"
 done
