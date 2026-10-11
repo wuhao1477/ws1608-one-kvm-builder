@@ -26,6 +26,7 @@ GITHUB_RUN_ATTEMPT=${GITHUB_RUN_ATTEMPT:?GITHUB_RUN_ATTEMPT is required}
 GITHUB_RUN_NUMBER=${GITHUB_RUN_NUMBER:?GITHUB_RUN_NUMBER is required}
 OUTPUT_DIR=${OUTPUT_DIR:-$ROOT_DIR/out}
 WORK_DIR=${WORK_DIR:-$ROOT_DIR/.build}
+PREINSTALL_EXTENSIONS=${PREINSTALL_EXTENSIONS:-}
 export ONE_KVM_VERSION UPSTREAM_TAG PACKAGE_NAME PACKAGE_URL PACKAGE_DIGEST
 export BUILD_TAG BUILD_NUMBER BUILD_REVISION BUILDER_COMMIT GITHUB_RUN_ID GITHUB_RUN_ATTEMPT GITHUB_RUN_NUMBER
 
@@ -223,6 +224,11 @@ as_root install -D -m 0755 "$ROOT_DIR/config/one-kvm-enable-otg" "$MOUNT_DIR/usr
 as_root install -D -m 0644 "$ROOT_DIR/config/one-kvm-otg.service" "$MOUNT_DIR/usr/lib/systemd/system/one-kvm-otg.service"
 as_root install -D -m 0644 "$ROOT_DIR/config/one-kvm.service.d-otg.conf" "$MOUNT_DIR/etc/systemd/system/one-kvm.service.d/otg.conf"
 as_root install -D -m 0755 "$TTYD_BIN" "$MOUNT_DIR/usr/bin/ttyd"
+if [[ -n "$PREINSTALL_EXTENSIONS" ]]; then
+  IFS=',' read -r -a extensions <<<"$PREINSTALL_EXTENSIONS"
+  as_root env ONE_KVM_EXTENSIONS_ROOT="$MOUNT_DIR" \
+    "$ROOT_DIR/config/one-kvm-extensions.sh" "${extensions[@]}"
+fi
 as_root install -D -m 0755 "$ROOT_DIR/config/one-kvm-extensions.sh" "$MOUNT_DIR/root/one-kvm-extensions.sh"
 # SSH 登录 shell 和 ttyd 的非登录 bash 都会读 ~/.bashrc；扩展全部装好后提示自动消失。
 printf '\n%s\n' '[[ $- == *i* && -x ~/one-kvm-extensions.sh ]] && ~/one-kvm-extensions.sh --hint' |

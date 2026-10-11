@@ -19,6 +19,7 @@ BUILD_NUMBER=${BUILD_NUMBER:?BUILD_NUMBER is required}
 BUILD_REVISION=${BUILD_REVISION:?BUILD_REVISION is required}
 BUILDER_COMMIT=${BUILDER_COMMIT:?BUILDER_COMMIT is required}
 VALIDATION_REPORT=${VALIDATION_REPORT:?VALIDATION_REPORT is required}
+PREINSTALL_EXTENSIONS=${PREINSTALL_EXTENSIONS:-}
 GITHUB_RUN_ID=${GITHUB_RUN_ID:?GITHUB_RUN_ID is required}
 GITHUB_RUN_ATTEMPT=${GITHUB_RUN_ATTEMPT:?GITHUB_RUN_ATTEMPT is required}
 GITHUB_RUN_NUMBER=${GITHUB_RUN_NUMBER:?GITHUB_RUN_NUMBER is required}
@@ -190,6 +191,10 @@ verify 'ttyd executable' test -x "$ttyd_binary"
 verify 'extensions installer content' as_root cmp "$ROOT_DIR/config/one-kvm-extensions.sh" "$extensions_script"
 verify 'extensions installer executable' as_root test -x "$extensions_script"
 verify 'extensions login hint' as_root grep -Fq 'one-kvm-extensions.sh --hint' "$root_bashrc"
+if [[ -n "$PREINSTALL_EXTENSIONS" ]]; then
+  IFS=',' read -r -a extensions <<<"$PREINSTALL_EXTENSIONS"
+  verify 'preinstalled extensions' as_root "$extensions_script" --verify-root "$MOUNT_DIR" "${extensions[@]}"
+fi
 
 while IFS= read -r library; do
   [[ -n "$library" ]] || continue

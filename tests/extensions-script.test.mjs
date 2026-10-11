@@ -1,6 +1,8 @@
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
 import fs from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
 import test from 'node:test';
 
 const script = 'config/one-kvm-extensions.sh';
@@ -24,4 +26,27 @@ test('installs only as root and pins every download by sha256', { skip: process.
   }
   assert.match(source, /sha256sum --check/);
   assert.match(source, /systemctl --no-block restart one-kvm/);
+});
+
+test('verifies selected extensions inside a build root without restarting One-KVM', () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'one-kvm-extensions-'));
+  try {
+    const result = spawnSync('bash', [script, '--verify-root', root, 'frpc'], { encoding: 'utf8' });
+    assert.notEqual(result.status, 0);
+    assert.doesNotMatch(result.stderr, /systemctl/);
+
+    const source = fs.readFileSync(script, 'utf8');
+    assert.match(source, /ONE_KVM_EXTENSIONS_ROOT/);
+    assert.match(source, /--verify-root/);
+    assert.match(source, /read -r path url sha member <<<"\$\(spec "\$name"\)"/);
+    assert.match(source, /sha256sum --check/);
+
+    fs.mkdirSync(path.join(root, 'usr/bin'), { recursive: true });
+    fs.writeFileSync(path.join(root, 'usr/bin/frpc'), 'wrong');
+    fs.chmodSync(path.join(root, 'usr/bin/frpc'), 0o755);
+    const wrongDigest = spawnSync('bash', [script, '--verify-root', root, 'frpc'], { encoding: 'utf8' });
+    assert.notEqual(wrongDigest.status, 0);
+  } finally {
+    fs.rmSync(root, { recursive: true, force: true });
+  }
 });

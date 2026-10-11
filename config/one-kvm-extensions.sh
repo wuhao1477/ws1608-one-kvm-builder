@@ -7,6 +7,9 @@
 set -Eeuo pipefail
 
 NAMES=(frpc easytier gostc)
+ONE_KVM_EXTENSIONS_ROOT=${ONE_KVM_EXTENSIONS_ROOT:-}
+
+root_path() { printf '%s%s' "$ONE_KVM_EXTENSIONS_ROOT" "$1"; }
 
 # 输出：安装路径 下载地址 sha256 包内文件
 spec() {
@@ -28,6 +31,7 @@ missing() {
   local name path
   for name in "${NAMES[@]}"; do
     read -r path _ <<<"$(spec "$name")"
+    path=$(root_path "$path")
     [[ -x $path ]] || echo "$name"
   done
 }
@@ -35,6 +39,18 @@ missing() {
 if [[ ${1:-} == --hint ]]; then
   todo=$(missing)
   [[ -z $todo ]] || printf '\nOne-KVM 可选扩展未安装：%s\n运行 ~/one-kvm-extensions.sh 一键安装，或只装其中一个，如 ~/one-kvm-extensions.sh frpc\n\n' "${todo//$'\n'/ }"
+  exit 0
+fi
+if [[ ${1:-} == --verify-root ]]; then
+  [[ $# -ge 2 ]] || { echo '--verify-root 需要 rootfs 路径' >&2; exit 1; }
+  ONE_KVM_EXTENSIONS_ROOT=$2
+  shift 2
+  for name in "$@"; do
+    read -r path url sha member <<<"$(spec "$name")"
+    path=$(root_path "$path")
+    [[ -x $path ]] || { echo "扩展未预装：$name" >&2; exit 1; }
+    echo "$sha  $path" | sha256sum --check --quiet
+  done
   exit 0
 fi
 
@@ -50,6 +66,7 @@ trap 'rm -rf "$work"' EXIT
 
 for name in "${targets[@]}"; do
   read -r path url sha member <<<"$(spec "$name")"
+  path=$(root_path "$path")
   echo "下载 $name：$url"
   curl -fL --retry 3 -o "$work/pkg" "${GHPROXY_PREFIX:-}$url"
   echo "$sha  $work/pkg" | sha256sum --check
@@ -57,6 +74,8 @@ for name in "${targets[@]}"; do
   install -m 0755 "$work/bin" "$path"
   echo "已安装 $name -> $path"
 done
+
+[[ -n "$ONE_KVM_EXTENSIONS_ROOT" ]] && exit 0
 
 # One-KVM 只在启动时检测扩展是否存在，必须重启才能在网页里启用。
 echo '正在重启 one-kvm 使新扩展生效；在 ttyd 网页终端里运行时连接会断开，刷新页面即可。'
