@@ -5,6 +5,7 @@ import test from 'node:test';
 const workflow = fs.readFileSync('.github/workflows/build-base.yml', 'utf8');
 const config = fs.readFileSync('config/armbian-build.env', 'utf8');
 const script = fs.readFileSync('scripts/build-armbian-base.sh', 'utf8');
+const commands = fs.readFileSync('config/armbian-burn-commands.expected', 'utf8');
 const source = `${workflow}\n${config}\n${script}`;
 
 test('builds one fixed Trixie OneCloud burn image from pinned sources', () => {
@@ -15,6 +16,8 @@ test('builds one fixed Trixie OneCloud burn image from pinned sources', () => {
   assert.match(config, /UBOOT_SHA256=[0-9a-f]{64}/);
   assert.match(config, /ARMBIAN_HDMI_PATCH_SHA256=[0-9a-f]{64}/);
   assert.match(source, /\.burn\.img/);
+  assert.match(commands, /PARTITION:boot:sparse:8\.boot\.PARTITION\.sparse/);
+  assert.match(script, /final_file=.*sed -n/);
   assert.doesNotMatch(workflow, /matrix:/);
   assert.doesNotMatch(workflow, /strategy:/);
   assert.doesNotMatch(workflow, /bookworm|noble|sid|server|cli/);

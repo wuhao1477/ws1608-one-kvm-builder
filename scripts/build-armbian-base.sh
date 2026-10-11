@@ -109,12 +109,18 @@ rm -f "$OUTPUT_IMAGE"
 "$AMLIMG_BIN" pack "$OUTPUT_IMAGE" "$PACKAGE_DIR"
 "$AMLIMG_BIN" unpack "$OUTPUT_IMAGE" "$VERIFY_DIR/unpacked"
 diff -u "$ROOT_DIR/config/armbian-burn-commands.expected" "$VERIFY_DIR/unpacked/commands.txt"
-for file in "$UBOOT_DIR"/*; do
-  name=$(basename "$file")
-  cmp "$file" "$VERIFY_DIR/unpacked/$name"
+index=1
+while IFS=: read -r type name image_type source_file; do
+  final_file=$(sed -n "${index}p" "$VERIFY_DIR/unpacked/commands.txt" | awk -F: '{print $4}')
+  cmp "$UBOOT_DIR/$source_file" "$VERIFY_DIR/unpacked/$final_file"
+  index=$((index + 1))
 done
-printf 'sha1sum %s' "$(sha1sum "$VERIFY_DIR/unpacked/boot.simg" | awk '{print $1}')" |
-  cmp - "$VERIFY_DIR/unpacked/boot.VERIFY"
-printf 'sha1sum %s' "$(sha1sum "$VERIFY_DIR/unpacked/rootfs.simg" | awk '{print $1}')" |
-  cmp - "$VERIFY_DIR/unpacked/rootfs.VERIFY"
+boot_partition=$(awk -F: '$1 == "PARTITION" && $2 == "boot" {print $4; exit}' "$VERIFY_DIR/unpacked/commands.txt")
+rootfs_partition=$(awk -F: '$1 == "PARTITION" && $2 == "rootfs" {print $4; exit}' "$VERIFY_DIR/unpacked/commands.txt")
+boot_verify=$(awk -F: '$1 == "VERIFY" && $2 == "boot" {print $4; exit}' "$VERIFY_DIR/unpacked/commands.txt")
+rootfs_verify=$(awk -F: '$1 == "VERIFY" && $2 == "rootfs" {print $4; exit}' "$VERIFY_DIR/unpacked/commands.txt")
+printf 'sha1sum %s' "$(sha1sum "$VERIFY_DIR/unpacked/$boot_partition" | awk '{print $1}')" |
+  cmp - "$VERIFY_DIR/unpacked/$boot_verify"
+printf 'sha1sum %s' "$(sha1sum "$VERIFY_DIR/unpacked/$rootfs_partition" | awk '{print $1}')" |
+  cmp - "$VERIFY_DIR/unpacked/$rootfs_verify"
 echo "Built $OUTPUT_IMAGE"

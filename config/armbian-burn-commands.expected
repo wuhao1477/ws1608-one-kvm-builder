@@ -6,7 +6,7 @@ PARTITION:bootloader:normal:4.bootloader.PARTITION
 VERIFY:bootloader:normal:5.bootloader.VERIFY
 PARTITION:resource:normal:6.resource.PARTITION
 VERIFY:resource:normal:7.resource.VERIFY
-PARTITION:boot:sparse:boot.simg
-VERIFY:boot:normal:boot.VERIFY
-PARTITION:rootfs:sparse:rootfs.simg
-VERIFY:rootfs:normal:rootfs.VERIFY
+PARTITION:boot:sparse:8.boot.PARTITION.sparse
+VERIFY:boot:normal:9.boot.VERIFY
+PARTITION:rootfs:sparse:10.rootfs.PARTITION.sparse
+VERIFY:rootfs:normal:11.rootfs.VERIFY
