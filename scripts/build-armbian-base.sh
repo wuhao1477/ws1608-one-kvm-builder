@@ -31,7 +31,7 @@ require_private_dir() {
   }
 }
 
-for command in cmp diff find git img2simg losetup sha1sum sha256sum; do
+for command in cmp diff find git losetup node sha1sum sha256sum; do
   require_command "$command"
 done
 [[ -x "$AMLIMG_BIN" ]] || { echo "AmlImg binary is not executable: $AMLIMG_BIN" >&2; exit 1; }
@@ -87,8 +87,8 @@ trap cleanup_loop EXIT
 for partition in "${loop_device}p1" "${loop_device}p2"; do
   [[ -b "$partition" ]] || { echo "missing Armbian partition: $partition" >&2; exit 1; }
 done
-as_root img2simg "${loop_device}p1" "$PACKAGE_DIR/boot.simg"
-as_root img2simg "${loop_device}p2" "$PACKAGE_DIR/rootfs.simg"
+as_root node "$ROOT_DIR/scripts/raw-to-sparse.mjs" "${loop_device}p1" "$PACKAGE_DIR/boot.simg"
+as_root node "$ROOT_DIR/scripts/raw-to-sparse.mjs" "${loop_device}p2" "$PACKAGE_DIR/rootfs.simg"
 as_root chown -R "$(id -u):$(id -g)" "$PACKAGE_DIR"
 cleanup_loop
 trap - EXIT

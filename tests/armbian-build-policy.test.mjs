@@ -29,3 +29,9 @@ test('keeps source-image builds separate from the stable One-KVM workflow', () =
   assert.doesNotMatch(workflow, /config\/base\.env/);
   assert.doesNotMatch(script, /publish-release\.sh/);
 });
+
+test('uses the repository sparse converter for Amlogic partitions', () => {
+  assert.doesNotMatch(workflow, /android-sdk-libsparse-utils/);
+  assert.doesNotMatch(script, /img2simg/);
+  assert.match(script, /raw-to-sparse\.mjs/);
+});
