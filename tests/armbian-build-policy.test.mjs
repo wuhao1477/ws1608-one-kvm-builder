@@ -35,3 +35,9 @@ test('uses the repository sparse converter for Amlogic partitions', () => {
   assert.doesNotMatch(script, /img2simg/);
   assert.match(script, /raw-to-sparse\.mjs/);
 });
+
+test('copies block-device partitions before sparse conversion', () => {
+  assert.match(script, /dd if=/);
+  assert.match(script, /boot\.raw/);
+  assert.match(script, /rootfs\.raw/);
+});
