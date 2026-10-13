@@ -30,14 +30,13 @@ test('keeps source-image builds separate from the stable One-KVM workflow', () =
   assert.doesNotMatch(script, /publish-release\.sh/);
 });
 
-test('uses the repository sparse converter for Amlogic partitions', () => {
-  assert.doesNotMatch(workflow, /android-sdk-libsparse-utils/);
-  assert.doesNotMatch(script, /img2simg/);
-  assert.match(script, /raw-to-sparse\.mjs/);
+test('builds the smaller Trixie minimal image with the reference sparse tool', () => {
+  assert.match(source, /BUILD_MINIMAL=yes/);
+  assert.match(workflow, /android-sdk-libsparse-utils/);
+  assert.match(script, /img2simg/);
 });
 
-test('copies block-device partitions before sparse conversion', () => {
-  assert.match(script, /dd if=/);
-  assert.match(script, /boot\.raw/);
-  assert.match(script, /rootfs\.raw/);
+test('converts block-device partitions with img2simg', () => {
+  assert.match(script, /img2simg "\$\{loop_device\}p1"/);
+  assert.match(script, /img2simg "\$\{loop_device\}p2"/);
 });
