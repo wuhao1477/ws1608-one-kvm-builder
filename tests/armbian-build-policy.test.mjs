@@ -40,3 +40,9 @@ test('converts block-device partitions with img2simg', () => {
   assert.match(script, /img2simg "\$\{loop_device\}p1"/);
   assert.match(script, /img2simg "\$\{loop_device\}p2"/);
 });
+
+test('normalizes the U-Boot console value before the Trixie build', () => {
+  assert.match(script, /console="both"/);
+  assert.match(script, /console=both/);
+  assert.match(script, /normalize_boot_console/);
+});

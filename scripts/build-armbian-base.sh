@@ -22,6 +22,15 @@ require_command() {
   command -v "$1" >/dev/null || { echo "missing command: $1" >&2; exit 1; }
 }
 
+normalize_boot_console() {
+  local bootenv=$1
+  sed -i 's/^console="both"$/console=both/' "$bootenv"
+  grep -qx 'console=both' "$bootenv" || {
+    echo 'failed to normalize OneCloud console setting' >&2
+    exit 1
+  }
+}
+
 require_private_dir() {
   local value=$1 label=$2 resolved
   resolved=$(realpath -m -- "$value")
@@ -31,7 +40,7 @@ require_private_dir() {
   }
 }
 
-for command in cmp diff find git img2simg losetup sha1sum sha256sum; do
+for command in cmp diff find git grep img2simg losetup sed sha1sum sha256sum; do
   require_command "$command"
 done
 [[ -x "$AMLIMG_BIN" ]] || { echo "AmlImg binary is not executable: $AMLIMG_BIN" >&2; exit 1; }
@@ -56,6 +65,7 @@ check_sha256 "$ARMBIAN_DTS_PATCH_SHA256" "$ARMBIAN_DIR/patch/kernel/archive/meso
 check_sha256 "$ARMBIAN_HDMI_DTS_PATCH_SHA256" "$ARMBIAN_DIR/patch/kernel/archive/meson-6.12/onecloud-0002-dts-Support-HDMI.patch"
 check_sha256 "$ARMBIAN_HDMI_PATCH_SHA256" "$ARMBIAN_DIR/patch/kernel/archive/meson-6.12/0052-drm-meson-Describe-the-HDMI-PHY-frequency-limits-of-.patch"
 check_sha256 "$UBOOT_SHA256" "$UBOOT_IMAGE"
+normalize_boot_console "$ARMBIAN_DIR/config/bootenv/onecloud.txt"
 
 mkdir -p "$OUTPUT_DIR" "$WORK_DIR" "$VERIFY_DIR"
 rm -rf -- "$PACKAGE_DIR" "$UBOOT_DIR" "$VERIFY_DIR/unpacked" "$WORK_DIR/disk.img" "$WORK_DIR/loop"
