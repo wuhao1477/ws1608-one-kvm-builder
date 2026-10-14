@@ -27,6 +27,7 @@
 4. 包文件名提供 One-KVM Rust Deb 版本，上游 Release 提供 tag。
 5. 构建 tag 为 `ws1608-one-kvm-<deb-version>-<upstream-tag>-bRRRAAA`；后缀由 workflow run number 和 attempt 组成。
 6. 只有公开 Release 同时匹配上游 tag、package digest、五个资产名称、上传状态和 Release body 中的资产摘要时才输出 `changed=false`，后续 build job 不启动。
+   Release body 还必须包含当前 `config/onecloud-source.env` 中的 OneCloud 板级、HDMI 补丁和 U-Boot 来源标记；旧 Release 缺少这些标记时会触发一次新构建。
 7. `force=true` 或 digest 变化时使用当前 workflow 的唯一构建号；已有 tag ref
    会阻止复用失败 draft 或其他运行已经占用的身份。
 

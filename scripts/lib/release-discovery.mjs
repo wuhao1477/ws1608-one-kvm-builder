@@ -95,6 +95,20 @@ function uploadedAssetMap(release) {
   return byName;
 }
 
+function onecloudMarkers(source) {
+  return {
+    onecloud_source_repository: source?.repository,
+    onecloud_source_commit: source?.commit,
+    onecloud_board: source?.board,
+    onecloud_branch: source?.branch,
+    onecloud_hdmi_patch_path: source?.hdmiPatchPath,
+    onecloud_hdmi_patch_sha256: source?.hdmiPatchSha256,
+    onecloud_uboot_repository: source?.ubootRepository,
+    onecloud_uboot_release: source?.ubootRelease,
+    onecloud_uboot_sha256: source?.ubootSha256,
+  };
+}
+
 function isVerifiedPublishedRecord(record, expected) {
   if (!record.published) return false;
   const markers = record.markers;
@@ -106,6 +120,10 @@ function isVerifiedPublishedRecord(record, expected) {
     || markers.build_revision !== record.buildRevision
     || markers.build_number !== String(record.buildNumber)
   ) return false;
+  const requiredSourceMarkers = onecloudMarkers(expected.onecloudSource);
+  if (Object.entries(requiredSourceMarkers).some(([key, value]) => markers[key] !== value)) {
+    return false;
+  }
   const assets = uploadedAssetMap(record.release);
   if (!assets) return false;
   const contract = releaseAssetContract(
@@ -167,6 +185,7 @@ export function discoverRelease({
   workflowRunNumber,
   workflowRunAttempt,
   baseFlavor = DEFAULT_BASE_FLAVOR,
+  onecloudSource,
 }) {
   if (upstreamRelease?.draft || upstreamRelease?.prerelease) {
     throw new Error('latest upstream release must not be draft or prerelease');
@@ -188,6 +207,7 @@ export function discoverRelease({
       releaseTag,
       safeReleaseTag,
       safeVersion,
+      onecloudSource,
     }))
     .sort((left, right) => right.buildNumber - left.buildNumber);
   const maxBuildNumber = records.reduce(
