@@ -64,6 +64,15 @@ test('the metadata CLI verifies all workflow identity fields', () => {
     'github_run_number',
     'amlimg_repository',
     'amlimg_commit',
+    'onecloud_source_repository',
+    'onecloud_source_commit',
+    'onecloud_board',
+    'onecloud_branch',
+    'onecloud_hdmi_patch_path',
+    'onecloud_hdmi_patch_sha256',
+    'onecloud_uboot_repository',
+    'onecloud_uboot_release',
+    'onecloud_uboot_sha256',
   ]) {
     assert.match(script, new RegExp(`${field}:`));
   }

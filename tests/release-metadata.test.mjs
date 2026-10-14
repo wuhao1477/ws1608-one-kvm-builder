@@ -34,6 +34,15 @@ const identity = {
   github_run_number: '12',
   amlimg_repository: 'https://github.com/rmoyulong/AmlImg.git',
   amlimg_commit: '311cd4b892023bcb3cf6661698f5ab685e34a7f8',
+  onecloud_source_repository: 'https://github.com/rmoyulong/OneCloud_armbian.git',
+  onecloud_source_commit: '65f870ea6c6e5a71c044cbc0996213ef079c4296',
+  onecloud_board: 'onecloud',
+  onecloud_branch: 'current',
+  onecloud_hdmi_patch_path: 'patch/0052-drm-meson-Describe-the-HDMI-PHY-frequency-limits-of-.patch',
+  onecloud_hdmi_patch_sha256: '5742211b081d0b8787837fb93acd2c806bfebaa0b380d7f109e875d4c4693bcc',
+  onecloud_uboot_repository: 'https://github.com/rmoyulong/u-boot-onecloud.git',
+  onecloud_uboot_release: 'Onecloud_Uboot_23.12.24_18.15.09',
+  onecloud_uboot_sha256: 'b4d6fb1abd5b0f1916bf0bab4c1dce933f24c620d2a2d672d4d4f0e95ab02eb4',
 };
 
 function partialIdentity() {

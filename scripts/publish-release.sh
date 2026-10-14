@@ -13,6 +13,8 @@ ARTIFACT_DIR=${ARTIFACT_DIR:?ARTIFACT_DIR is required}
 RELEASE_NOTES_FILE=${RELEASE_NOTES_FILE:?RELEASE_NOTES_FILE is required}
 GITHUB_REPOSITORY=${GITHUB_REPOSITORY:?GITHUB_REPOSITORY is required}
 RELEASE_PRERELEASE=${RELEASE_PRERELEASE:-false}
+ROOT_DIR=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
+source "$ROOT_DIR/config/onecloud-source.env"
 
 for command in awk cp gh grep jq mktemp sha256sum; do
   command -v "$command" >/dev/null || { echo "missing command: $command" >&2; exit 1; }
@@ -67,6 +69,15 @@ digest() { sha256sum "$1" | awk '{print $1}'; }
   printf 'build_revision=%s\n' "$BUILD_REVISION"
   printf 'build_tag=%s\n' "$BUILD_TAG"
   printf 'builder_commit=%s\n' "$BUILDER_COMMIT"
+  printf 'onecloud_source_repository=%s\n' "$ONECLOUD_SOURCE_REPOSITORY"
+  printf 'onecloud_source_commit=%s\n' "$ONECLOUD_SOURCE_COMMIT"
+  printf 'onecloud_board=%s\n' "$ONECLOUD_BOARD"
+  printf 'onecloud_branch=%s\n' "$ONECLOUD_BRANCH"
+  printf 'onecloud_hdmi_patch_path=%s\n' "$ONECLOUD_HDMI_PATCH_PATH"
+  printf 'onecloud_hdmi_patch_sha256=%s\n' "$ONECLOUD_HDMI_PATCH_SHA256"
+  printf 'onecloud_uboot_repository=%s\n' "$ONECLOUD_UBOOT_REPOSITORY"
+  printf 'onecloud_uboot_release=%s\n' "$ONECLOUD_UBOOT_RELEASE"
+  printf 'onecloud_uboot_sha256=%s\n' "$ONECLOUD_UBOOT_SHA256"
   printf 'image_name=%s\n' "$IMAGE_NAME"
   printf 'compressed_image_name=%s\n' "$IMAGE_NAME.xz"
   printf 'checksums_name=SHA256SUMS\n'
@@ -154,6 +165,15 @@ verify_remote_assets() {
     "build_revision=$BUILD_REVISION" \
     "build_tag=$BUILD_TAG" \
     "builder_commit=$BUILDER_COMMIT" \
+    "onecloud_source_repository=$ONECLOUD_SOURCE_REPOSITORY" \
+    "onecloud_source_commit=$ONECLOUD_SOURCE_COMMIT" \
+    "onecloud_board=$ONECLOUD_BOARD" \
+    "onecloud_branch=$ONECLOUD_BRANCH" \
+    "onecloud_hdmi_patch_path=$ONECLOUD_HDMI_PATCH_PATH" \
+    "onecloud_hdmi_patch_sha256=$ONECLOUD_HDMI_PATCH_SHA256" \
+    "onecloud_uboot_repository=$ONECLOUD_UBOOT_REPOSITORY" \
+    "onecloud_uboot_release=$ONECLOUD_UBOOT_RELEASE" \
+    "onecloud_uboot_sha256=$ONECLOUD_UBOOT_SHA256" \
     "image_name=$IMAGE_NAME" \
     "compressed_image_name=$IMAGE_NAME.xz" \
     'checksums_name=SHA256SUMS' \
