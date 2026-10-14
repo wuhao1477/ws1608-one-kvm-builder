@@ -51,6 +51,19 @@ test('downloads the pinned ttyd binary and checks its sha256', () => {
   assert.match(buildJob, /TTYD_BIN=\$RUNNER_TEMP\/ttyd\.armhf/);
 });
 
+test('passes pinned OneCloud source inputs to the image and release checks', () => {
+  assert.match(buildJob, /source config\/onecloud-source\.env/);
+  for (const field of [
+    'ONECLOUD_SOURCE_REPOSITORY',
+    'ONECLOUD_SOURCE_COMMIT',
+    'ONECLOUD_HDMI_PATCH_SHA256',
+    'ONECLOUD_UBOOT_RELEASE',
+    'ONECLOUD_UBOOT_SHA256',
+  ]) {
+    assert.match(buildJob, new RegExp(`echo "${field}=`));
+  }
+});
+
 test('installs the FAT image tooling required for boot-console validation', () => {
   assert.match(workflow, /e2fsprogs file jq mtools qemu-user-static/);
 });

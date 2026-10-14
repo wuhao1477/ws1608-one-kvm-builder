@@ -22,6 +22,15 @@ const PROVENANCE_FIELDS = [
   'github_run_number',
   'amlimg_repository',
   'amlimg_commit',
+  'onecloud_source_repository',
+  'onecloud_source_commit',
+  'onecloud_board',
+  'onecloud_branch',
+  'onecloud_hdmi_patch_path',
+  'onecloud_hdmi_patch_sha256',
+  'onecloud_uboot_repository',
+  'onecloud_uboot_release',
+  'onecloud_uboot_sha256',
 ];
 const CORE_IDENTITY_FIELDS = [
   'one_kvm_version',
@@ -82,10 +91,15 @@ function requireProvenance(provenance) {
       throw new Error(`missing provenance field: ${key}`);
     }
   }
-  for (const key of ['package_sha256', 'base_sha256']) {
+  for (const key of [
+    'package_sha256',
+    'base_sha256',
+    'onecloud_hdmi_patch_sha256',
+    'onecloud_uboot_sha256',
+  ]) {
     if (!/^[0-9a-f]{64}$/.test(provenance[key])) throw new Error(`invalid provenance digest: ${key}`);
   }
-  for (const key of ['builder_commit', 'amlimg_commit']) {
+  for (const key of ['builder_commit', 'amlimg_commit', 'onecloud_source_commit']) {
     if (!/^[0-9a-f]{40}$/.test(provenance[key])) throw new Error(`invalid provenance commit: ${key}`);
   }
   if (!Number.isSafeInteger(provenance.build_number) || provenance.build_number < 1) {

@@ -15,6 +15,10 @@
 | `builder_commit` | 40 字符十六进制 | `github.sha` |
 | `github_run_id` / `github_run_number` / `github_run_attempt` | string | GitHub Actions |
 | `amlimg_repository` / `amlimg_commit` | string | `config/tool-versions.env` |
+| `onecloud_source_repository` / `onecloud_source_commit` | string | `config/onecloud-source.env`；OneCloud_armbian 来源 |
+| `onecloud_board` / `onecloud_branch` | string | `config/onecloud-source.env`；板级目标和内核分支 |
+| `onecloud_hdmi_patch_path` / `onecloud_hdmi_patch_sha256` | string | `config/onecloud-source.env`；OneCloud HDMI PHY 补丁 |
+| `onecloud_uboot_repository` / `onecloud_uboot_release` / `onecloud_uboot_sha256` | string | `config/onecloud-source.env`；OneCloud U-Boot 来源 |
 | `built_at` | ISO-8601 string | finalizer 完成时间 |
 | `image` / `image_size` / `image_sha256` | string / number / string | raw burn image |
 | `compressed_image` / `compressed_image_size` / `compressed_image_sha256` | string / number / string | xz asset |

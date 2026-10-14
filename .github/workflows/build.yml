@@ -98,6 +98,7 @@ jobs:
         run: |
           source config/base.env
           source config/tool-versions.env
+          source config/onecloud-source.env
           {
             echo "OUTPUT_DIR=$RUNNER_TEMP/ws1608-output"
             echo "WORK_DIR=$RUNNER_TEMP/ws1608-work"
@@ -114,6 +115,15 @@ jobs:
             echo "BASE_BOARD=$BASE_BOARD"
             echo "AMLIMG_REPOSITORY=$AMLIMG_REPOSITORY"
             echo "AMLIMG_COMMIT=$AMLIMG_COMMIT"
+            echo "ONECLOUD_SOURCE_REPOSITORY=$ONECLOUD_SOURCE_REPOSITORY"
+            echo "ONECLOUD_SOURCE_COMMIT=$ONECLOUD_SOURCE_COMMIT"
+            echo "ONECLOUD_BOARD=$ONECLOUD_BOARD"
+            echo "ONECLOUD_BRANCH=$ONECLOUD_BRANCH"
+            echo "ONECLOUD_HDMI_PATCH_PATH=$ONECLOUD_HDMI_PATCH_PATH"
+            echo "ONECLOUD_HDMI_PATCH_SHA256=$ONECLOUD_HDMI_PATCH_SHA256"
+            echo "ONECLOUD_UBOOT_REPOSITORY=$ONECLOUD_UBOOT_REPOSITORY"
+            echo "ONECLOUD_UBOOT_RELEASE=$ONECLOUD_UBOOT_RELEASE"
+            echo "ONECLOUD_UBOOT_SHA256=$ONECLOUD_UBOOT_SHA256"
           } >> "$GITHUB_ENV"
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7
         with:
@@ -213,6 +223,7 @@ jobs:
         run: |
           source config/base.env
           source config/tool-versions.env
+          source config/onecloud-source.env
           {
             echo "OUTPUT_DIR=$RUNNER_TEMP/ws1608-release"
             echo "ARTIFACT_DIR=$RUNNER_TEMP/ws1608-release"
@@ -229,6 +240,15 @@ jobs:
             echo "BASE_BOARD=$BASE_BOARD"
             echo "AMLIMG_REPOSITORY=$AMLIMG_REPOSITORY"
             echo "AMLIMG_COMMIT=$AMLIMG_COMMIT"
+            echo "ONECLOUD_SOURCE_REPOSITORY=$ONECLOUD_SOURCE_REPOSITORY"
+            echo "ONECLOUD_SOURCE_COMMIT=$ONECLOUD_SOURCE_COMMIT"
+            echo "ONECLOUD_BOARD=$ONECLOUD_BOARD"
+            echo "ONECLOUD_BRANCH=$ONECLOUD_BRANCH"
+            echo "ONECLOUD_HDMI_PATCH_PATH=$ONECLOUD_HDMI_PATCH_PATH"
+            echo "ONECLOUD_HDMI_PATCH_SHA256=$ONECLOUD_HDMI_PATCH_SHA256"
+            echo "ONECLOUD_UBOOT_REPOSITORY=$ONECLOUD_UBOOT_REPOSITORY"
+            echo "ONECLOUD_UBOOT_RELEASE=$ONECLOUD_UBOOT_RELEASE"
+            echo "ONECLOUD_UBOOT_SHA256=$ONECLOUD_UBOOT_SHA256"
           } >> "$GITHUB_ENV"
       - name: Download verified workflow artifact
         uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7

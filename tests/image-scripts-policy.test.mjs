@@ -7,11 +7,37 @@ const buildScript = fs.readFileSync('scripts/build-image.sh', 'utf8');
 const manifestScript = fs.readFileSync('scripts/write-image-manifest.mjs', 'utf8');
 const verifyScript = fs.readFileSync('scripts/verify-image.sh', 'utf8');
 const baseConfig = fs.readFileSync('config/base.env', 'utf8');
+const onecloudConfig = fs.readFileSync('config/onecloud-source.env', 'utf8');
 
 test('the base configuration is the source of image identity fields', () => {
   for (const field of ['BASE_ID', 'BASE_FLAVOR', 'BASE_KERNEL', 'BASE_BOARD']) {
     assert.match(baseConfig, new RegExp(`^${field}=`, 'm'));
   }
+});
+
+test('the final image records the pinned OneCloud source inputs', () => {
+  for (const field of [
+    'ONECLOUD_SOURCE_REPOSITORY',
+    'ONECLOUD_SOURCE_COMMIT',
+    'ONECLOUD_BOARD',
+    'ONECLOUD_BRANCH',
+    'ONECLOUD_HDMI_PATCH_PATH',
+    'ONECLOUD_HDMI_PATCH_SHA256',
+    'ONECLOUD_UBOOT_REPOSITORY',
+    'ONECLOUD_UBOOT_RELEASE',
+    'ONECLOUD_UBOOT_SHA256',
+  ]) {
+    assert.match(onecloudConfig, new RegExp(`^${field}=`, 'm'));
+  }
+  for (const script of [buildScript, verifyScript]) {
+    assert.match(script, /source .*config\/onecloud-source\.env/);
+    assert.match(script, /ONECLOUD_SOURCE_COMMIT/);
+    assert.match(script, /ONECLOUD_HDMI_PATCH_SHA256/);
+    assert.match(script, /ONECLOUD_UBOOT_SHA256/);
+  }
+  assert.match(manifestScript, /onecloud_source_repository: env\('ONECLOUD_SOURCE_REPOSITORY'\)/);
+  assert.match(manifestScript, /onecloud_hdmi_patch_sha256: env\('ONECLOUD_HDMI_PATCH_SHA256'\)/);
+  assert.match(manifestScript, /onecloud_uboot_release: env\('ONECLOUD_UBOOT_RELEASE'\)/);
 });
 
 test('the image builder requires and embeds immutable build provenance', () => {

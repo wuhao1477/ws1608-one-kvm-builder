@@ -12,6 +12,8 @@ Armbian_26.8.0-trunk.413_Onecloud_trixie_6.12.28_HDMI-consolefix.burn.img
 
 基础包的静态验证不代表仓库生成的每个 One-KVM Release 已完成实体刷写。当前成品的验证边界见 [hardware-validation.md](hardware-validation.md)。
 
+构建来源还固定记录在 [`config/onecloud-source.env`](../config/onecloud-source.env)：OneCloud_armbian 提交、`onecloud/current` 板级目标、Meson HDMI PHY 补丁摘要，以及对应 U-Boot Release 和摘要。它们会进入最终镜像的 `manifest.json` 与 `validation-report.json`，便于确认底座沿用了 OneCloud 的板级实现来源。
+
 ## 历史参考镜像
 
 ### Armbian Jammy 6.1.9

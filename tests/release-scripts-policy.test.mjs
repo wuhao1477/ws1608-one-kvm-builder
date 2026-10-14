@@ -43,6 +43,19 @@ test('release discovery includes repository tag refs hidden from the draft Relea
   assert.match(script, /"\$WORKFLOW_RUN_NUMBER" "\$WORKFLOW_RUN_ATTEMPT"/);
 });
 
+test('release discovery compares the pinned OneCloud source', () => {
+  const script = read('scripts/discover-release.sh');
+  assert.match(script, /source .*config\/onecloud-source\.env/);
+  for (const variable of [
+    'ONECLOUD_SOURCE_REPOSITORY',
+    'ONECLOUD_SOURCE_COMMIT',
+    'ONECLOUD_HDMI_PATCH_SHA256',
+    'ONECLOUD_UBOOT_SHA256',
+  ]) {
+    assert.match(script, new RegExp(`\\$${variable}`));
+  }
+});
+
 test('the metadata CLI verifies all workflow identity fields', () => {
   const script = read('scripts/verify-release-assets.mjs');
   for (const field of [
@@ -64,6 +77,15 @@ test('the metadata CLI verifies all workflow identity fields', () => {
     'github_run_number',
     'amlimg_repository',
     'amlimg_commit',
+    'onecloud_source_repository',
+    'onecloud_source_commit',
+    'onecloud_board',
+    'onecloud_branch',
+    'onecloud_hdmi_patch_path',
+    'onecloud_hdmi_patch_sha256',
+    'onecloud_uboot_repository',
+    'onecloud_uboot_release',
+    'onecloud_uboot_sha256',
   ]) {
     assert.match(script, new RegExp(`${field}:`));
   }

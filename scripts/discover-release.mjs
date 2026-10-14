@@ -20,6 +20,15 @@ const [
   runNumberValue,
   runAttemptValue,
   baseFlavorValue,
+  onecloudSourceRepository,
+  onecloudSourceCommit,
+  onecloudBoard,
+  onecloudBranch,
+  onecloudHdmiPatchPath,
+  onecloudHdmiPatchSha256,
+  onecloudUbootRepository,
+  onecloudUbootRelease,
+  onecloudUbootSha256,
 ] = process.argv.slice(2);
 if (!releasePath || !releasesPath || !tagsPath) {
   throw new Error('release and tag JSON paths are required');
@@ -33,6 +42,17 @@ const result = discoverRelease({
   workflowRunNumber: runNumberValue,
   workflowRunAttempt: runAttemptValue,
   baseFlavor: baseFlavorValue || undefined,
+  onecloudSource: {
+    repository: onecloudSourceRepository,
+    commit: onecloudSourceCommit,
+    board: onecloudBoard,
+    branch: onecloudBranch,
+    hdmiPatchPath: onecloudHdmiPatchPath,
+    hdmiPatchSha256: onecloudHdmiPatchSha256,
+    ubootRepository: onecloudUbootRepository,
+    ubootRelease: onecloudUbootRelease,
+    ubootSha256: onecloudUbootSha256,
+  },
 });
 
 for (const [key, value] of Object.entries({

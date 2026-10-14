@@ -10,6 +10,31 @@ import { discoverRelease } from '../scripts/lib/release-discovery.mjs';
 const DIGEST_A = 'a'.repeat(64);
 const DIGEST_B = 'b'.repeat(64);
 const BASE_FLAVOR = 'Onecloud_trixie_6.12.28_HDMI-test';
+const ONECLOUD_SOURCE = {
+  repository: 'https://github.com/rmoyulong/OneCloud_armbian.git',
+  commit: '65f870ea6c6e5a71c044cbc0996213ef079c4296',
+  board: 'onecloud',
+  branch: 'current',
+  hdmiPatchPath: 'patch/0052-drm-meson-Describe-the-HDMI-PHY-frequency-limits-of-.patch',
+  hdmiPatchSha256: '5742211b081d0b8787837fb93acd2c806bfebaa0b380d7f109e875d4c4693bcc',
+  ubootRepository: 'https://github.com/rmoyulong/u-boot-onecloud.git',
+  ubootRelease: 'Onecloud_Uboot_23.12.24_18.15.09',
+  ubootSha256: 'b4d6fb1abd5b0f1916bf0bab4c1dce933f24c620d2a2d672d4d4f0e95ab02eb4',
+};
+
+function onecloudMarkers() {
+  return [
+    `onecloud_source_repository=${ONECLOUD_SOURCE.repository}`,
+    `onecloud_source_commit=${ONECLOUD_SOURCE.commit}`,
+    `onecloud_board=${ONECLOUD_SOURCE.board}`,
+    `onecloud_branch=${ONECLOUD_SOURCE.branch}`,
+    `onecloud_hdmi_patch_path=${ONECLOUD_SOURCE.hdmiPatchPath}`,
+    `onecloud_hdmi_patch_sha256=${ONECLOUD_SOURCE.hdmiPatchSha256}`,
+    `onecloud_uboot_repository=${ONECLOUD_SOURCE.ubootRepository}`,
+    `onecloud_uboot_release=${ONECLOUD_SOURCE.ubootRelease}`,
+    `onecloud_uboot_sha256=${ONECLOUD_SOURCE.ubootSha256}`,
+  ];
+}
 
 function releaseAssetNames(buildNumber) {
   const revision = `b${String(buildNumber).padStart(3, '0')}`;
@@ -46,7 +71,12 @@ function upstreamRelease(digest = DIGEST_A) {
   };
 }
 
-function publishedBuild({ buildNumber = 1, digest = DIGEST_A, draft = false } = {}) {
+function publishedBuild({
+  buildNumber = 1,
+  digest = DIGEST_A,
+  draft = false,
+  includeOnecloudSource = true,
+} = {}) {
   const revision = `b${String(buildNumber).padStart(3, '0')}`;
   const buildTag = `ws1608-one-kvm-0.2.4-v260709-${revision}`;
   const assets = completeAssets(buildNumber);
@@ -76,6 +106,7 @@ function publishedBuild({ buildNumber = 1, digest = DIGEST_A, draft = false } = 
       `checksums_sha256=${assets[2].digest.slice(7)}`,
       `manifest_sha256=${assets[3].digest.slice(7)}`,
       `validation_report_sha256=${assets[4].digest.slice(7)}`,
+      ...(includeOnecloudSource ? onecloudMarkers() : []),
     ].join('\n'),
   };
 }
@@ -101,11 +132,24 @@ test('skips a published upstream tag and package digest', () => {
     upstreamRelease: upstreamRelease(),
     existingReleases: [publishedBuild()],
     forceBuild: false,
+    onecloudSource: ONECLOUD_SOURCE,
   });
 
   assert.equal(result.changed, false);
   assert.equal(result.buildNumber, 1);
   assert.equal(result.buildTag, 'ws1608-one-kvm-0.2.4-v260709-b001');
+});
+
+test('a published release without OneCloud provenance cannot suppress a rebuild', () => {
+  const result = discoverRelease({
+    upstreamRelease: upstreamRelease(),
+    existingReleases: [publishedBuild({ includeOnecloudSource: false })],
+    forceBuild: false,
+    onecloudSource: ONECLOUD_SOURCE,
+  });
+
+  assert.equal(result.changed, true);
+  assert.equal(result.buildNumber, 2);
 });
 
 test('force allocates the next immutable build sequence', () => {
