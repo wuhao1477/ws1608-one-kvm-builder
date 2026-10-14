@@ -3,46 +3,23 @@ import fs from 'node:fs';
 import test from 'node:test';
 
 const workflow = fs.readFileSync('.github/workflows/build-base.yml', 'utf8');
-const config = fs.readFileSync('config/armbian-build.env', 'utf8');
-const script = fs.readFileSync('scripts/build-armbian-base.sh', 'utf8');
-const commands = fs.readFileSync('config/armbian-burn-commands.expected', 'utf8');
-const source = `${workflow}\n${config}\n${script}`;
+const base = fs.readFileSync('config/base.env', 'utf8');
 
-test('builds one fixed Trixie OneCloud burn image from pinned sources', () => {
-  assert.match(source, /BOARD=onecloud/);
-  assert.match(source, /BRANCH=current/);
-  assert.match(source, /RELEASE=trixie/);
-  assert.match(config, /ARMBIAN_COMMIT=[0-9a-f]{40}/);
-  assert.match(config, /UBOOT_SHA256=[0-9a-f]{64}/);
-  assert.match(config, /ARMBIAN_HDMI_PATCH_SHA256=[0-9a-f]{64}/);
-  assert.match(source, /\.burn\.img/);
-  assert.match(commands, /PARTITION:boot:sparse:8\.boot\.PARTITION\.sparse/);
-  assert.match(script, /final_file=.*sed -n/);
+test('uses the hardware-verified Trixie base image as the only burn artifact', () => {
+  assert.match(workflow, /source config\/base\.env/);
+  assert.match(workflow, /BASE_IMAGE_URL/);
+  assert.match(workflow, /BASE_IMAGE_SHA256/);
+  assert.match(workflow, /xz -dc/);
+  assert.match(base, /BASE_RELEASE_TAG=base-20260804-consolefix/);
+  assert.match(base, /BASE_KERNEL=6\.12\.28-current-meson/);
+  assert.match(base, /BASE_IMAGE_SHA256=[0-9a-f]{64}/);
   assert.doesNotMatch(workflow, /matrix:/);
   assert.doesNotMatch(workflow, /strategy:/);
   assert.doesNotMatch(workflow, /bookworm|noble|sid|server|cli/);
 });
 
-test('keeps source-image builds separate from the stable One-KVM workflow', () => {
-  assert.match(workflow, /workflow_dispatch/);
+test('does not rebuild an unverified kernel or publish a One-KVM image', () => {
+  assert.doesNotMatch(workflow, /compile\.sh build/);
+  assert.doesNotMatch(workflow, /BUILD_MINIMAL/);
   assert.doesNotMatch(workflow, /publish-release\.sh/);
-  assert.doesNotMatch(workflow, /config\/base\.env/);
-  assert.doesNotMatch(script, /publish-release\.sh/);
-});
-
-test('builds the smaller Trixie minimal image with the reference sparse tool', () => {
-  assert.match(source, /BUILD_MINIMAL=yes/);
-  assert.match(workflow, /android-sdk-libsparse-utils/);
-  assert.match(script, /img2simg/);
-});
-
-test('converts block-device partitions with img2simg', () => {
-  assert.match(script, /img2simg "\$\{loop_device\}p1"/);
-  assert.match(script, /img2simg "\$\{loop_device\}p2"/);
-});
-
-test('normalizes the U-Boot console value before the Trixie build', () => {
-  assert.match(script, /console="both"/);
-  assert.match(script, /console=both/);
-  assert.match(script, /normalize_boot_console/);
 });
